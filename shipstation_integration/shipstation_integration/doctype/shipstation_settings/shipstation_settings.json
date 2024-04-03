@@ -32,15 +32,13 @@
    "fieldname": "api_key",
    "fieldtype": "Password",
    "in_list_view": 1,
-   "label": "API Key",
-   "reqd": 1
+   "label": "API Key"
   },
   {
    "fieldname": "api_secret",
    "fieldtype": "Password",
    "in_list_view": 1,
-   "label": "API Secret",
-   "reqd": 1
+   "label": "API Secret"
   },
   {
    "fieldname": "default_item_group",

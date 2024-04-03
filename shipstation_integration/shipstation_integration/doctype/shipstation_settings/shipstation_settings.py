@@ -47,8 +47,9 @@ class ShipstationSettings(Document):
 		self.validate_api_connection()
 
 	def after_insert(self):
-		self.update_carriers_and_stores()
-		self.update_warehouses()
+		if self.enabled:
+			self.update_carriers_and_stores()
+			self.update_warehouses()
 
 	@frappe.whitelist()
 	def get_orders(self):
@@ -79,6 +80,8 @@ class ShipstationSettings(Document):
 				store.create_shipment = False
 
 	def validate_api_connection(self):
+		if not self.enabled:
+			return
 		try:
 			client = self.client()
 			client.list_carriers()
