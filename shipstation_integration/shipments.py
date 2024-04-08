@@ -11,6 +11,7 @@ from erpnext.selling.doctype.sales_order.sales_order import (
 from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
 from erpnext.stock.doctype.delivery_note.delivery_note import make_shipment
 from frappe.utils import getdate
+from frappe.utils.safe_exec import is_job_queued
 from httpx import HTTPError
 
 if TYPE_CHECKING:
@@ -25,6 +26,14 @@ if TYPE_CHECKING:
 	from shipstation_integration.shipstation_integration.doctype.shipstation_store.shipstation_store import (
 		ShipstationStore,
 	)
+
+
+def queue_shipments():
+	if not is_job_queued("shipstation_integration.orders.list_orders", queue="long"):
+		frappe.enqueue(
+			method="shipstation_integration.orders.list_orders",
+			queue="long",
+		)
 
 
 def list_shipments(

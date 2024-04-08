@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Union
 
 import frappe
 from frappe.utils import flt, getdate
+from frappe.utils.safe_exec import is_job_queued
 from httpx import HTTPError
 
 from shipstation_integration.customer import (
@@ -22,6 +23,14 @@ if TYPE_CHECKING:
 	from shipstation_integration.shipstation_integration.doctype.shipstation_store.shipstation_store import (
 		ShipstationStore,
 	)
+
+
+def queue_orders():
+	if not is_job_queued("shipstation_integration.orders.list_orders"):
+		frappe.enqueue(
+			method="shipstation_integration.orders.list_orders",
+			queue="long",
+		)
 
 
 def list_orders(

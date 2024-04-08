@@ -99,9 +99,9 @@ before_migrate = "shipstation_integration.setup.setup_custom_fields"
 # ---------------
 
 scheduler_events = {
-	"hourly_long": [
-		"shipstation_integration.orders.list_orders",
-		"shipstation_integration.shipments.list_shipments",
+	"all": [
+		"shipstation_integration.orders.queue_orders",
+		"shipstation_integration.shipments.queue_shipments",
 	]
 }
 
