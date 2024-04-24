@@ -48,7 +48,7 @@ def list_orders(
 			continue
 
 		client = sss_doc.client()
-		client.timeout = 60
+		client.timeout = 60 * 5
 
 		if not last_order_datetime:
 			# Get data for the last day, Shipstation API behaves oddly when it's a shorter period
@@ -254,11 +254,11 @@ def create_erpnext_order(order: "ShipStationOrder", store: "ShipstationStore") -
 		so = frappe.get_attr(before_submit_hook[0])(store, so, order)
 		if so:
 			so.save()
-
+	print(so)
 	if so:
 		so.submit()
 		frappe.db.commit()
-		return so.name
+	return so.name if so else None
 
 
 def get_item_notes(item: "ShipStationOrderItem"):
