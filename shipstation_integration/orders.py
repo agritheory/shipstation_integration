@@ -48,7 +48,7 @@ def list_orders(
 			continue
 
 		client = sss_doc.client()
-		client.timeout = 60
+		client.timeout = 60 * 5
 
 		if not last_order_datetime:
 			# Get data for the last day, Shipstation API behaves oddly when it's a shorter period
@@ -151,6 +151,8 @@ def create_erpnext_order(order: "ShipStationOrder", store: "ShipstationStore") -
 			"has_pii": True,
 		}
 	)
+	if store.sales_partner:
+		so.sales_partner = store.sales_partner
 
 	if store.get("is_amazon_store"):
 		update_hook = frappe.get_hooks("update_shipstation_amazon_order")
@@ -216,6 +218,18 @@ def create_erpnext_order(order: "ShipStationOrder", store: "ShipstationStore") -
 				"cost_center": store.cost_center,
 			},
 		)
+	if order.tax_amount and store.withholding:
+		# reverse withholding
+		so.append(
+			"taxes",
+			{
+				"charge_type": "Actual",
+				"account_head": store.tax_account,
+				"description": "Shipstation Tax Amount",
+				"tax_amount": order.tax_amount * -1,
+				"cost_center": store.cost_center,
+			},
+		)
 
 	if order.shipping_amount:
 		so.append(
@@ -237,12 +251,13 @@ def create_erpnext_order(order: "ShipStationOrder", store: "ShipstationStore") -
 
 	before_submit_hook = frappe.get_hooks("update_shipstation_order_before_submit")
 	if before_submit_hook:
-		so = frappe.get_attr(before_submit_hook[0])(store, so)
-		so.save()
-
-	so.submit()
-	frappe.db.commit()
-	return so.name
+		so = frappe.get_attr(before_submit_hook[0])(store, so, order)
+		if so:
+			so.save()
+	if so:
+		so.submit()
+		frappe.db.commit()
+	return so.name if so else None
 
 
 def get_item_notes(item: "ShipStationOrderItem"):
