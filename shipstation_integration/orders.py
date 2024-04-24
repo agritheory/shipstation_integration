@@ -254,7 +254,6 @@ def create_erpnext_order(order: "ShipStationOrder", store: "ShipstationStore") -
 		so = frappe.get_attr(before_submit_hook[0])(store, so, order)
 		if so:
 			so.save()
-	print(so)
 	if so:
 		so.submit()
 		frappe.db.commit()
