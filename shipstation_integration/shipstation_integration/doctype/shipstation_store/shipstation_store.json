@@ -21,12 +21,14 @@
   "amazon_marketplace",
   "column_break_tsex",
   "sales_partner",
+  "apply_commission",
   "sb_stock",
   "warehouse",
   "sb_accounts",
   "cost_center",
   "shipping_income_account",
   "shipping_expense_account",
+  "commission_account",
   "cb_accounts",
   "tax_account",
   "sales_account",
@@ -200,11 +202,23 @@
    "fieldname": "withholding",
    "fieldtype": "Check",
    "label": "Withholding"
+  },
+  {
+   "fieldname": "commission_account",
+   "fieldtype": "Link",
+   "label": "Commission Account",
+   "options": "Account"
+  },
+  {
+   "default": "0",
+   "fieldname": "apply_commission",
+   "fieldtype": "Check",
+   "label": "Apply Commission"
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2024-04-22 16:08:02.850700",
+ "modified": "2024-04-30 15:27:23.299160",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Shipstation Store",
