@@ -39,8 +39,24 @@ def create_item(
 				weight_per_unit = flt(weight.value) if weight else 1
 				weight_uom = weight.units.title() if weight and weight.units else "Ounce"
 
-				if weight_uom == "Ounces":
+				if weight_uom.lower() == "ounces":
 					# map Shipstation UOM to ERPNext UOM
+					weight_uom = "Ounce"
+				elif weight_uom.lower() == "grams":
+					# map Shipstation UOM to ERPNext UOM
+					weight_uom = "Gram"
+				elif weight_uom.lower() in ("pound", "pounds", "lb", "lbs"):
+					# map Shipstation UOM to ERPNext UOM
+					weight_uom = "Pound"
+
+				if settings.weight_conversion == "Convert to Gram" and weight_uom == "Ounce":
+					weight_per_unit = flt(weight_per_unit * 28.3495, 2)
+					weight_uom = "Gram"
+				elif settings.weight_conversion == "Convert to Gram" and weight_uom == "Pound":
+					weight_per_unit = flt(weight_per_unit * 453.592, 2)
+					weight_uom = "Gram"
+				elif settings.weight_conversion == "Convert to Ounce" and weight_uom == "Gram":
+					weight_per_unit = flt(weight_per_unit * 0.035274, 2)
 					weight_uom = "Ounce"
 
 		item: "Item" = frappe.new_doc("Item")

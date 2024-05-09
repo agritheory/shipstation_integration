@@ -85,7 +85,7 @@ def list_orders(
 						should_create_order = frappe.get_attr(process_order_hook[0])(order, store)
 
 					if should_create_order:
-						create_erpnext_order(order, store)
+						create_erpnext_order(order, store, settings)
 
 
 def validate_order(
@@ -129,7 +129,9 @@ def validate_order(
 	return True
 
 
-def create_erpnext_order(order: "ShipStationOrder", store: "ShipstationStore") -> str | None:
+def create_erpnext_order(
+	order: "ShipStationOrder", store: "ShipstationStore", settings: "ShipstationSettings"
+) -> str | None:
 	customer = create_customer(order)
 	so: "SalesOrder" = frappe.new_doc("Sales Order")
 	so.update(
