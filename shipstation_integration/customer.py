@@ -184,12 +184,18 @@ def create_contact(order: "ShipStationOrder", email_id: str = None, phone_no: st
 		# as the data for links is same as above for email it will saved only once
 		cont.append("links", {"link_doctype": "Customer", "link_name": email_id})
 	try:
+		original_validate_phone_number = frappe.utils.validate_phone_number
+		# bypass phone number validation
+		frappe.utils.validate_phone_number = overwrite_validate_phone_number
 		cont.save()
+		frappe.utils.validate_phone_number = original_validate_phone_number
 		frappe.db.commit()
 		return cont
 	except Exception as e:
 		frappe.log_error(title="Error saving Shipstation Contact", message=e)
 
+def overwrite_validate_phone_number(data, throw=False):
+	return True
 
 def get_billing_address(customer_name: str):
 	billing_address = frappe.db.sql(
