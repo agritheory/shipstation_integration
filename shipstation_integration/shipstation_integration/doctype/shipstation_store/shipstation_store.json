@@ -32,7 +32,8 @@
   "cb_accounts",
   "tax_account",
   "sales_account",
-  "expense_account"
+  "expense_account",
+  "difference_account"
  ],
  "fields": [
   {
@@ -214,11 +215,19 @@
    "fieldname": "apply_commission",
    "fieldtype": "Check",
    "label": "Apply Commission"
+  },
+  {
+   "description": "Any difference between the ERPNext and Shipstation totals will be allocated here, for example coupons",
+   "fieldname": "difference_account",
+   "fieldtype": "Link",
+   "label": "Difference Account",
+   "options": "Account",
+   "reqd": 1
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2024-04-30 15:27:23.299160",
+ "modified": "2024-05-22 16:09:21.118343",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Shipstation Store",
