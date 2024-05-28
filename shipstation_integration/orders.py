@@ -30,7 +30,7 @@ def queue_orders():
 	if not is_job_queued("shipstation_integration.orders.list_orders"):
 		frappe.enqueue(
 			method="shipstation_integration.orders.list_orders",
-			queue="long",
+			queue="shipstation",
 		)
 
 
