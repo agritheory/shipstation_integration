@@ -62,7 +62,7 @@ doctype_js = {
 # ------------
 
 # before_install = "shipstation_integration.install.before_install"
-# after_install = "shipstation_integration.install.after_install"
+after_install = "shipstation_integration.install.after_install"
 before_migrate = "shipstation_integration.setup.setup_custom_fields"
 
 # Desk Notifications
