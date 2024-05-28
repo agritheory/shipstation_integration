@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Parsimony LLC and Contributors
+# Copyright (c) 2024, AgriTheory and Contributors
 # See license.txt
 
 import unittest
