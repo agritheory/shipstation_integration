@@ -2,11 +2,11 @@ from . import __version__ as app_version
 
 app_name = "shipstation_integration"
 app_title = "Shipstation Integration"
-app_publisher = "Parsimony LLC"
+app_publisher = "AgriTheory"
 app_description = "Shipstation integration for ERPNext"
 app_icon = "octicon octicon-file-directory"
 app_color = "grey"
-app_email = "developers@parsimony.com"
+app_email = "support@agritheory.dev"
 app_license = "MIT"
 
 # Setup Wizard
