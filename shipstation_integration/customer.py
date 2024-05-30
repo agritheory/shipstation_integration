@@ -186,7 +186,7 @@ def create_contact(order: "ShipStationOrder", email_id: str = None, phone_no: st
 	try:
 		original_validate_phone_number = frappe.utils.validate_phone_number
 		# bypass phone number validation
-		frappe.utils.validate_phone_number = overwrite_validate_phone_number
+		frappe.utils.validate_phone_number = override_validate_phone_number
 		cont.save()
 		frappe.utils.validate_phone_number = original_validate_phone_number
 		frappe.db.commit()
@@ -195,7 +195,7 @@ def create_contact(order: "ShipStationOrder", email_id: str = None, phone_no: st
 		frappe.log_error(title="Error saving Shipstation Contact", message=e)
 
 
-def overwrite_validate_phone_number(data, throw=False):
+def override_validate_phone_number(data, throw=False):
 	return True
 
 

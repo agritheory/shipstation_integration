@@ -195,7 +195,7 @@ def create_erpnext_order(
 		item_dict = {
 			"item_code": item_code,
 			"qty": item.quantity,
-			"uom": frappe.db.get_single_value("Stock Settings", "stock_uom"),
+			"uom": frappe.db.get_value("Item", item_code, "stock_uom"),
 			"conversion_factor": 1,
 			"rate": rate,
 			"warehouse": store.warehouse,

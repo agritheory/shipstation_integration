@@ -68,6 +68,7 @@ def create_item(
 				"is_stock_item": True,
 				"include_item_in_manufacturing": False,
 				"description": getattr(product, "internal_notes", product.name),
+				"stock_uom": frappe.db.get_single_value("Stock Settings", "stock_uom"),
 				"weight_per_unit": weight_per_unit,
 				"weight_uom": weight_uom,
 				"end_of_life": "",
