@@ -32,6 +32,10 @@ def add_custom_queue():
 		workers = {"shipstation": {"timeout": 8000}}
 	update_site_config("workers", workers, validate=False, site_config_path=common_site_config_path)
 
+	# skip supervisor setup on development setups
+	if not (frappe.conf.restart_supervisor_on_update or frappe.conf.restart_systemd_on_update):
+		return
+
 	if not get_user_confirmation():
 		print("Please run 'bench setup supervisor' manually.")
 		return
