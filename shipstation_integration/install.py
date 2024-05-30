@@ -56,5 +56,14 @@ def add_custom_queue():
 			print(f"Command failed: {stdout}.")
 
 
+def add_transit_warehouse_type():
+	if frappe.db.exists("Warehouse Type", "Transit"):
+		return
+	wht = frappe.new_doc("Warehouse Type")
+	wht.name = "Transit"
+	wht.save()
+
+
 def after_install():
 	add_custom_queue()
+	add_transit_warehouse_type()
