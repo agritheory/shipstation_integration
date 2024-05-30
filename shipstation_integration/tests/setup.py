@@ -1,47 +1,50 @@
 import frappe
-from frappe import _
+from erpnext.setup.utils import set_defaults_for_tests
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+from frappe.desk.page.setup_wizard.setup_wizard import setup_complete
+from frappe.utils import getdate
 
 
-def get_setup_stages(args=None):
-	return [
+def before_test():
+	frappe.clear_cache()
+	today = getdate()
+	setup_complete(
 		{
-			"status": _("Creating shipstation masters"),
-			"fail_msg": _("Failed to create shipstation masters"),
-			"tasks": [
-				{
-					"fn": create_customer_group,
-					"args": args,
-					"fail_msg": _("Failed to create Shipstation Customer Group"),
-				},
-				{
-					"fn": create_price_list,
-					"args": args,
-					"fail_msg": _("Failed to create Shipstation Price List"),
-				},
-				{
-					"fn": setup_custom_fields,
-					"args": args,
-					"fail_msg": _("Failed to create Shipstation custom fields"),
-				},
-			],
+			"currency": "USD",
+			"full_name": "Shipstation User",
+			"company_name": "Chelsea Fruit Co",
+			"timezone": "America/New_York",
+			"company_abbr": "CFC",
+			"domains": ["Distribution"],
+			"country": "United States",
+			"fy_start_date": today.replace(month=1, day=1).isoformat(),
+			"fy_end_date": today.replace(month=12, day=31).isoformat(),
+			"language": "english",
+			"company_tagline": "Chelsea Fruit Co",
+			"email": "shipstation@chelseafruit.co",
+			"password": "admin",
+			"chart_of_accounts": "Standard with Numbers",
+			"bank_account": "Primary Checking",
 		}
-	]
+	)
+	set_defaults_for_tests()
+	frappe.db.commit()
+	create_test_data()
+	for module in frappe.get_all("Module Onboarding"):
+		frappe.db.set_value("Module Onboarding", module, "is_complete", True)
+	frappe.db.set_single_value("Website Settings", "home_page", "login")
+	frappe.db.commit()
 
 
-def setup_shipstation():
-	"""
-	Development function to ease the process of creating the masters
-	and custom fields
-	"""
-
+def create_test_data():
 	create_customer_group()
 	create_price_list()
+	# TODO: move to custom JSON: https://github.com/agritheory/shipstation_integration/issues/2
 	setup_custom_fields()
 
 
-def create_customer_group(args=None):
+def create_customer_group():
 	if frappe.db.get_value("Customer Group", {"customer_group_name": "ShipStation"}):
 		return
 
@@ -51,7 +54,7 @@ def create_customer_group(args=None):
 	customer_group.save()
 
 
-def create_price_list(args=None):
+def create_price_list():
 	if frappe.db.get_value("Price List", {"price_list_name": "ShipStation"}):
 		return
 
@@ -61,7 +64,7 @@ def create_price_list(args=None):
 	price_list.save()
 
 
-def setup_custom_fields(args=None):
+def setup_custom_fields():
 	item_fields = [
 		# Integration section
 		dict(
