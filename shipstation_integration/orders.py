@@ -251,18 +251,21 @@ def create_erpnext_order(
 		so.discount_amount = discount_amount
 
 	so.save()
-
 	if Decimal(so.grand_total).quantize(Decimal(".01")) != order.amount_paid:
-		so.append(
-			"taxes",
-			{
-				"charge_type": "Actual",
-				"account_head": store.difference_account,
-				"description": "Shipstation Difference Amount",
-				"tax_amount": Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid,
-				"cost_center": store.cost_center,
-			},
-		)
+		difference_amount = Decimal(Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid)
+		if abs(difference_amount) != abs(order.shipping_amount) and abs(difference_amount) != abs(
+			order.tax_amount
+		):
+			so.append(
+				"taxes",
+				{
+					"charge_type": "Actual",
+					"account_head": store.difference_account,
+					"description": "Shipstation Difference Amount",
+					"tax_amount": -1 * difference_amount,
+					"cost_center": store.cost_center,
+				},
+			)
 
 	before_submit_hook = frappe.get_hooks("update_shipstation_order_before_submit")
 	if before_submit_hook:
