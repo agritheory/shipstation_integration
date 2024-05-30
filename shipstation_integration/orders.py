@@ -1,5 +1,5 @@
 import datetime
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 import frappe
 from frappe.utils import flt, getdate
@@ -9,7 +9,8 @@ from httpx import HTTPError
 from shipstation_integration.customer import (
 	create_customer,
 	get_billing_address,
-	update_customer_details,
+	update_amazon_order,
+	update_shopify_order,
 )
 from shipstation_integration.items import create_item
 
@@ -117,14 +118,14 @@ def validate_order(
 	process_hook = None
 	if store.get("is_amazon_store"):
 		process_hook = frappe.get_hooks("process_shipstation_amazon_order")
+		if process_hook:
+			frappe.get_attr(process_hook[0])(store, order, update_amazon_order)
+			return False
 	elif store.get("is_shopify_store"):
 		process_hook = frappe.get_hooks("process_shipstation_shopify_order")
-
-	if process_hook:
-		existing_order: Union["SalesOrder", bool] = frappe.get_attr(process_hook[0])(
-			store, order, update_customer_details
-		)
-		return not existing_order
+		if process_hook:
+			frappe.get_attr(process_hook[0])(store, order, update_shopify_order)
+			return False
 
 	return True
 
