@@ -1,4 +1,4 @@
-frappe.listview_settings["Tag"] = {
+frappe.listview_settings["Shipstation Settings"] = {
 	onload: function (listview) {
 		listview.page.add_inner_button("Sync Tags from ShipStation", function () {
 			frappe.call({
