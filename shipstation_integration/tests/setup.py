@@ -147,6 +147,14 @@ def setup_custom_fields():
 			translatable=False,
 		),
 		dict(
+			fieldtype="Data",
+			fieldname="fulfilled_by",
+			read_only=True,
+			label="Fulfilled By",
+			insert_after="shipstation_order_id",
+			translatable=False,
+		),
+		dict(
 			fieldtype="Column Break",
 			fieldname="cb_shipstation",
 			insert_after="shipstation_order_id",
@@ -213,6 +221,7 @@ def setup_custom_fields():
 			collapsible=True,
 			label="Shipstation",
 			insert_after="weight_uom",
+			module="Shipstation Integration",
 		),
 		dict(
 			fieldtype="Data",
@@ -221,6 +230,7 @@ def setup_custom_fields():
 			label="Shipstation Order Item ID",
 			insert_after="sb_shipstation",
 			translatable=False,
+			module="Shipstation Integration",
 		),
 		dict(
 			fieldtype="Long Text",
@@ -229,6 +239,7 @@ def setup_custom_fields():
 			label="Shipstation Item Notes",
 			insert_after="shipstation_order_item_id",
 			translatable=False,
+			module="Shipstation Integration",
 		),
 	]
 

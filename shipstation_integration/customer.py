@@ -166,6 +166,10 @@ def create_contact(order: "ShipStationOrder", customer_name: str):
 		frappe.log_error(title="Error saving Shipstation Contact", message=e)
 
 
+def overwrite_validate_phone_number(data, throw=False):
+	return True
+
+
 def get_billing_address(customer_name: str):
 	billing_address = frappe.db.sql(
 		"""

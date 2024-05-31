@@ -1,5 +1,6 @@
 import datetime
-from typing import TYPE_CHECKING
+from decimal import Decimal
+from typing import TYPE_CHECKING, Union
 
 import frappe
 from frappe.utils import flt, getdate
@@ -112,20 +113,6 @@ def validate_order(
 	if settings.since_date and getdate(order.create_date) < settings.since_date:
 		return False
 
-	# allow other apps to run validations on Shipstation-Amazon or Shipstation-Shopify
-	# orders; if an order already exists, stop process flow
-	process_hook = None
-	if store.get("is_amazon_store"):
-		process_hook = frappe.get_hooks("process_shipstation_amazon_order")
-	elif store.get("is_shopify_store"):
-		process_hook = frappe.get_hooks("process_shipstation_shopify_order")
-
-	if process_hook:
-		existing_order: "SalesOrder" | bool = frappe.get_attr(process_hook[0])(
-			store, order, update_customer_details
-		)
-		return not existing_order
-
 	return True
 
 
@@ -220,18 +207,6 @@ def create_erpnext_order(
 				"cost_center": store.cost_center,
 			},
 		)
-	if order.tax_amount and store.withholding:
-		# reverse withholding
-		so.append(
-			"taxes",
-			{
-				"charge_type": "Actual",
-				"account_head": store.tax_account,
-				"description": "Shipstation Tax Amount",
-				"tax_amount": order.tax_amount * -1,
-				"cost_center": store.cost_center,
-			},
-		)
 
 	if order.shipping_amount:
 		so.append(
@@ -245,11 +220,51 @@ def create_erpnext_order(
 			},
 		)
 
+	so.save()
+	# coupons
+	if order.amount_paid and Decimal(so.grand_total).quantize(Decimal(".01")) != order.amount_paid:
+		difference_amount = Decimal(Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid)
+		so.append(
+			"taxes",
+			{
+				"charge_type": "Actual",
+				"account_head": store.difference_account,
+				"description": "Shipstation Difference Amount",
+				"tax_amount": -1 * difference_amount,
+				"cost_center": store.cost_center,
+			},
+		)
+
+	if order.tax_amount and store.withholding:
+		# reverse withholding
+		so.append(
+			"taxes",
+			{
+				"charge_type": "Actual",
+				"account_head": store.tax_account,
+				"description": "Shipstation Tax Amount",
+				"tax_amount": order.tax_amount * -1,
+				"cost_center": store.cost_center,
+			},
+		)
+
 	if discount_amount > 0:
 		so.apply_discount_on = "Grand Total"
 		so.discount_amount = discount_amount
 
 	so.save()
+
+	if Decimal(so.grand_total).quantize(Decimal(".01")) != order.amount_paid:
+		so.append(
+			"taxes",
+			{
+				"charge_type": "Actual",
+				"account_head": store.difference_account,
+				"description": "Shipstation Difference Amount",
+				"tax_amount": Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid,
+				"cost_center": store.cost_center,
+			},
+		)
 
 	before_submit_hook = frappe.get_hooks("update_shipstation_order_before_submit")
 	if before_submit_hook:
@@ -259,6 +274,12 @@ def create_erpnext_order(
 	if so:
 		so.submit()
 		frappe.db.commit()
+
+	after_submit_hook = frappe.get_hooks("update_shipstation_order_after_submit")
+	if before_submit_hook:
+		frappe.get_attr(after_submit_hook[0])(store, so, order)
+		frappe.db.commit()
+
 	return so.name if so else None
 
 
