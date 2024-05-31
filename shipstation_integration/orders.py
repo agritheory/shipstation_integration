@@ -10,8 +10,7 @@ from httpx import HTTPError
 from shipstation_integration.customer import (
 	create_customer,
 	get_billing_address,
-	update_amazon_order,
-	update_shopify_order,
+	update_customer_details,
 )
 from shipstation_integration.items import create_item
 
@@ -113,23 +112,6 @@ def validate_order(
 	# if a date filter is set in Shipstation Settings, don't create orders before that date
 	if settings.since_date and getdate(order.create_date) < settings.since_date:
 		return False
-
-	# allow other apps to run validations on Shipstation-Amazon or Shipstation-Shopify
-	# orders; if an order already exists, stop process flow
-	process_hook = None
-	if store.get("is_amazon_store"):
-		process_hook = frappe.get_hooks("process_shipstation_amazon_order")
-		if process_hook:
-			frappe.get_attr(process_hook[0])(store, order, update_amazon_order)
-			return False
-	elif store.get("is_shopify_store"):
-		process_hook = frappe.get_hooks("process_shipstation_shopify_order")
-
-	if process_hook:
-		existing_order: "SalesOrder" | bool = frappe.get_attr(process_hook[0])(
-			store, order, update_customer_details
-		)
-		return not existing_order
 
 	return True
 
