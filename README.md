@@ -16,7 +16,7 @@ The following workflows are available in this application:
 
 ```bash
 # get the application onto your bench
-bench get-app https://github.com/ParsimonyGit/shipstation_integration
+bench get-app https://github.com/AgriTheory/shipstation_integration
 
 # install the application onto a new site
 bench --site <site_name> install-app shipstation_integration
@@ -25,10 +25,6 @@ bench --site <site_name> install-app shipstation_integration
 ## Contribution
 
 Contributions are welcome! Please see the [contribution guidelines](CONTRIBUTING.md) for more information.
-
-## Dependencies
-
-- [ShipStation Python client](https://github.com/agritheory/shipstation-client) by [AgriTheory](https://github.com/agritheory)
 
 ## License
 

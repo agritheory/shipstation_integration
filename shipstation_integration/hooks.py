@@ -2,16 +2,16 @@ from . import __version__ as app_version
 
 app_name = "shipstation_integration"
 app_title = "Shipstation Integration"
-app_publisher = "Parsimony LLC"
+app_publisher = "AgriTheory"
 app_description = "Shipstation integration for ERPNext"
 app_icon = "octicon octicon-file-directory"
 app_color = "grey"
-app_email = "developers@parsimony.com"
+app_email = "support@agritheory.dev"
 app_license = "MIT"
 
 # Setup Wizard
 # ------------
-setup_wizard_stages = "shipstation_integration.setup.get_setup_stages"
+# setup_wizard_stages = "shipstation_integration.setup.get_setup_stages"
 
 # Includes in <head>
 # ------------------
@@ -63,7 +63,8 @@ doctype_js = {
 
 # before_install = "shipstation_integration.install.before_install"
 # after_install = "shipstation_integration.install.after_install"
-before_migrate = "shipstation_integration.setup.setup_custom_fields"
+# TODO: move to custom JSON: https://github.com/agritheory/shipstation_integration/issues/2
+before_migrate = "shipstation_integration.tests.setup.setup_custom_fields"
 
 # Desk Notifications
 # ------------------

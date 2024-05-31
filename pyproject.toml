@@ -1,14 +1,14 @@
 [project]
 name = "shipstation_integration"
 authors = [
-    { name = "Parsimony LLC", email = "developers@parsimony.com"}
+    { name = "AgriTheory", email = "support@agritheory.dev"}
 ]
 description = "Shipstation integration for ERPNext"
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
-    "shipstation-client @ git+https://github.com/ParsimonyGit/shipstation-client.git@master#egg=shipstation-client"
+    "shipstation-client @ git+https://github.com/AgriTheory/shipstation-client.git@master#egg=shipstation-client"
 ]
 
 [build-system]

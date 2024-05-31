@@ -1,5 +1,5 @@
 import datetime
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 import frappe
 from frappe.utils import flt, getdate
@@ -121,7 +121,7 @@ def validate_order(
 		process_hook = frappe.get_hooks("process_shipstation_shopify_order")
 
 	if process_hook:
-		existing_order: Union["SalesOrder", bool] = frappe.get_attr(process_hook[0])(
+		existing_order: "SalesOrder" | bool = frappe.get_attr(process_hook[0])(
 			store, order, update_customer_details
 		)
 		return not existing_order
