@@ -123,3 +123,7 @@ scheduler_events = {
 # override_doctype_dashboards = {
 # 	"Task": "shipstation_integration.task.get_dashboard_data"
 # }
+
+override_doctype_class = {
+	"Sales Order": "shipstation_integration.shipstation_integration.overrides.sales_order.ShipStationSalesOrder",
+}
