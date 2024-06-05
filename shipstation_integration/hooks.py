@@ -61,8 +61,7 @@ doctype_js = {
 # Installation
 # ------------
 
-# TODO: move to custom JSON: https://github.com/agritheory/shipstation_integration/issues/2
-before_migrate = "shipstation_integration.tests.setup.setup_custom_fields"
+# before_migrate = "shipstation_integration.migrate.before_migrate"
 after_install = "shipstation_integration.install.after_install"
 
 # Desk Notifications
