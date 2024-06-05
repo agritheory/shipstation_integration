@@ -36,8 +36,13 @@ frappe.ui.form.on('Shipstation Settings', {
 			wrapper.html(
 				frappe.render_template('carriers', {
 					carriers: frm.doc.__onload.carriers,
+<<<<<<< HEAD
 				})
 			)
+=======
+				}),
+			);
+>>>>>>> dfb4c59 (ci: run pre-commit)
 		}
 	},
 
