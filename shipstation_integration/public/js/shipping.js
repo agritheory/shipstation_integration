@@ -41,7 +41,7 @@ shipping.add_label_button = (frm) => {
 					.get_value(
 						"Shipstation Settings",
 						{ name: r.message },
-						"enable_label_generation"
+						"enable_label_generation",
 					)
 					.then((settings) => {
 						if (settings.message.enable_label_generation) {
@@ -51,12 +51,12 @@ shipping.add_label_button = (frm) => {
 									if (!shipping.carrier_options) {
 										frappe.throw(
 											__(`No carriers found to process labels. Please ensure the current
-										document is connected to Shipstation.`)
+										document is connected to Shipstation.`),
 										);
 									} else {
 										shipping.dialog(frm);
 									}
-								}
+								},
 							);
 						}
 					});
@@ -83,7 +83,7 @@ shipping.dialog = (frm) => {
 					const values = dialog.get_values();
 					if (values.ship_method_type) {
 						const carrier = shipping.carrier_options.find(
-							(a) => (a.nickname || a.name) === values.ship_method_type
+							(a) => (a.nickname || a.name) === values.ship_method_type,
 						);
 						const packages = carrier.packages.map((a) => a.name).join("\n");
 						dialog.set_df_property("package", "options", packages);

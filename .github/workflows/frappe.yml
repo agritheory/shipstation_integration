@@ -1,9 +1,6 @@
 name: Pytest CI
 
 on:
-  push:
-    branches:
-      - version-15
   pull_request:
 
 jobs:

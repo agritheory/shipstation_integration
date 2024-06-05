@@ -36,7 +36,7 @@ frappe.ui.form.on("Shipstation Settings", {
 			wrapper.html(
 				frappe.render_template("carriers", {
 					carriers: frm.doc.__onload.carriers,
-				})
+				}),
 			);
 		}
 	},
@@ -100,11 +100,11 @@ frappe.ui.form.on("Shipstation Settings", {
 		frm.fields_dict.shipstation_stores.grid.toggle_reqd("cost_center", !frm.is_new());
 		frm.fields_dict.shipstation_stores.grid.toggle_reqd(
 			"shipping_income_account",
-			!frm.is_new()
+			!frm.is_new(),
 		);
 		frm.fields_dict.shipstation_stores.grid.toggle_reqd(
 			"shipping_expense_account",
-			!frm.is_new()
+			!frm.is_new(),
 		);
 		frm.fields_dict.shipstation_stores.grid.toggle_reqd("tax_account", !frm.is_new());
 		frm.fields_dict.shipstation_stores.grid.toggle_reqd("sales_account", !frm.is_new());

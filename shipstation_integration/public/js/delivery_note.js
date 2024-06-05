@@ -13,11 +13,11 @@ frappe.ui.form.on("Delivery Note", {
 					callback: function (r) {
 						if (r.message) {
 							frappe.msgprint(
-								`A shipment was fetched from Shipstation and created at ${r.message}`
+								`A shipment was fetched from Shipstation and created at ${r.message}`,
 							);
 						} else {
 							frappe.msgprint(
-								`No new shipment(s) were found against Shipstation ID: ${frm.doc.shipstation_order_id.bold()}`
+								`No new shipment(s) were found against Shipstation ID: ${frm.doc.shipstation_order_id.bold()}`,
 							);
 						}
 					},
