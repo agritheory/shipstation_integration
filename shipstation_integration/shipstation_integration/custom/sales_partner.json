@@ -14,7 +14,7 @@
    "creation": "2024-06-04 13:08:30.896984",
    "default": null,
    "depends_on": null,
-   "description": null,
+   "description": "Sales Order fields can be used with tags like\n\n<div><pre><code>{{ grand_total }} </code></pre></div>",
    "docstatus": 0,
    "dt": "Sales Partner",
    "fetch_from": null,
