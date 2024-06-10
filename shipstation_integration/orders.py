@@ -1,4 +1,5 @@
 import datetime
+import re
 from decimal import Decimal
 from typing import TYPE_CHECKING, Union
 
@@ -252,6 +253,25 @@ def create_erpnext_order(
 		so.apply_discount_on = "Grand Total"
 		so.discount_amount = discount_amount
 
+	if (
+		so.sales_partner
+		and store.apply_commission
+		and frappe.db.get_value("Sales Partner", store.sales_partner, "commission_formula")
+	):
+		total_commission = get_formula_based_commission(so)
+		if total_commission:
+			so.append(
+				"taxes",
+				{
+					"charge_type": "Actual",
+					"account_head": store.commission_account,
+					"cost_center": store.cost_center,
+					"description": f"Commission of {total_commission}",
+					"tax_amount": -(total_commission),
+					"included_in_paid_amount": 1,
+				},
+			)
+
 	so.save()
 
 	before_submit_hook = frappe.get_hooks("update_shipstation_order_before_submit")
@@ -280,3 +300,22 @@ def get_item_notes(item: "ShipStationOrderItem"):
 				notes = option.value
 				break
 	return notes
+
+
+def get_formula_based_commission(doc):
+	commission_formula = frappe.db.get_value("Sales Partner", doc.sales_partner, "commission_formula")
+
+	variable_pattern = r"{{\s*(\w+)\s*}}"
+	variables = re.findall(variable_pattern, commission_formula)
+
+	for var in variables:
+		if hasattr(doc, var):
+			variable_pattern = r"{{\s*" + re.escape(var) + r"\s*}}"
+			var_value = getattr(doc, var)
+			commission_formula = re.sub(variable_pattern, str(var_value), commission_formula)
+
+	try:
+		return frappe.safe_eval(commission_formula)
+	except Exception as e:
+		print("Error evaluating formula:", e)
+		return None
