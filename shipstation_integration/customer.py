@@ -111,17 +111,22 @@ def _update_address(address: "ShipStationAddress", addr: "Address", email: str, 
 
 
 def create_customer(order: "ShipStationOrder"):
-	customer_id = (
-		order.customer_id or order.customer_email or order.ship_to.name or frappe.generate_hash("", 10)
+	customer_name = (
+		order.customer_email or order.customer_id or order.ship_to.name or frappe.generate_hash("", 10)
 	)
 
-	customer_name = order.customer_email or order.customer_id or order.ship_to.name or customer_id
-
-	if frappe.db.exists("Customer", customer_name):
-		return frappe.get_doc("Customer", customer_name)
+	if (
+		frappe.get_cached_value("Selling Settings", "Selling Settings", "cust_master_name")
+		!= "Customer Name"
+	):
+		customer = frappe.db.get_value("Customer", {"customer_name": customer_name})
+		return frappe.get_doc("Customer", customer)
+	else:
+		if frappe.db.exists("Customer", customer_name):
+			return frappe.get_doc("Customer", customer_name)
 
 	cust = frappe.new_doc("Customer")
-	cust.shipstation_customer_id = customer_id
+	cust.shipstation_customer_id = order.customer_id
 	cust.customer_name = customer_name
 	cust.customer_type = "Individual"
 	cust.customer_group = "ShipStation"
