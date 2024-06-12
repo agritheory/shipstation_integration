@@ -1,4 +1,6 @@
 import datetime
+import re
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import frappe
@@ -6,11 +8,7 @@ from frappe.utils import flt, getdate
 from frappe.utils.safe_exec import is_job_queued
 from httpx import HTTPError
 
-from shipstation_integration.customer import (
-	create_customer,
-	get_billing_address,
-	update_customer_details,
-)
+from shipstation_integration.customer import create_customer, get_billing_address
 from shipstation_integration.items import create_item
 
 if TYPE_CHECKING:
@@ -29,7 +27,7 @@ def queue_orders():
 	if not is_job_queued("shipstation_integration.orders.list_orders"):
 		frappe.enqueue(
 			method="shipstation_integration.orders.list_orders",
-			queue="long",
+			queue="shipstation",
 		)
 
 
@@ -112,20 +110,6 @@ def validate_order(
 	# if a date filter is set in Shipstation Settings, don't create orders before that date
 	if settings.since_date and getdate(order.create_date) < settings.since_date:
 		return False
-
-	# allow other apps to run validations on Shipstation-Amazon or Shipstation-Shopify
-	# orders; if an order already exists, stop process flow
-	process_hook = None
-	if store.get("is_amazon_store"):
-		process_hook = frappe.get_hooks("process_shipstation_amazon_order")
-	elif store.get("is_shopify_store"):
-		process_hook = frappe.get_hooks("process_shipstation_shopify_order")
-
-	if process_hook:
-		existing_order: "SalesOrder" | bool = frappe.get_attr(process_hook[0])(
-			store, order, update_customer_details
-		)
-		return not existing_order
 
 	return True
 
@@ -244,18 +228,6 @@ def create_erpnext_order(
 				"cost_center": store.cost_center,
 			},
 		)
-	if order.tax_amount and store.withholding:
-		# reverse withholding
-		so.append(
-			"taxes",
-			{
-				"charge_type": "Actual",
-				"account_head": store.tax_account,
-				"description": "Shipstation Tax Amount",
-				"tax_amount": order.tax_amount * -1,
-				"cost_center": store.cost_center,
-			},
-		)
 
 	if order.shipping_amount:
 		so.append(
@@ -269,9 +241,56 @@ def create_erpnext_order(
 			},
 		)
 
+	so.save()
+	# coupons
+	if order.amount_paid and Decimal(so.grand_total).quantize(Decimal(".01")) != order.amount_paid:
+		difference_amount = Decimal(Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid)
+		so.append(
+			"taxes",
+			{
+				"charge_type": "Actual",
+				"account_head": store.difference_account,
+				"description": "Shipstation Difference Amount",
+				"tax_amount": -1 * difference_amount,
+				"cost_center": store.cost_center,
+			},
+		)
+
+	if order.tax_amount and store.withholding:
+		# reverse withholding
+		so.append(
+			"taxes",
+			{
+				"charge_type": "Actual",
+				"account_head": store.tax_account,
+				"description": "Shipstation Tax Amount",
+				"tax_amount": order.tax_amount * -1,
+				"cost_center": store.cost_center,
+			},
+		)
+
 	if discount_amount > 0:
 		so.apply_discount_on = "Grand Total"
 		so.discount_amount = discount_amount
+
+	if (
+		so.sales_partner
+		and store.apply_commission
+		and frappe.db.get_value("Sales Partner", store.sales_partner, "commission_formula")
+	):
+		total_commission = get_formula_based_commission(so)
+		if total_commission:
+			so.append(
+				"taxes",
+				{
+					"charge_type": "Actual",
+					"account_head": store.commission_account,
+					"cost_center": store.cost_center,
+					"description": f"Commission of {total_commission}",
+					"tax_amount": -(total_commission),
+					"included_in_paid_amount": 1,
+				},
+			)
 
 	so.save()
 
@@ -283,6 +302,12 @@ def create_erpnext_order(
 	if so:
 		so.submit()
 		frappe.db.commit()
+
+	after_submit_hook = frappe.get_hooks("update_shipstation_order_after_submit")
+	if before_submit_hook:
+		frappe.get_attr(after_submit_hook[0])(store, so, order)
+		frappe.db.commit()
+
 	return so.name if so else None
 
 
@@ -295,3 +320,22 @@ def get_item_notes(item: "ShipStationOrderItem"):
 				notes = option.value
 				break
 	return notes
+
+
+def get_formula_based_commission(doc):
+	commission_formula = frappe.db.get_value("Sales Partner", doc.sales_partner, "commission_formula")
+
+	variable_pattern = r"{{\s*(\w+)\s*}}"
+	variables = re.findall(variable_pattern, commission_formula)
+
+	for var in variables:
+		if hasattr(doc, var):
+			variable_pattern = r"{{\s*" + re.escape(var) + r"\s*}}"
+			var_value = getattr(doc, var)
+			commission_formula = re.sub(variable_pattern, str(var_value), commission_formula)
+
+	try:
+		return frappe.safe_eval(commission_formula)
+	except Exception as e:
+		print("Error evaluating formula:", e)
+		return None

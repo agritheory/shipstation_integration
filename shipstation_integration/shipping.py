@@ -226,7 +226,9 @@ def push_attachment_update(attachment: "File", user: str):
 def fetch_shipment(delivery_note: str):
 	delivery_note = frappe.get_doc("Delivery Note", delivery_note)
 
-	if delivery_note.integration_doctype == "Shipstation Settings" and delivery_note.integration_doc:
+	if delivery_note.get("integration_doctype") == "Shipstation Settings" and delivery_note.get(
+		"integration_doc"
+	):
 		settings = [delivery_note.integration_doc]
 	else:
 		settings = frappe.get_all("Shipstation Settings", pluck="name")

@@ -6,12 +6,12 @@ app_publisher = "AgriTheory"
 app_description = "Shipstation integration for ERPNext"
 app_icon = "octicon octicon-file-directory"
 app_color = "grey"
-app_email = "developers@parsimony.com"
+app_email = "support@agritheory.dev"
 app_license = "MIT"
 
 # Setup Wizard
 # ------------
-setup_wizard_stages = "shipstation_integration.setup.get_setup_stages"
+# setup_wizard_stages = "shipstation_integration.setup.get_setup_stages"
 
 # Includes in <head>
 # ------------------
@@ -61,9 +61,9 @@ doctype_js = {
 # Installation
 # ------------
 
-# before_install = "shipstation_integration.install.before_install"
-# after_install = "shipstation_integration.install.after_install"
-before_migrate = "shipstation_integration.setup.setup_custom_fields"
+# TODO: move to custom JSON: https://github.com/agritheory/shipstation_integration/issues/2
+before_migrate = "shipstation_integration.tests.setup.setup_custom_fields"
+after_install = "shipstation_integration.install.after_install"
 
 # Desk Notifications
 # ------------------
@@ -123,3 +123,7 @@ scheduler_events = {
 # override_doctype_dashboards = {
 # 	"Task": "shipstation_integration.task.get_dashboard_data"
 # }
+
+override_doctype_class = {
+	"Sales Order": "shipstation_integration.shipstation_integration.overrides.sales_order.ShipStationSalesOrder",
+}
