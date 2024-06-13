@@ -79,6 +79,7 @@ def list_orders(
 
 			order: "ShipStationOrder"
 			for order in orders:
+				print(order)
 				if validate_order(sss_doc, order, store):
 					should_create_order = True
 
