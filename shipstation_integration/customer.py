@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 import frappe
+from frappe.exceptions import DuplicateEntryError
 from frappe.utils import getdate, parse_addr
 
 if TYPE_CHECKING:
@@ -131,7 +132,13 @@ def create_customer(order: "ShipStationOrder"):
 	cust.customer_type = "Individual"
 	cust.customer_group = "ShipStation"
 	cust.territory = "United States"
-	cust.save()
+	try:
+		cust.save()
+	# this is a bad way to do this but its unclear why its happening
+	except DuplicateEntryError as e:
+		return customer_name
+	except Exception as e:
+		raise e
 	frappe.db.commit()
 
 	email_id, _ = parse_addr(customer_name)
