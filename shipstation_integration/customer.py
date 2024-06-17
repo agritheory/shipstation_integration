@@ -136,7 +136,7 @@ def create_customer(order: "ShipStationOrder"):
 		cust.save()
 	# this is a bad way to do this but its unclear why its happening
 	except DuplicateEntryError as e:
-		return customer_name
+		return frappe.get_doc("Customer", customer_name)
 	except Exception as e:
 		raise e
 	frappe.db.commit()

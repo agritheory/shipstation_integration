@@ -226,11 +226,15 @@ def create_erpnext_order(
 	# coupons
 	if order.amount_paid and Decimal(so.grand_total).quantize(Decimal(".01")) != order.amount_paid:
 		difference_amount = Decimal(Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid)
+		account = store.difference_account
+		# if the shipping amount is noted but not charged (FBA orders), this correctly offsets it
+		if difference_amount == order.shipping_amount:
+			account = store.shipping_income_account
 		so.append(
 			"taxes",
 			{
 				"charge_type": "Actual",
-				"account_head": store.difference_account,
+				"account_head": account,
 				"description": "Shipstation Difference Amount",
 				"tax_amount": -1 * difference_amount,
 				"cost_center": store.cost_center,
