@@ -96,12 +96,17 @@ def list_shipments(
 					{"docstatus": 1, "shipstation_order_id": shipment.order_id},
 				):
 					if shipment.voided:
-						cancel_voided_shipments(shipment)
+						cancel_voided_shipments(shipment, sss)
 				else:
-					create_erpnext_shipment(shipment, store)
+					create_erpnext_shipment(shipment, store, sss)
 
 
-def create_erpnext_shipment(shipment: "ShipStationOrder", store: "ShipstationStore"):
+def create_erpnext_shipment(
+	shipment: "ShipStationOrder", store: "ShipstationStore", settings: "ShipstationSettings"
+):
+	if settings.shipstation_user:
+		frappe.set_user(settings.shipstation_user)
+
 	sales_invoice = None
 	if store.create_sales_invoice:
 		sales_invoice = create_sales_invoice(shipment, store)
@@ -117,7 +122,10 @@ def create_erpnext_shipment(shipment: "ShipStationOrder", store: "ShipstationSto
 	return shipment_doc
 
 
-def cancel_voided_shipments(shipment: "ShipStationOrder"):
+def cancel_voided_shipments(shipment: "ShipStationOrder", settings: "ShipstationSettings"):
+	if settings.shipstation_user:
+		frappe.set_user(settings.shipstation_user)
+
 	existing_shipment = frappe.db.get_value(
 		"Shipment",
 		{"docstatus": 1, "shipment_id": shipment.shipment_id},
