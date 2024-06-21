@@ -19,6 +19,7 @@
   "sb_amazon",
   "is_amazon_store",
   "amazon_marketplace",
+  "customer",
   "column_break_tsex",
   "sales_partner",
   "apply_commission",
@@ -223,11 +224,17 @@
    "label": "Difference Account",
    "options": "Account",
    "reqd": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer"
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2024-05-22 16:09:21.118343",
+ "modified": "2024-06-21 14:44:24.886063",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Shipstation Store",

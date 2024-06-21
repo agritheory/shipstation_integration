@@ -134,13 +134,13 @@ def create_customer(order: "ShipStationOrder"):
 	cust.territory = "United States"
 	try:
 		cust.save()
+		frappe.db.commit()
 	# this is a bad way to do this but its unclear why its happening
 	except DuplicateEntryError as e:
 		customer = frappe.db.get_value("Customer", {"customer_name": customer_name})
 		return frappe.get_doc("Customer", customer_name)
 	except Exception as e:
 		raise e
-	frappe.db.commit()
 
 	email_id, _ = parse_addr(customer_name)
 	if email_id:
@@ -155,6 +155,7 @@ def create_customer(order: "ShipStationOrder"):
 
 	try:
 		cust.save()
+		frappe.db.commit()
 		return cust
 	except Exception as e:
 		frappe.log_error(title="Error saving Shipstation Customer", message=e)

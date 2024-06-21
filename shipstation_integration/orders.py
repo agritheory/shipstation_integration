@@ -122,7 +122,9 @@ def create_erpnext_order(
 ) -> str | None:
 	if settings.shipstation_user:
 		frappe.set_user(settings.shipstation_user)
-	customer = create_customer(order)
+	customer = (
+		frappe.get_cached_doc("Customer", store.customer) if store.customer else create_customer(order)
+	)
 	so: "SalesOrder" = frappe.new_doc("Sales Order")
 	so.update(
 		{
@@ -133,6 +135,7 @@ def create_erpnext_order(
 			"marketplace": store.marketplace_name,
 			"marketplace_order_id": order.order_number,
 			"customer": customer.name,
+			"customer_name": order.customer_email,
 			"company": store.company,
 			"transaction_date": getdate(order.order_date),
 			"delivery_date": getdate(order.ship_date),
@@ -224,6 +227,8 @@ def create_erpnext_order(
 		)
 
 	so.save()
+	if store.customer:
+		so.customer_name = order.customer_email
 	# coupons
 	if order.amount_paid and Decimal(so.grand_total).quantize(Decimal(".01")) != order.amount_paid:
 		difference_amount = Decimal(Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid)
