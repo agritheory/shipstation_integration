@@ -13,6 +13,7 @@
   "api_secret",
   "default_item_group",
   "weight_conversion",
+  "shipstation_user",
   "column_break_7",
   "get_items",
   "get_orders",
@@ -219,11 +220,17 @@
    "fieldname": "tb_carriers",
    "fieldtype": "Tab Break",
    "label": "Carriers"
+  },
+  {
+   "fieldname": "shipstation_user",
+   "fieldtype": "Link",
+   "label": "ShipStation User",
+   "options": "User"
   }
  ],
  "hide_toolbar": 1,
  "links": [],
- "modified": "2024-05-13 16:00:28.213836",
+ "modified": "2024-06-20 14:29:26.554275",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Shipstation Settings",

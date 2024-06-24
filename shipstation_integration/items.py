@@ -20,6 +20,10 @@ def create_item(
 	settings: "ShipstationSettings",
 	store: Optional["ShipstationStore"] = None,
 ) -> str:
+
+	if settings.shipstation_user:
+		frappe.set_user(settings.shipstation_user)
+
 	item_name = product.name[:140]
 	if not product.sku:
 		item_code = frappe.db.get_value("Item", {"item_name": item_name.strip()})

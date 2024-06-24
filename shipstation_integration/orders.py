@@ -84,7 +84,7 @@ def list_orders(
 						should_create_order = frappe.get_attr(process_order_hook[0])(order, store)
 
 					if should_create_order:
-						create_erpnext_order(order, store, settings)
+						create_erpnext_order(order, store, sss)
 
 
 def validate_order(
@@ -117,7 +117,11 @@ def validate_order(
 def create_erpnext_order(
 	order: "ShipStationOrder", store: "ShipstationStore", settings: "ShipstationSettings"
 ) -> str | None:
-	customer = create_customer(order)
+	if settings.shipstation_user:
+		frappe.set_user(settings.shipstation_user)
+	customer = (
+		frappe.get_cached_doc("Customer", store.customer) if store.customer else create_customer(order)
+	)
 	so: "SalesOrder" = frappe.new_doc("Sales Order")
 	so.update(
 		{
@@ -128,6 +132,7 @@ def create_erpnext_order(
 			"marketplace": store.marketplace_name,
 			"marketplace_order_id": order.order_number,
 			"customer": customer.name,
+			"customer_name": order.customer_email,
 			"company": store.company,
 			"transaction_date": getdate(order.order_date),
 			"delivery_date": getdate(order.ship_date),
@@ -242,14 +247,20 @@ def create_erpnext_order(
 		)
 
 	so.save()
+	if store.customer:
+		so.customer_name = order.customer_email
 	# coupons
 	if order.amount_paid and Decimal(so.grand_total).quantize(Decimal(".01")) != order.amount_paid:
 		difference_amount = Decimal(Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid)
+		account = store.difference_account
+		# if the shipping amount is noted but not charged (FBA orders), this correctly offsets it
+		if difference_amount == order.shipping_amount:
+			account = store.shipping_income_account
 		so.append(
 			"taxes",
 			{
 				"charge_type": "Actual",
-				"account_head": store.difference_account,
+				"account_head": account,
 				"description": "Shipstation Difference Amount",
 				"tax_amount": -1 * difference_amount,
 				"cost_center": store.cost_center,
