@@ -23,6 +23,8 @@ def get_formula_based_commission(doc, commission_formula=None):
 		{
 			"frappe": frappe._dict({"get_value": frappe.db.get_value, "get_all": frappe.db.get_all}),
 			"flt": frappe.utils.data.flt,
+			"min": min,
+			"max": max,
 		}
 	)
 	eval_locals = {
@@ -38,3 +40,6 @@ def get_formula_based_commission(doc, commission_formula=None):
 
 
 # flt((( doc.grand_total * 0.1325) * 0.9)  + 0.40, 2)
+# flt(((
+# 	(min(doc.total, 2500) * 0.1235) + (max(doc.total - 2500, 0) *.0235)
+# ) * 0.9)  + 0.40, 2)

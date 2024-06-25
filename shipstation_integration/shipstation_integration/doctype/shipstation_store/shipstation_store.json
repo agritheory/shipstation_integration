@@ -1,248 +1,248 @@
 {
- "actions": [],
- "creation": "2020-09-02 16:29:26.123536",
- "doctype": "DocType",
- "editable_grid": 1,
- "engine": "InnoDB",
- "field_order": [
-  "company",
-  "store_id",
-  "store_name",
-  "marketplace_name",
-  "cb_store",
-  "enable_orders",
-  "enable_shipments",
-  "create_sales_invoice",
-  "create_delivery_note",
-  "create_shipment",
-  "withholding",
-  "sb_amazon",
-  "is_amazon_store",
-  "amazon_marketplace",
-  "customer",
-  "column_break_tsex",
-  "sales_partner",
-  "apply_commission",
-  "sb_stock",
-  "warehouse",
-  "sb_accounts",
-  "cost_center",
-  "shipping_income_account",
-  "shipping_expense_account",
-  "commission_account",
-  "cb_accounts",
-  "tax_account",
-  "sales_account",
-  "expense_account",
-  "difference_account"
- ],
- "fields": [
-  {
-   "fieldname": "company",
-   "fieldtype": "Link",
-   "label": "Company",
-   "options": "Company"
-  },
-  {
-   "columns": 1,
-   "fieldname": "store_id",
-   "fieldtype": "Data",
-   "label": "Store ID",
-   "read_only": 1
-  },
-  {
-   "fieldname": "cb_store",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "0",
-   "fieldname": "is_amazon_store",
-   "fieldtype": "Check",
-   "label": "Is Amazon Store",
-   "read_only": 1
-  },
-  {
-   "fieldname": "marketplace_name",
-   "fieldtype": "Data",
-   "label": "Marketplace Name",
-   "read_only": 1
-  },
-  {
-   "fieldname": "store_name",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Store Name",
-   "read_only": 1,
-   "width": "2"
-  },
-  {
-   "depends_on": "eval:doc.is_amazon_store",
-   "fieldname": "amazon_marketplace",
-   "fieldtype": "Data",
-   "label": "Amazon Marketplace",
-   "read_only": 1
-  },
-  {
-   "fieldname": "sb_stock",
-   "fieldtype": "Section Break",
-   "label": "Stock Defaults"
-  },
-  {
-   "fieldname": "warehouse",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Fulfillment Warehouse",
-   "options": "Warehouse"
-  },
-  {
-   "fieldname": "sb_accounts",
-   "fieldtype": "Section Break",
-   "label": "Account Defaults"
-  },
-  {
-   "fieldname": "cost_center",
-   "fieldtype": "Link",
-   "label": "Cost Center",
-   "options": "Cost Center"
-  },
-  {
-   "fieldname": "shipping_income_account",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Shipping Income Account",
-   "options": "Account"
-  },
-  {
-   "fieldname": "shipping_expense_account",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Shipping Expense Account",
-   "options": "Account"
-  },
-  {
-   "fieldname": "tax_account",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Tax Account",
-   "options": "Account"
-  },
-  {
-   "fieldname": "cb_accounts",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "sales_account",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Sales Account",
-   "options": "Account"
-  },
-  {
-   "fieldname": "expense_account",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Expense Account",
-   "options": "Account"
-  },
-  {
-   "default": "0",
-   "description": "Enable auto-pulling of orders from Shipstation",
-   "fieldname": "enable_orders",
-   "fieldtype": "Check",
-   "label": "Pull Orders"
-  },
-  {
-   "default": "0",
-   "depends_on": "eval:doc.enable_orders",
-   "description": "Enable auto-pulling of shipments from Shipstation",
-   "fieldname": "enable_shipments",
-   "fieldtype": "Check",
-   "label": "Pull Shipments"
-  },
-  {
-   "fieldname": "sb_amazon",
-   "fieldtype": "Section Break",
-   "label": "Amazon"
-  },
-  {
-   "default": "0",
-   "depends_on": "eval:doc.enable_orders && doc.enable_shipments",
-   "description": "Create a sales invoice against the order when pulling the Shipstation shipment",
-   "fieldname": "create_sales_invoice",
-   "fieldtype": "Check",
-   "label": "Create Sales Invoice"
-  },
-  {
-   "default": "0",
-   "depends_on": "eval:doc.enable_orders && doc.enable_shipments",
-   "description": "Create a delivery note against the order when pulling the Shipstation shipment",
-   "fieldname": "create_delivery_note",
-   "fieldtype": "Check",
-   "label": "Create Delivery Note"
-  },
-  {
-   "default": "0",
-   "depends_on": "eval:doc.enable_orders && doc.enable_shipments",
-   "description": "Create a shipment against the delivery note when pulling the Shipstation shipment (if delivery note creation is disabled, the system will try to make shipments against existing delivery notes using the shipment ID)",
-   "fieldname": "create_shipment",
-   "fieldtype": "Check",
-   "label": "Create Shipment"
-  },
-  {
-   "fieldname": "column_break_tsex",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "sales_partner",
-   "fieldtype": "Link",
-   "label": "Sales Partner",
-   "options": "Sales Partner"
-  },
-  {
-   "default": "0",
-   "description": "This Merchant withholds and remits Sales Tax to the appropriate tax authority",
-   "fieldname": "withholding",
-   "fieldtype": "Check",
-   "label": "Withholding"
-  },
-  {
-   "fieldname": "commission_account",
-   "fieldtype": "Link",
-   "label": "Commission Account",
-   "options": "Account"
-  },
-  {
-   "default": "0",
-   "fieldname": "apply_commission",
-   "fieldtype": "Check",
-   "label": "Apply Commission"
-  },
-  {
-   "description": "Any difference between the ERPNext and Shipstation totals will be allocated here, for example coupons",
-   "fieldname": "difference_account",
-   "fieldtype": "Link",
-   "label": "Difference Account",
-   "options": "Account",
-   "reqd": 1
-  },
-  {
-   "fieldname": "customer",
-   "fieldtype": "Link",
-   "label": "Customer",
-   "options": "Customer"
-  }
- ],
- "istable": 1,
- "links": [],
- "modified": "2024-06-21 14:44:24.886063",
- "modified_by": "Administrator",
- "module": "Shipstation Integration",
- "name": "Shipstation Store",
- "owner": "Administrator",
- "permissions": [],
- "quick_entry": 1,
- "sort_field": "modified",
- "sort_order": "DESC",
- "states": [],
- "track_changes": 1
+	"actions": [],
+	"creation": "2020-09-02 16:29:26.123536",
+	"doctype": "DocType",
+	"editable_grid": 1,
+	"engine": "InnoDB",
+	"field_order": [
+		"company",
+		"store_id",
+		"store_name",
+		"marketplace_name",
+		"cb_store",
+		"enable_orders",
+		"enable_shipments",
+		"create_sales_invoice",
+		"create_delivery_note",
+		"create_shipment",
+		"withholding",
+		"sb_amazon",
+		"is_amazon_store",
+		"amazon_marketplace",
+		"customer",
+		"column_break_tsex",
+		"sales_partner",
+		"apply_commission",
+		"sb_stock",
+		"warehouse",
+		"sb_accounts",
+		"cost_center",
+		"shipping_income_account",
+		"shipping_expense_account",
+		"commission_account",
+		"cb_accounts",
+		"tax_account",
+		"sales_account",
+		"expense_account",
+		"difference_account"
+	],
+	"fields": [
+		{
+			"fieldname": "company",
+			"fieldtype": "Link",
+			"label": "Company",
+			"options": "Company"
+		},
+		{
+			"columns": 1,
+			"fieldname": "store_id",
+			"fieldtype": "Data",
+			"label": "Store ID",
+			"read_only": 1
+		},
+		{
+			"fieldname": "cb_store",
+			"fieldtype": "Column Break"
+		},
+		{
+			"default": "0",
+			"fieldname": "is_amazon_store",
+			"fieldtype": "Check",
+			"label": "Is Amazon Store",
+			"read_only": 1
+		},
+		{
+			"fieldname": "marketplace_name",
+			"fieldtype": "Data",
+			"label": "Marketplace Name",
+			"read_only": 1
+		},
+		{
+			"fieldname": "store_name",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Store Name",
+			"read_only": 1,
+			"width": "2"
+		},
+		{
+			"depends_on": "eval:doc.is_amazon_store",
+			"fieldname": "amazon_marketplace",
+			"fieldtype": "Data",
+			"label": "Amazon Marketplace",
+			"read_only": 1
+		},
+		{
+			"fieldname": "sb_stock",
+			"fieldtype": "Section Break",
+			"label": "Stock Defaults"
+		},
+		{
+			"fieldname": "warehouse",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "Fulfillment Warehouse",
+			"options": "Warehouse"
+		},
+		{
+			"fieldname": "sb_accounts",
+			"fieldtype": "Section Break",
+			"label": "Account Defaults"
+		},
+		{
+			"fieldname": "cost_center",
+			"fieldtype": "Link",
+			"label": "Cost Center",
+			"options": "Cost Center"
+		},
+		{
+			"fieldname": "shipping_income_account",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "Shipping Income Account",
+			"options": "Account"
+		},
+		{
+			"fieldname": "shipping_expense_account",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "Shipping Expense Account",
+			"options": "Account"
+		},
+		{
+			"fieldname": "tax_account",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "Tax Account",
+			"options": "Account"
+		},
+		{
+			"fieldname": "cb_accounts",
+			"fieldtype": "Column Break"
+		},
+		{
+			"fieldname": "sales_account",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "Sales Account",
+			"options": "Account"
+		},
+		{
+			"fieldname": "expense_account",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "Expense Account",
+			"options": "Account"
+		},
+		{
+			"default": "0",
+			"description": "Enable auto-pulling of orders from Shipstation",
+			"fieldname": "enable_orders",
+			"fieldtype": "Check",
+			"label": "Pull Orders"
+		},
+		{
+			"default": "0",
+			"depends_on": "eval:doc.enable_orders",
+			"description": "Enable auto-pulling of shipments from Shipstation",
+			"fieldname": "enable_shipments",
+			"fieldtype": "Check",
+			"label": "Pull Shipments"
+		},
+		{
+			"fieldname": "sb_amazon",
+			"fieldtype": "Section Break",
+			"label": "Amazon"
+		},
+		{
+			"default": "0",
+			"depends_on": "eval:doc.enable_orders && doc.enable_shipments",
+			"description": "Create a sales invoice against the order when pulling the Shipstation shipment",
+			"fieldname": "create_sales_invoice",
+			"fieldtype": "Check",
+			"label": "Create Sales Invoice"
+		},
+		{
+			"default": "0",
+			"depends_on": "eval:doc.enable_orders && doc.enable_shipments",
+			"description": "Create a delivery note against the order when pulling the Shipstation shipment",
+			"fieldname": "create_delivery_note",
+			"fieldtype": "Check",
+			"label": "Create Delivery Note"
+		},
+		{
+			"default": "0",
+			"depends_on": "eval:doc.enable_orders && doc.enable_shipments",
+			"description": "Create a shipment against the delivery note when pulling the Shipstation shipment (if delivery note creation is disabled, the system will try to make shipments against existing delivery notes using the shipment ID)",
+			"fieldname": "create_shipment",
+			"fieldtype": "Check",
+			"label": "Create Shipment"
+		},
+		{
+			"fieldname": "column_break_tsex",
+			"fieldtype": "Column Break"
+		},
+		{
+			"fieldname": "sales_partner",
+			"fieldtype": "Link",
+			"label": "Sales Partner",
+			"options": "Sales Partner"
+		},
+		{
+			"default": "0",
+			"description": "This Merchant withholds and remits Sales Tax to the appropriate tax authority",
+			"fieldname": "withholding",
+			"fieldtype": "Check",
+			"label": "Withholding"
+		},
+		{
+			"fieldname": "commission_account",
+			"fieldtype": "Link",
+			"label": "Commission Account",
+			"options": "Account"
+		},
+		{
+			"default": "0",
+			"fieldname": "apply_commission",
+			"fieldtype": "Check",
+			"label": "Apply Commission"
+		},
+		{
+			"description": "Any difference between the ERPNext and Shipstation totals will be allocated here, for example coupons",
+			"fieldname": "difference_account",
+			"fieldtype": "Link",
+			"label": "Difference Account",
+			"options": "Account",
+			"reqd": 1
+		},
+		{
+			"fieldname": "customer",
+			"fieldtype": "Link",
+			"label": "Customer",
+			"options": "Customer"
+		}
+	],
+	"istable": 1,
+	"links": [],
+	"modified": "2024-06-21 14:44:24.886063",
+	"modified_by": "Administrator",
+	"module": "Shipstation Integration",
+	"name": "Shipstation Store",
+	"owner": "Administrator",
+	"permissions": [],
+	"quick_entry": 1,
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": [],
+	"track_changes": 1
 }
