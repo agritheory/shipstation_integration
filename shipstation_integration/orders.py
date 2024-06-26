@@ -203,6 +203,7 @@ def create_erpnext_order(
 	so.dont_update_if_missing = ["customer_name", "base_total_in_words"]
 
 	if order.tax_amount:
+		so.sales_tax_total = flt(order.tax_amount)
 		so.append(
 			"taxes",
 			{
@@ -273,7 +274,7 @@ def create_erpnext_order(
 					"charge_type": "Actual",
 					"account_head": store.commission_account,
 					"cost_center": store.cost_center,
-					"description": f"Commission of {so.total_commission}",
+					"description": f"Commission of {so.get_formatted('total_commission')}",
 					"tax_amount": -(so.total_commission),
 					"included_in_paid_amount": 1,
 				},

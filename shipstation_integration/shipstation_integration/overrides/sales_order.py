@@ -25,6 +25,7 @@ def get_formula_based_commission(doc, commission_formula=None):
 			"flt": frappe.utils.data.flt,
 			"min": min,
 			"max": max,
+			"sum": sum,
 		}
 	)
 	eval_locals = {
@@ -43,3 +44,4 @@ def get_formula_based_commission(doc, commission_formula=None):
 # flt(((
 # 	(min(doc.total, 2500) * 0.1235) + (max(doc.total - 2500, 0) *.0235)
 # ) * 0.9)  + 0.40, 2)
+# sum([r.amount * .16 for r in doc.items if not r.is_free_item]) # 16% per item
