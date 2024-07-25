@@ -144,6 +144,7 @@ def create_erpnext_order(
 			"integration_doctype": "Shipstation Settings",
 			"integration_doc": store.parent,
 			"has_pii": True,
+			"currency": store.currency,
 		}
 	)
 	if store.sales_partner:

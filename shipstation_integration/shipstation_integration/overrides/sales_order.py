@@ -36,7 +36,11 @@ def get_formula_based_commission(doc, commission_formula=None):
 		return frappe.safe_eval(commission_formula, eval_globals=eval_globals, eval_locals=eval_locals)
 	except Exception as e:
 		print("Error evaluating commission formula:\n", e)
-		frappe.log_error(title="Error evaluating commission formula", message=e)
+		e = f"{e}\n{doc.as_dict()}"
+		frappe.log_error(
+			title=f"Error evaluating commission formula for {doc.sales_partner or 'No Sales Partner'}",
+			message=e,
+		)
 		return None
 
 
