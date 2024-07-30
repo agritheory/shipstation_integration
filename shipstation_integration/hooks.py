@@ -1,5 +1,3 @@
-from . import __version__ as app_version
-
 app_name = "shipstation_integration"
 app_title = "Shipstation Integration"
 app_publisher = "AgriTheory"
