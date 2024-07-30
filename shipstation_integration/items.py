@@ -117,5 +117,10 @@ def create_item(
 	if before_save_hook:
 		item = frappe.get_attr(before_save_hook[0])(store, item)
 
-	item.save()
+	try:
+		item.save()
+	except Exception as e:
+		print("Error saving Item:\n", e)
+		frappe.log_error(title="Error saving Item", message=e)
+
 	return item.item_code
