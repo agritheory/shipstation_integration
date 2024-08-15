@@ -122,4 +122,4 @@ def create_item(
 		print("Error saving Item:\n", e)
 		frappe.log_error(title="Error saving Item", message=e)
 
-	return item.item_code
+	return item
