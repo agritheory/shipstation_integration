@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Union
 import frappe
 from frappe.utils import flt, getdate
 from frappe.utils.safe_exec import is_job_queued
+from erpnext.stock.doctype.item.item import get_uom_conv_factor
 from httpx import HTTPError
 
 from shipstation_integration.customer import (
@@ -182,15 +183,15 @@ def create_erpnext_order(
 			continue
 
 		settings = frappe.get_doc("Shipstation Settings", store.parent)
-		item_code = create_item(item, settings=settings, store=store)
+		stock_item = create_item(item, settings=settings, store=store)
 		item_notes = get_item_notes(item)
 		so.append(
 			"items",
 			{
-				"item_code": item_code,
+				"item_code": stock_item.item_code,
 				"qty": item.quantity,
-				"uom": frappe.db.get_value("Item", item_code, "sales_uom"),
-				"conversion_factor": 1,
+				"uom": stock_item.sales_uom,
+				"conversion_factor": get_uom_conv_factor(stock_item.sales_uom, stock_item.stock_uom),
 				"rate": rate,
 				"warehouse": store.warehouse,
 				"shipstation_order_item_id": item.order_item_id,
