@@ -4,9 +4,9 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Union
 
 import frappe
+from erpnext.stock.doctype.item.item import get_uom_conv_factor
 from frappe.utils import flt, getdate
 from frappe.utils.safe_exec import is_job_queued
-from erpnext.stock.doctype.item.item import get_uom_conv_factor
 from httpx import HTTPError
 
 from shipstation_integration.customer import (
