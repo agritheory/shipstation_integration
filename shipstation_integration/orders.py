@@ -184,14 +184,16 @@ def create_erpnext_order(
 
 		settings = frappe.get_doc("Shipstation Settings", store.parent)
 		stock_item = create_item(item, settings=settings, store=store)
+		uom = stock_item.sales_uom or stock_item.stock_uom
+		conversion_factor = 1 if uom == stock_item.stock_uom else get_uom_conv_factor(uom, stock_item.stock_uom)
 		item_notes = get_item_notes(item)
 		so.append(
 			"items",
 			{
 				"item_code": stock_item.item_code,
 				"qty": item.quantity,
-				"uom": stock_item.sales_uom,
-				"conversion_factor": get_uom_conv_factor(stock_item.sales_uom, stock_item.stock_uom),
+				"uom": uom,
+				"conversion_factor": conversion_factor,
 				"rate": rate,
 				"warehouse": store.warehouse,
 				"shipstation_order_item_id": item.order_item_id,
