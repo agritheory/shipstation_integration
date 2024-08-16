@@ -261,7 +261,7 @@ def fetch_shipment(delivery_note: str):
 				continue
 
 			if shipment.voided:
-				cancel_voided_shipments(shipment)
+				cancel_voided_shipments(shipment, sss_doc)
 			else:
 				store_id = shipment.advanced_options.store_id
 				store: "ShipstationStore" = next(
@@ -270,7 +270,7 @@ def fetch_shipment(delivery_note: str):
 				)
 
 				delivery_note.db_set("shipstation_shipment_id", shipment.shipment_id)
-				shipment = create_erpnext_shipment(shipment, store)
+				shipment = create_erpnext_shipment(shipment, store, sss_doc)
 				if shipment:
 					created_shipments.append(get_link_to_form(shipment.doctype, shipment.name))
 

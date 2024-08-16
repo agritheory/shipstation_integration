@@ -13,7 +13,7 @@ jobs:
         image: mariadb:10.6
         env:
           MYSQL_ALLOW_EMPTY_PASSWORD: YES
-          MYSQL_ROOT_PASSWORD: 'admin'
+          MYSQL_ROOT_PASSWORD: "admin"
         ports:
           - 3306:3306
         options: --health-cmd="mysqladmin ping" --health-interval=5s --health-timeout=2s --health-retries=3
@@ -25,7 +25,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -53,8 +53,8 @@ jobs:
 
       - name: Install Bench Site and Apps
         env:
-          MYSQL_HOST: 'localhost'
-          MYSQL_PWD: 'admin'
+          MYSQL_HOST: "localhost"
+          MYSQL_PWD: "admin"
         run: bash ${{ github.workspace }}/.github/helper/install.sh
 
       # TODO: enable pytest after adding tests
