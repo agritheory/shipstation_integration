@@ -62,6 +62,7 @@ doctype_js = {
 # ------------
 
 # before_migrate = "shipstation_integration.migrate.before_migrate"
+after_migrate = ["shipstation_integration.install.add_custom_queue"]
 after_install = "shipstation_integration.install.after_install"
 
 # Desk Notifications
