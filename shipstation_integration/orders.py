@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Union
 
 import frappe
+from erpnext.stock.doctype.item.item import get_uom_conv_factor
 from frappe.utils import flt, getdate
 from frappe.utils.safe_exec import is_job_queued
 from httpx import HTTPError
@@ -182,15 +183,19 @@ def create_erpnext_order(
 			continue
 
 		settings = frappe.get_doc("Shipstation Settings", store.parent)
-		item_code = create_item(item, settings=settings, store=store)
+		stock_item = create_item(item, settings=settings, store=store)
+		uom = stock_item.sales_uom or stock_item.stock_uom
+		conversion_factor = (
+			1 if uom == stock_item.stock_uom else get_uom_conv_factor(uom, stock_item.stock_uom)
+		)
 		item_notes = get_item_notes(item)
 		so.append(
 			"items",
 			{
-				"item_code": item_code,
+				"item_code": stock_item.item_code,
 				"qty": item.quantity,
-				"uom": frappe.db.get_single_value("Stock Settings", "stock_uom"),
-				"conversion_factor": 1,
+				"uom": uom,
+				"conversion_factor": conversion_factor,
 				"rate": rate,
 				"warehouse": store.warehouse,
 				"shipstation_order_item_id": item.order_item_id,
