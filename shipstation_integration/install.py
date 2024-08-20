@@ -26,10 +26,15 @@ def add_custom_queue():
 	sites_path = os.getcwd()
 	common_site_config_path = os.path.join(sites_path, "common_site_config.json")
 	workers = frappe.conf.workers
+
+	if workers and "shipstation" in workers.keys():
+		return
+
 	if workers:
 		workers["shipstation"] = {"timeout": 8000}
 	else:
 		workers = {"shipstation": {"timeout": 8000}}
+
 	update_site_config("workers", workers, validate=False, site_config_path=common_site_config_path)
 
 	# skip supervisor setup on development setups
