@@ -120,11 +120,14 @@ def create_item(
 		item.save()
 		frappe.db.commit()
 	except frappe.TimestampMismatchError:
+		frappe.log_error(
+			title=f"Timestamp Mismatch Error for Item {item_name}", message=frappe.get_traceback()
+		)
 		item.reload()
 		item.save()
 		frappe.db.commit()
 	except Exception as e:
 		print("Error saving Item:\n", e)
-		frappe.log_error(title=f"Error saving Item {item_name}", message=e)
+		frappe.log_error(title=f"Error saving Item {item_name}", message=frappe.get_traceback())
 
 	return item
