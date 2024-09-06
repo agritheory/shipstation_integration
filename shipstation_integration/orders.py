@@ -1,7 +1,6 @@
 import datetime
-import re
 from decimal import Decimal
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 import frappe
 from erpnext.stock.doctype.item.item import get_uom_conv_factor
@@ -9,11 +8,7 @@ from frappe.utils import flt, getdate
 from frappe.utils.safe_exec import is_job_queued
 from httpx import HTTPError
 
-from shipstation_integration.customer import (
-	create_customer,
-	get_billing_address,
-	update_customer_details,
-)
+from shipstation_integration.customer import create_customer, get_billing_address
 from shipstation_integration.items import create_item
 
 if TYPE_CHECKING:

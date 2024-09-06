@@ -137,9 +137,11 @@ def create_customer(order: "ShipStationOrder"):
 		frappe.db.commit()
 	# this is a bad way to do this but its unclear why its happening
 	except DuplicateEntryError as e:
+		frappe.log_error(title="DuplicateEntryError on Customer", message=e)
 		customer = frappe.db.get_value("Customer", {"customer_name": customer_name})
 		return frappe.get_doc("Customer", customer_name)
 	except Exception as e:
+		frappe.log_error(title="Error creating Shipstation Customer", message=e)
 		raise e
 
 	email_id, _ = parse_addr(customer_name)
