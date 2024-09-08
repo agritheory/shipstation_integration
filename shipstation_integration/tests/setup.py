@@ -1,3 +1,6 @@
+# Copyright (c) 2024, AgriTheory and contributors
+# For license information, please see license.txt
+
 import frappe
 from erpnext.setup.utils import set_defaults_for_tests
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
