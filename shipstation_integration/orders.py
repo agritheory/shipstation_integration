@@ -1,17 +1,14 @@
 import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 import frappe
+from erpnext.stock.doctype.item.item import get_uom_conv_factor
 from frappe.utils import flt, getdate
 from frappe.utils.safe_exec import is_job_queued
 from httpx import HTTPError
 
-from shipstation_integration.customer import (
-	create_customer,
-	get_billing_address,
-	update_customer_details,
-)
+from shipstation_integration.customer import create_customer, get_billing_address
 from shipstation_integration.items import create_item
 
 if TYPE_CHECKING:
@@ -27,7 +24,7 @@ if TYPE_CHECKING:
 
 
 def queue_orders():
-	if not is_job_queued("shipstation_integration.orders.list_orders"):
+	if not is_job_queued("shipstation_integration.orders.list_orders", queue="shipstation"):
 		frappe.enqueue(
 			method="shipstation_integration.orders.list_orders",
 			queue="shipstation",
@@ -86,7 +83,7 @@ def list_orders(
 						should_create_order = frappe.get_attr(process_order_hook[0])(order, store)
 
 					if should_create_order:
-						create_erpnext_order(order, store, settings)
+						create_erpnext_order(order, store, sss)
 
 
 def validate_order(
@@ -119,7 +116,11 @@ def validate_order(
 def create_erpnext_order(
 	order: "ShipStationOrder", store: "ShipstationStore", settings: "ShipstationSettings"
 ) -> str | None:
-	customer = create_customer(order)
+	if settings.shipstation_user:
+		frappe.set_user(settings.shipstation_user)
+	customer = (
+		frappe.get_cached_doc("Customer", store.customer) if store.customer else create_customer(order)
+	)
 	so: "SalesOrder" = frappe.new_doc("Sales Order")
 	so.update(
 		{
@@ -130,6 +131,7 @@ def create_erpnext_order(
 			"marketplace": store.marketplace_name,
 			"marketplace_order_id": order.order_number,
 			"customer": customer.name,
+			"customer_name": order.customer_email,
 			"company": store.company,
 			"transaction_date": getdate(order.order_date),
 			"delivery_date": getdate(order.ship_date),
@@ -138,6 +140,7 @@ def create_erpnext_order(
 			"integration_doctype": "Shipstation Settings",
 			"integration_doc": store.parent,
 			"has_pii": True,
+			"currency": store.currency,
 		}
 	)
 	if store.sales_partner:
@@ -175,15 +178,19 @@ def create_erpnext_order(
 			continue
 
 		settings = frappe.get_doc("Shipstation Settings", store.parent)
-		item_code = create_item(item, settings=settings, store=store)
+		stock_item = create_item(item, settings=settings, store=store)
+		uom = stock_item.sales_uom or stock_item.stock_uom
+		conversion_factor = (
+			1 if uom == stock_item.stock_uom else get_uom_conv_factor(uom, stock_item.stock_uom)
+		)
 		item_notes = get_item_notes(item)
 		so.append(
 			"items",
 			{
-				"item_code": item_code,
+				"item_code": stock_item.item_code,
 				"qty": item.quantity,
-				"uom": frappe.db.get_single_value("Stock Settings", "stock_uom"),
-				"conversion_factor": 1,
+				"uom": uom,
+				"conversion_factor": conversion_factor,
 				"rate": rate,
 				"warehouse": store.warehouse,
 				"shipstation_order_item_id": item.order_item_id,
@@ -197,6 +204,7 @@ def create_erpnext_order(
 	so.dont_update_if_missing = ["customer_name", "base_total_in_words"]
 
 	if order.tax_amount:
+		so.sales_tax_total = flt(order.tax_amount)
 		so.append(
 			"taxes",
 			{
@@ -209,6 +217,7 @@ def create_erpnext_order(
 		)
 
 	if order.shipping_amount:
+		so.shipping_revenue = flt(order.shipping_amount)
 		so.append(
 			"taxes",
 			{
@@ -221,14 +230,21 @@ def create_erpnext_order(
 		)
 
 	so.save()
+	if store.customer:
+		so.customer_name = order.customer_email
 	# coupons
 	if order.amount_paid and Decimal(so.grand_total).quantize(Decimal(".01")) != order.amount_paid:
 		difference_amount = Decimal(Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid)
+		so.shipstation_discount = difference_amount
+		account = store.difference_account
+		# if the shipping amount is noted but not charged (FBA orders), this correctly offsets it
+		if difference_amount == order.shipping_amount:
+			account = store.shipping_income_account
 		so.append(
 			"taxes",
 			{
 				"charge_type": "Actual",
-				"account_head": store.difference_account,
+				"account_head": account,
 				"description": "Shipstation Difference Amount",
 				"tax_amount": -1 * difference_amount,
 				"cost_center": store.cost_center,
@@ -251,6 +267,21 @@ def create_erpnext_order(
 	if discount_amount > 0:
 		so.apply_discount_on = "Grand Total"
 		so.discount_amount = discount_amount
+
+	if so.sales_partner and store.apply_commission:
+		so.calculate_commission()
+		if so.total_commission:
+			so.append(
+				"taxes",
+				{
+					"charge_type": "Actual",
+					"account_head": store.commission_account,
+					"cost_center": store.cost_center,
+					"description": f"Commission of {so.get_formatted('total_commission')}",
+					"tax_amount": -(so.total_commission),
+					"included_in_paid_amount": 1,
+				},
+			)
 
 	so.save()
 

@@ -1,219 +1,226 @@
 {
- "actions": [],
- "autoname": "Prompt",
- "creation": "2019-12-10 11:54:44.442858",
- "doctype": "DocType",
- "editable_grid": 1,
- "engine": "InnoDB",
- "field_order": [
-  "enabled",
-  "enable_label_generation",
-  "api_key",
-  "api_secret",
-  "default_item_group",
-  "weight_conversion",
-  "column_break_7",
-  "get_items",
-  "get_orders",
-  "get_shipments",
-  "update_carriers_and_stores",
-  "sb_filters",
-  "since_date",
-  "column_break_lzby",
-  "sb_warehouses",
-  "shipstation_warehouses",
-  "fetch_warehouses",
-  "reset_warehouses",
-  "sb_stores",
-  "shipstation_stores",
-  "sb_carriers",
-  "carrier_data",
-  "carriers_html"
- ],
- "fields": [
-  {
-   "fieldname": "api_key",
-   "fieldtype": "Password",
-   "in_list_view": 1,
-   "label": "API Key"
-  },
-  {
-   "fieldname": "api_secret",
-   "fieldtype": "Password",
-   "in_list_view": 1,
-   "label": "API Secret"
-  },
-  {
-   "fieldname": "default_item_group",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Default Item Group",
-   "options": "Item Group",
-   "reqd": 1
-  },
-  {
-   "fieldname": "column_break_7",
-   "fieldtype": "Column Break"
-  },
-  {
-   "depends_on": "eval:!doc.__islocal",
-   "fieldname": "get_items",
-   "fieldtype": "Button",
-   "label": "Get Items",
-   "permlevel": 1
-  },
-  {
-   "depends_on": "eval:!doc.__islocal",
-   "fieldname": "get_orders",
-   "fieldtype": "Button",
-   "label": "Get Orders",
-   "permlevel": 1
-  },
-  {
-   "depends_on": "eval:!doc.__islocal",
-   "fieldname": "get_shipments",
-   "fieldtype": "Button",
-   "label": "Get Shipments",
-   "permlevel": 1
-  },
-  {
-   "fieldname": "shipstation_stores",
-   "fieldtype": "Table",
-   "label": "Shipstation Stores",
-   "options": "Shipstation Store"
-  },
-  {
-   "fieldname": "carrier_data",
-   "fieldtype": "Code",
-   "hidden": 1,
-   "label": "carrier_data"
-  },
-  {
-   "fieldname": "carriers_html",
-   "fieldtype": "HTML"
-  },
-  {
-   "description": "Only orders from the above Shipstation warehouses will be synced. If no warehouses are set, the system will default to fetching from all Shipstation warehouses.",
-   "fieldname": "shipstation_warehouses",
-   "fieldtype": "Table MultiSelect",
-   "label": "Shipstation Warehouses",
-   "options": "Shipstation Warehouse"
-  },
-  {
-   "depends_on": "eval:!doc.__islocal",
-   "fieldname": "sb_stores",
-   "fieldtype": "Section Break"
-  },
-  {
-   "depends_on": "eval:!doc.__islocal",
-   "fieldname": "sb_carriers",
-   "fieldtype": "Section Break",
-   "label": "Carriers"
-  },
-  {
-   "depends_on": "eval:!doc.__islocal",
-   "fieldname": "update_carriers_and_stores",
-   "fieldtype": "Button",
-   "label": "Update Carriers and Stores"
-  },
-  {
-   "default": "1",
-   "fieldname": "enabled",
-   "fieldtype": "Check",
-   "label": "Enabled"
-  },
-  {
-   "fieldname": "sb_filters",
-   "fieldtype": "Section Break",
-   "label": "Filters"
-  },
-  {
-   "description": "If orders are found before this date, they will not be created. This filter can be useful to avoid stock mismatches after reconciliation.",
-   "fieldname": "since_date",
-   "fieldtype": "Date",
-   "label": "Since Date"
-  },
-  {
-   "default": "0",
-   "depends_on": "eval:doc.enabled",
-   "fieldname": "enable_label_generation",
-   "fieldtype": "Check",
-   "label": "Enable Label Generation"
-  },
-  {
-   "fieldname": "sb_warehouses",
-   "fieldtype": "Section Break"
-  },
-  {
-   "depends_on": "eval:!doc.__islocal",
-   "fieldname": "fetch_warehouses",
-   "fieldtype": "Button",
-   "label": "Fetch All"
-  },
-  {
-   "depends_on": "eval:!doc.__islocal",
-   "fieldname": "reset_warehouses",
-   "fieldtype": "Button",
-   "label": "Reset"
-  },
-  {
-   "fieldname": "weight_conversion",
-   "fieldtype": "Select",
-   "label": "Weight Conversion",
-   "options": "As Provided\nConvert to Gram\nConvert to Ounce"
-  },
-  {
-   "fieldname": "column_break_lzby",
-   "fieldtype": "Column Break"
-  }
- ],
- "hide_toolbar": 1,
- "links": [],
- "modified": "2024-05-09 16:00:28.213836",
- "modified_by": "Administrator",
- "module": "Shipstation Integration",
- "name": "Shipstation Settings",
- "naming_rule": "Set by user",
- "owner": "Administrator",
- "permissions": [
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
-  },
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Administrator",
-   "share": 1,
-   "write": 1
-  },
-  {
-   "email": 1,
-   "export": 1,
-   "permlevel": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Administrator",
-   "share": 1,
-   "write": 1
-  }
- ],
- "sort_field": "modified",
- "sort_order": "DESC",
- "states": [],
- "track_views": 1
+	"actions": [],
+	"autoname": "Prompt",
+	"creation": "2019-12-10 11:54:44.442858",
+	"doctype": "DocType",
+	"editable_grid": 1,
+	"engine": "InnoDB",
+	"field_order": [
+		"enabled",
+		"enable_label_generation",
+		"api_key",
+		"api_secret",
+		"default_item_group",
+		"weight_conversion",
+		"shipstation_user",
+		"column_break_7",
+		"get_items",
+		"get_orders",
+		"get_shipments",
+		"update_carriers_and_stores",
+		"sb_filters",
+		"since_date",
+		"column_break_lzby",
+		"sb_warehouses",
+		"shipstation_warehouses",
+		"fetch_warehouses",
+		"reset_warehouses",
+		"sb_stores",
+		"shipstation_stores",
+		"sb_carriers",
+		"carrier_data",
+		"carriers_html"
+	],
+	"fields": [
+		{
+			"fieldname": "api_key",
+			"fieldtype": "Password",
+			"in_list_view": 1,
+			"label": "API Key"
+		},
+		{
+			"fieldname": "api_secret",
+			"fieldtype": "Password",
+			"in_list_view": 1,
+			"label": "API Secret"
+		},
+		{
+			"fieldname": "default_item_group",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "Default Item Group",
+			"options": "Item Group",
+			"reqd": 1
+		},
+		{
+			"fieldname": "column_break_7",
+			"fieldtype": "Column Break"
+		},
+		{
+			"depends_on": "eval:!doc.__islocal",
+			"fieldname": "get_items",
+			"fieldtype": "Button",
+			"label": "Get Items",
+			"permlevel": 1
+		},
+		{
+			"depends_on": "eval:!doc.__islocal",
+			"fieldname": "get_orders",
+			"fieldtype": "Button",
+			"label": "Get Orders",
+			"permlevel": 1
+		},
+		{
+			"depends_on": "eval:!doc.__islocal",
+			"fieldname": "get_shipments",
+			"fieldtype": "Button",
+			"label": "Get Shipments",
+			"permlevel": 1
+		},
+		{
+			"fieldname": "shipstation_stores",
+			"fieldtype": "Table",
+			"label": "Shipstation Stores",
+			"options": "Shipstation Store"
+		},
+		{
+			"fieldname": "carrier_data",
+			"fieldtype": "Code",
+			"hidden": 1,
+			"label": "carrier_data"
+		},
+		{
+			"fieldname": "carriers_html",
+			"fieldtype": "HTML"
+		},
+		{
+			"description": "Only orders from the above Shipstation warehouses will be synced. If no warehouses are set, the system will default to fetching from all Shipstation warehouses.",
+			"fieldname": "shipstation_warehouses",
+			"fieldtype": "Table MultiSelect",
+			"label": "Shipstation Warehouses",
+			"options": "Shipstation Warehouse"
+		},
+		{
+			"depends_on": "eval:!doc.__islocal",
+			"fieldname": "sb_stores",
+			"fieldtype": "Section Break"
+		},
+		{
+			"depends_on": "eval:!doc.__islocal",
+			"fieldname": "sb_carriers",
+			"fieldtype": "Section Break",
+			"label": "Carriers"
+		},
+		{
+			"depends_on": "eval:!doc.__islocal",
+			"fieldname": "update_carriers_and_stores",
+			"fieldtype": "Button",
+			"label": "Update Carriers and Stores"
+		},
+		{
+			"default": "1",
+			"fieldname": "enabled",
+			"fieldtype": "Check",
+			"label": "Enabled"
+		},
+		{
+			"fieldname": "sb_filters",
+			"fieldtype": "Section Break",
+			"label": "Filters"
+		},
+		{
+			"description": "If orders are found before this date, they will not be created. This filter can be useful to avoid stock mismatches after reconciliation.",
+			"fieldname": "since_date",
+			"fieldtype": "Date",
+			"label": "Since Date"
+		},
+		{
+			"default": "0",
+			"depends_on": "eval:doc.enabled",
+			"fieldname": "enable_label_generation",
+			"fieldtype": "Check",
+			"label": "Enable Label Generation"
+		},
+		{
+			"fieldname": "sb_warehouses",
+			"fieldtype": "Section Break"
+		},
+		{
+			"depends_on": "eval:!doc.__islocal",
+			"fieldname": "fetch_warehouses",
+			"fieldtype": "Button",
+			"label": "Fetch All"
+		},
+		{
+			"depends_on": "eval:!doc.__islocal",
+			"fieldname": "reset_warehouses",
+			"fieldtype": "Button",
+			"label": "Reset"
+		},
+		{
+			"fieldname": "weight_conversion",
+			"fieldtype": "Select",
+			"label": "Weight Conversion",
+			"options": "As Provided\nConvert to Gram\nConvert to Ounce"
+		},
+		{
+			"fieldname": "column_break_lzby",
+			"fieldtype": "Column Break"
+		},
+		{
+			"fieldname": "shipstation_user",
+			"fieldtype": "Link",
+			"label": "ShipStation User",
+			"options": "User"
+		}
+	],
+	"hide_toolbar": 1,
+	"links": [],
+	"modified": "2024-06-19 14:29:26.554275",
+	"modified_by": "Administrator",
+	"module": "Shipstation Integration",
+	"name": "Shipstation Settings",
+	"naming_rule": "Set by user",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "System Manager",
+			"share": 1,
+			"write": 1
+		},
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "Administrator",
+			"share": 1,
+			"write": 1
+		},
+		{
+			"email": 1,
+			"export": 1,
+			"permlevel": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "Administrator",
+			"share": 1,
+			"write": 1
+		}
+	],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": [],
+	"track_views": 1
 }

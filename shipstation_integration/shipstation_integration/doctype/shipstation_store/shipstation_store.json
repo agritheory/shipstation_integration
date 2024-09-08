@@ -19,7 +19,9 @@
   "sb_amazon",
   "is_amazon_store",
   "amazon_marketplace",
+  "customer",
   "column_break_tsex",
+  "currency",
   "sales_partner",
   "apply_commission",
   "sb_stock",
@@ -223,11 +225,25 @@
    "label": "Difference Account",
    "options": "Account",
    "reqd": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "fetch_from": "company.default_currency",
+   "fetch_if_empty": 1,
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency"
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2024-05-22 16:09:21.118343",
+ "modified": "2024-07-17 07:12:47.317809",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Shipstation Store",

@@ -20,6 +20,10 @@ def create_item(
 	settings: "ShipstationSettings",
 	store: Optional["ShipstationStore"] = None,
 ) -> str:
+
+	if settings.shipstation_user:
+		frappe.set_user(settings.shipstation_user)
+
 	item_name = product.name[:140]
 	if not product.sku:
 		item_code = frappe.db.get_value("Item", {"item_name": item_name.strip()})
@@ -112,5 +116,18 @@ def create_item(
 	if before_save_hook:
 		item = frappe.get_attr(before_save_hook[0])(store, item)
 
-	item.save()
-	return item.item_code
+	try:
+		item.save()
+		frappe.db.commit()
+	except frappe.TimestampMismatchError:
+		frappe.log_error(
+			title=f"Timestamp Mismatch Error for Item {item_name}", message=frappe.get_traceback()
+		)
+		item.reload()
+		item.save()
+		frappe.db.commit()
+	except Exception as e:
+		print("Error saving Item:\n", e)
+		frappe.log_error(title=f"Error saving Item {item_name}", message=frappe.get_traceback())
+
+	return item
