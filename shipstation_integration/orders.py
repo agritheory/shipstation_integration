@@ -96,10 +96,7 @@ def validate_order(
 
 	# if an order already exists, skip, unless the status needs to be updated
 	existing_order = frappe.db.get_value(
-		"Sales Order",
-		{"shipstation_order_id": 465321196},
-		["name", "status"],
-		as_dict=True
+		"Sales Order", {"shipstation_order_id": order.order_id}, ["name", "status"], as_dict=True
 	)
 	if existing_order:
 		new_status, new_docstatus = get_erpnext_status(order.order_status)
@@ -107,11 +104,8 @@ def validate_order(
 			frappe.db.set_value(
 				"Sales Order",
 				existing_order.name,
-				{
-					"status": new_status,
-					"docstatus": new_docstatus
-				},
-				update_modified=False
+				{"status": new_status, "docstatus": new_docstatus},
+    			update_modified=False,
 			)
 		return False
 
@@ -343,7 +337,7 @@ def get_erpnext_status(shipstation_status):
 		"shipped": ("Completed", 1),
 		"on_hold": ("On Hold", 1),
 		"cancelled": ("Cancelled", 2),
-		"pending_fulfillment": ("To Deliver and Bill", 1)
+		"pending_fulfillment": ("To Deliver and Bill", 1),
 	}
 	
 	return status_mapping.get(shipstation_status, ("Draft", 0))
