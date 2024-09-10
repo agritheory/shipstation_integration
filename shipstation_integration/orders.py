@@ -94,8 +94,25 @@ def validate_order(
 	if not order:
 		return False
 
-	# if an order already exists, skip
-	if frappe.db.get_value("Sales Order", {"shipstation_order_id": order.order_id, "docstatus": 1}):
+	# if an order already exists, skip, unless the status needs to be updated
+	existing_order = frappe.db.get_value(
+		"Sales Order",
+		{"shipstation_order_id": 465321196},
+		["name", "status"],
+		as_dict=True
+	)
+	if existing_order:
+		new_status, new_docstatus = get_erpnext_status(order.order_status)
+		if existing_order.status != new_status:
+			frappe.db.set_value(
+				"Sales Order",
+				existing_order.name,
+				{
+					"status": new_status,
+					"docstatus": new_docstatus
+				},
+				update_modified=False
+			)
 		return False
 
 	# only create orders for warehouses defined in Shipstation Settings;
@@ -121,9 +138,11 @@ def create_erpnext_order(
 	customer = (
 		frappe.get_cached_doc("Customer", store.customer) if store.customer else create_customer(order)
 	)
+	status, docstatus = get_erpnext_status(order.order_status)
 	so: "SalesOrder" = frappe.new_doc("Sales Order")
 	so.update(
 		{
+			"status": status,
 			"shipstation_store_name": store.store_name,
 			"shipstation_order_id": order.order_id,
 			"shipstation_customer_notes": getattr(order, "customer_notes", None),
@@ -290,14 +309,18 @@ def create_erpnext_order(
 		so = frappe.get_attr(before_submit_hook[0])(store, so, order)
 		if so:
 			so.save()
-	if so:
-		so.submit()
-		frappe.db.commit()
+
+	match docstatus:
+		case 1:
+			so.submit()
+		case 2:
+			so.cancel()
 
 	after_submit_hook = frappe.get_hooks("update_shipstation_order_after_submit")
 	if before_submit_hook:
 		frappe.get_attr(after_submit_hook[0])(store, so, order)
-		frappe.db.commit()
+
+	frappe.db.commit()
 
 	return so.name if so else None
 
@@ -311,3 +334,16 @@ def get_item_notes(item: "ShipStationOrderItem"):
 				notes = option.value
 				break
 	return notes
+
+
+def get_erpnext_status(shipstation_status):
+	status_mapping = {
+		"awaiting_payment": ("Draft", 0),
+		"awaiting_shipment": ("To Deliver", 1),
+		"shipped": ("Completed", 1),
+		"on_hold": ("On Hold", 1),
+		"cancelled": ("Cancelled", 2),
+		"pending_fulfillment": ("To Deliver and Bill", 1)
+	}
+	
+	return status_mapping.get(shipstation_status, ("Draft", 0))
