@@ -105,7 +105,7 @@ def validate_order(
 				"Sales Order",
 				existing_order.name,
 				{"status": new_status, "docstatus": new_docstatus},
-    			update_modified=False,
+				update_modified=False,
 			)
 		return False
 
@@ -339,5 +339,5 @@ def get_erpnext_status(shipstation_status):
 		"cancelled": ("Cancelled", 2),
 		"pending_fulfillment": ("To Deliver and Bill", 1),
 	}
-	
+
 	return status_mapping.get(shipstation_status, ("Draft", 0))
