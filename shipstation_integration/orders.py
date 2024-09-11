@@ -1,6 +1,6 @@
 import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 import frappe
 from erpnext.stock.doctype.item.item import get_uom_conv_factor
@@ -298,7 +298,7 @@ def create_erpnext_order(
 
 
 def set_status(
-	so: "SalesOrder" | dict, order: "ShipStationOrder", store: "ShipstationStore"
+	so: Union["SalesOrder", dict], order: "ShipStationOrder", store: "ShipstationStore"
 ) -> None:
 
 	status_mapping = {
