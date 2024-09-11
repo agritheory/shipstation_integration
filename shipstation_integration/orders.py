@@ -96,17 +96,13 @@ def validate_order(
 
 	# if an order already exists, skip, unless the status needs to be updated
 	existing_order = frappe.db.get_value(
-		"Sales Order", {"shipstation_order_id": order.order_id}, ["name", "status"], as_dict=True
+		"Sales Order",
+		{"shipstation_order_id": order.order_id},
+		["name", "status", "docstatus"],
+		as_dict=True,
 	)
 	if existing_order:
-		new_status, new_docstatus = get_erpnext_status(order.order_status)
-		if existing_order.status != new_status:
-			frappe.db.set_value(
-				"Sales Order",
-				existing_order.name,
-				{"status": new_status, "docstatus": new_docstatus},
-				update_modified=False,
-			)
+		set_status(existing_order, order, store)
 		return False
 
 	# only create orders for warehouses defined in Shipstation Settings;
@@ -130,13 +126,13 @@ def create_erpnext_order(
 	if settings.shipstation_user:
 		frappe.set_user(settings.shipstation_user)
 	customer = (
-		frappe.get_cached_doc("Customer", store.customer) if store.customer else create_customer(order)
+		frappe.get_cached_doc("Customer", store.customer)
+		if store.customer
+		else create_customer(order)
 	)
-	status, docstatus = get_erpnext_status(order.order_status)
 	so: "SalesOrder" = frappe.new_doc("Sales Order")
 	so.update(
 		{
-			"status": status,
 			"shipstation_store_name": store.store_name,
 			"shipstation_order_id": order.order_id,
 			"shipstation_customer_notes": getattr(order, "customer_notes", None),
@@ -247,7 +243,9 @@ def create_erpnext_order(
 		so.customer_name = order.customer_email
 	# coupons
 	if order.amount_paid and Decimal(so.grand_total).quantize(Decimal(".01")) != order.amount_paid:
-		difference_amount = Decimal(Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid)
+		difference_amount = Decimal(
+			Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid
+		)
 		so.shipstation_discount = difference_amount
 		account = store.difference_account
 		# if the shipping amount is noted but not charged (FBA orders), this correctly offsets it
@@ -298,25 +296,55 @@ def create_erpnext_order(
 
 	so.save()
 
-	before_submit_hook = frappe.get_hooks("update_shipstation_order_before_submit")
-	if before_submit_hook:
-		so = frappe.get_attr(before_submit_hook[0])(store, so, order)
-		if so:
-			so.save()
-
-	match docstatus:
-		case 1:
-			so.submit()
-		case 2:
-			so.cancel()
-
-	after_submit_hook = frappe.get_hooks("update_shipstation_order_after_submit")
-	if before_submit_hook:
-		frappe.get_attr(after_submit_hook[0])(store, so, order)
-
-	frappe.db.commit()
+	set_status(so, order, store)
 
 	return so.name if so else None
+
+
+def set_status(
+	so: "SalesOrder" | dict, order: "ShipStationOrder", store: "ShipstationStore"
+) -> None:
+
+	status_mapping = {
+		"awaiting_payment": ("Draft", 0),
+		"awaiting_shipment": ("To Deliver", 1),
+		"shipped": ("Completed", 1),
+		"on_hold": ("On Hold", 1),
+		"cancelled": ("Cancelled", 2),
+		"pending_fulfillment": ("To Deliver and Bill", 1),
+	}
+
+	new_status, new_docstatus = status_mapping.get(order.order_status, ("Draft", 0))
+
+	if so.status == new_status and so.docstatus == new_docstatus:
+		return
+
+	if isinstance(so, dict):
+		so = frappe.get_doc("Sales Order", so.get("name"))
+
+	so.status = new_status
+
+	if new_docstatus == 1 and so.docstatus == 0:
+		before_submit_hook = frappe.get_hooks("update_shipstation_order_before_submit")
+		if before_submit_hook:
+			so = frappe.get_attr(before_submit_hook[0])(store, so, order)
+			if so:
+				so.save()
+
+		so.submit()
+
+		after_submit_hook = frappe.get_hooks("update_shipstation_order_after_submit")
+		if after_submit_hook:
+			frappe.get_attr(after_submit_hook[0])(store, so, order)
+	elif new_docstatus == 2 and so.docstatus != 2:
+		so.cancel()
+	elif new_docstatus == 0 and so.docstatus != 0:
+		so.docstatus = 0
+		so.save()
+	else:
+		so.save()
+
+	frappe.db.commit()
 
 
 def get_item_notes(item: "ShipStationOrderItem"):
@@ -328,16 +356,3 @@ def get_item_notes(item: "ShipStationOrderItem"):
 				notes = option.value
 				break
 	return notes
-
-
-def get_erpnext_status(shipstation_status):
-	status_mapping = {
-		"awaiting_payment": ("Draft", 0),
-		"awaiting_shipment": ("To Deliver", 1),
-		"shipped": ("Completed", 1),
-		"on_hold": ("On Hold", 1),
-		"cancelled": ("Cancelled", 2),
-		"pending_fulfillment": ("To Deliver and Bill", 1),
-	}
-
-	return status_mapping.get(shipstation_status, ("Draft", 0))
