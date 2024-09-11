@@ -126,9 +126,7 @@ def create_erpnext_order(
 	if settings.shipstation_user:
 		frappe.set_user(settings.shipstation_user)
 	customer = (
-		frappe.get_cached_doc("Customer", store.customer)
-		if store.customer
-		else create_customer(order)
+		frappe.get_cached_doc("Customer", store.customer) if store.customer else create_customer(order)
 	)
 	so: "SalesOrder" = frappe.new_doc("Sales Order")
 	so.update(
@@ -243,9 +241,7 @@ def create_erpnext_order(
 		so.customer_name = order.customer_email
 	# coupons
 	if order.amount_paid and Decimal(so.grand_total).quantize(Decimal(".01")) != order.amount_paid:
-		difference_amount = Decimal(
-			Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid
-		)
+		difference_amount = Decimal(Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid)
 		so.shipstation_discount = difference_amount
 		account = store.difference_account
 		# if the shipping amount is noted but not charged (FBA orders), this correctly offsets it
