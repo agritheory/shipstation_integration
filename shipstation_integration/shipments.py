@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 def queue_shipments():
 	if not is_job_queued("shipstation_integration.orders.list_shipments", queue="shipstation"):
 		frappe.enqueue(
-			method="shipstation_integration.orders.list_orders",
+			method="shipstation_integration.orders.list_shipments",
 			queue="shipstation",
 		)
 
