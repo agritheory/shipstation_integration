@@ -1,11 +1,20 @@
 from typing import TYPE_CHECKING
 
 import frappe
+from frappe.utils.safe_exec import is_job_queued
 
 if TYPE_CHECKING:
 	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
 		ShipstationSettings,
 	)
+
+
+def queue_tags():
+	if not is_job_queued("shipstation_integration.orders.list_tags", queue="shipstation"):
+		frappe.enqueue(
+			method="shipstation_integration.orders.list_tags",
+			queue="shipstation",
+		)
 
 
 @frappe.whitelist()
