@@ -85,6 +85,19 @@ frappe.ui.form.on('Shipstation Settings', {
 		})
 	},
 
+	get_items: frm => {
+		frappe.show_alert('Getting Tags')
+		frm
+			.call({
+				doc: frm.doc,
+				method: 'get_tags',
+				freeze: true,
+			})
+			.done(r => {
+				frappe.show_alert(r.message)
+			})
+	},
+
 	fetch_warehouses: frm => {
 		frm.call({
 			doc: frm.doc,
