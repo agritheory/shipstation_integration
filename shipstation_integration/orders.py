@@ -334,9 +334,6 @@ def set_status(
 			frappe.get_attr(after_submit_hook[0])(store, so, order)
 	elif new_docstatus == 2 and so.docstatus != 2:
 		so.cancel()
-	elif new_docstatus == 0 and so.docstatus != 0:
-		so.docstatus = 0
-		so.save()
 	else:
 		so.save()
 
