@@ -22,6 +22,14 @@ if TYPE_CHECKING:
 		ShipstationStore,
 	)
 
+STATUS_MAPPING = {
+	"awaiting_payment": "To Bill",
+	"awaiting_shipment": "To Deliver",
+	"cancelled": "Cancelled",
+	"on_hold": "On Hold",
+	"pending_fulfillment": "To Deliver",
+	"shipped": "Completed",
+}
 
 def queue_orders():
 	if not is_job_queued("shipstation_integration.orders.list_orders", queue="shipstation"):
@@ -95,14 +103,20 @@ def validate_order(
 		return False
 
 	# if an order already exists, skip, unless the status needs to be updated
-	existing_order = frappe.db.get_value(
+	existing_so = frappe.db.get_value(
 		"Sales Order",
 		{"shipstation_order_id": order.order_id},
-		["name", "status", "docstatus"],
+		["name", "status"],
 		as_dict=True,
 	)
-	if existing_order:
-		set_status(existing_order, order, store)
+	if existing_so:
+		so_status = STATUS_MAPPING.get(order.order_status)
+		if existing_so.status == so_status:
+			return False
+		if so_status == "Cancelled":
+			frappe.get_doc("Sales Order", existing_so.name).cancel()
+		else:
+			frappe.db.set_value("Sales Order", existing_so.name, "status", so_status)
 		return False
 
 	# only create orders for warehouses defined in Shipstation Settings;
@@ -291,53 +305,27 @@ def create_erpnext_order(
 			)
 
 	so.save()
-
-	set_status(so, order, store)
-
-	return so.name if so else None
-
-
-def set_status(
-	so: Union["SalesOrder", dict], order: "ShipStationOrder", store: "ShipstationStore"
-) -> None:
-
-	status_mapping = {
-		"awaiting_payment": ("Draft", 0),
-		"awaiting_shipment": ("To Deliver", 1),
-		"shipped": ("Completed", 1),
-		"on_hold": ("On Hold", 1),
-		"cancelled": ("Cancelled", 2),
-		"pending_fulfillment": ("To Deliver and Bill", 1),
-	}
-
-	new_status, new_docstatus = status_mapping.get(order.order_status, ("Draft", 0))
-
-	if so.status == new_status and so.docstatus == new_docstatus:
-		return
-
-	if isinstance(so, dict):
-		so = frappe.get_doc("Sales Order", so.get("name"))
-
-	so.status = new_status
-
-	if new_docstatus == 1 and so.docstatus == 0:
+	so.status = STATUS_MAPPING.get(order.order_status)
+  
+	if so.status == "Cancelled":
+		so.cancel()
+	else:
 		before_submit_hook = frappe.get_hooks("update_shipstation_order_before_submit")
 		if before_submit_hook:
 			so = frappe.get_attr(before_submit_hook[0])(store, so, order)
 			if so:
 				so.save()
-
-		so.submit()
+    
+		if so:
+			so.submit()
+			frappe.db.commit()
 
 		after_submit_hook = frappe.get_hooks("update_shipstation_order_after_submit")
 		if after_submit_hook:
 			frappe.get_attr(after_submit_hook[0])(store, so, order)
-	elif new_docstatus == 2 and so.docstatus != 2:
-		so.cancel()
-	else:
-		so.save()
+			frappe.db.commit()
 
-	frappe.db.commit()
+	return so.name if so else None
 
 
 def get_item_notes(item: "ShipStationOrderItem"):
