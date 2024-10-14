@@ -31,6 +31,7 @@ STATUS_MAPPING = {
 	"shipped": "Completed",
 }
 
+
 def queue_orders():
 	if not is_job_queued("shipstation_integration.orders.list_orders", queue="shipstation"):
 		frappe.enqueue(
@@ -306,7 +307,7 @@ def create_erpnext_order(
 
 	so.save()
 	so.status = STATUS_MAPPING.get(order.order_status)
-  
+
 	if so.status == "Cancelled":
 		so.cancel()
 	else:
@@ -315,7 +316,7 @@ def create_erpnext_order(
 			so = frappe.get_attr(before_submit_hook[0])(store, so, order)
 			if so:
 				so.save()
-    
+
 		if so:
 			so.submit()
 			frappe.db.commit()
