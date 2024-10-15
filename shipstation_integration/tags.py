@@ -41,8 +41,8 @@ def list_tags(
 			tag_doc.update(
 				{
 					"name": tag.name,
-					"custom_color": tag.color,
-					"custom_tag_id": tag.tag_id,
+					"color": tag.color,
+					"tag_id": tag.tag_id,
 				}
 			)
 			tag_doc.save()
