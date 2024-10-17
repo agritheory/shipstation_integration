@@ -10,10 +10,11 @@ const get_tag_color = tag => {
 }
 
 const get_tags_html = (user_tags, limit) => {
+	console.log(limit)
 	if (!user_tags || user_tags.trim() === ',') {
 		return ''
 	}
-	const tags_array = user_tags.split(',').slice(1, limit + 1)
+	const tags_array = user_tags.split(',').slice(1, limit + 2)
 
 	if (tags_array.length === 0) {
 		return ''
@@ -24,13 +25,13 @@ const get_tags_html = (user_tags, limit) => {
 		let style = ''
 
 		if (color) {
-			style = `background-color: ${color}; color: ${contrast(color)}`
+			style = `background-color: ${color}; color: ${contrast(color)}; width: auto`
 		} else {
 			const palette = frappe.get_palette(tag)
 			style = `background-color: var(${palette[0]}); color: var(${palette[1]})`
 		}
 
-		return `<div class="tag-pill ellipsis" title="${tag}" style="${style}">${tag}</div>`
+		return `<div class="tag-pill ellipsis" title="${tag}" style="${style}">${tag.slice(0, 1)}</div>`
 	})
 
 	return tag_htmls.join('')
