@@ -4,4 +4,4 @@ import frappe
 
 
 def boot_session(bootinfo):
-	bootinfo.tags = frappe.get_list("Tag", ["name", "color"])
+	bootinfo.tags = frappe.get_all("Tag", ["name", "color"])
