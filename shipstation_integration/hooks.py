@@ -15,6 +15,7 @@ app_license = "MIT"
 
 # Includes in <head>
 # ------------------
+extend_bootinfo = "shipstation_integration.shipstation_integration.boot.boot_session"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/shipstation_integration/css/shipstation_integration.css"

@@ -4,22 +4,36 @@ frappe.listview_settings['Sales Order'] = {
 	},
 }
 
+const get_tag_color = tag => {
+	const tag_entry = frappe.boot.tags.find(t => t.name === tag)
+	return tag_entry ? tag_entry.color : null
+}
+
 const get_tags_html = (user_tags, limit) => {
-	user_tags = user_tags.split(',').slice(1, limit + 1)
-	const promises = user_tags.map(async tag => {
-		await frappe.db.get_value('Tag', tag, 'color').then(data => {
-			let style = ''
-			let color = data.color
-			if (color) {
-				style = `background-color: ${color}; color: ${contrast(color)}`
-			} else {
-				const palette = frappe.get_palette(tag)
-				style = `background-color: var(${palette[0]}); color: var(${palette[1]})`
-			}
-			return `<div class="tag-pill ellipsis" title="${tag}" style="${style}">${tag}</div>`
-		})
+	if (!user_tags || user_tags.trim() === ',') {
+		return ''
+	}
+	const tags_array = user_tags.split(',').slice(1, limit + 1)
+
+	if (tags_array.length === 0) {
+		return ''
+	}
+
+	const tag_htmls = tags_array.map(tag => {
+		const color = get_tag_color(tag)
+		let style = ''
+
+		if (color) {
+			style = `background-color: ${color}; color: ${contrast(color)}`
+		} else {
+			const palette = frappe.get_palette(tag)
+			style = `background-color: var(${palette[0]}); color: var(${palette[1]})`
+		}
+
+		return `<div class="tag-pill ellipsis" title="${tag}" style="${style}">${tag}</div>`
 	})
-	Promise.all(promises)
+
+	return tag_htmls.join('')
 }
 
 function contrast(color) {
