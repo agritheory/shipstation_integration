@@ -9,7 +9,7 @@ readme = "README.md"
 dynamic = ["version"]
 dependencies = [
     "shipstation-client @ git+https://github.com/AgriTheory/shipstation-client.git@master#egg=shipstation-client",
-    "test_utils @ git+https://github.com/AgriTheory/test_utils.git@master#egg=test_utils",
+    "test_utils @ git+https://github.com/AgriTheory/test_utils.git@main#egg=test_utils",
 ]
 
 [build-system]
