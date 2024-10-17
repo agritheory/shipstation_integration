@@ -8,6 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 shipstation-client = {git = "https://github.com/agritheory/shipstation-client", python = ">=3.10,<3.13"}
+test_utils = {git = "https://github.com/agritheory/test_utils", python = ">=3.10,<3.13"}
 
 [build-system]
 requires = ["poetry-core"]

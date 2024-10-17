@@ -4,14 +4,14 @@ fail_fast: false
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.3.0
+    rev: v4.6.0
     hooks:
       - id: trailing-whitespace
         files: 'shipstation_integration.*'
         exclude: '.*json$|.*txt$|.*csv|.*md|.*svg'
       - id: check-yaml
       - id: no-commit-to-branch
-        args: ['--branch', 'develop']
+        args: ['--branch', 'version-15']
       - id: check-merge-conflict
       - id: check-ast
       - id: check-json
@@ -20,7 +20,7 @@ repos:
       - id: debug-statements
 
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.15.2
+    rev: v3.17.0
     hooks:
       - id: pyupgrade
         args: ['--py310-plus']
@@ -30,36 +30,44 @@ repos:
     hooks:
       - id: black
 
-  - repo: local
+  - repo: https://github.com/PyCQA/autoflake
+    rev: v2.3.1
     hooks:
-      - id: prettier
-        name: prettier
-        entry: npx prettier . --write --ignore-path .prettierignore
-        language: node
-
-  - repo: https://github.com/PyCQA/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
+      - id: autoflake
+        args: [--remove-all-unused-imports, --in-place]
 
   - repo: https://github.com/PyCQA/flake8
-    rev: 6.0.0
+    rev: 7.1.1
     hooks:
       - id: flake8
         additional_dependencies: ['flake8-bugbear']
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+      - id: codespell
+        additional_dependencies:
+          - tomli
 
   - repo: https://github.com/agritheory/test_utils
     rev: v0.16.0
     hooks:
       - id: update_pre_commit_config
+      # - id: mypy
       - id: validate_copyright
         files: '\.(js|ts|py|md)$'
         args: ['--app', 'shipstation_integration']
+      - id: validate_python_dependencies
       - id: clean_customized_doctypes
         args: ['--app', 'shipstation_integration']
       - id: validate_customizations
-      - id: validate_python_dependencies
-      - id: validate_javascript_dependencies
+
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier
+        entry: npx prettier -w . --config .prettierrc.cjs --ignore-path .prettierignore
+        language: system
 
 ci:
   autoupdate_schedule: weekly

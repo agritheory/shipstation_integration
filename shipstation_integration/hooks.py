@@ -1,7 +1,6 @@
 # Copyright (c) 2024, AgriTheory and contributors
 # For license information, please see license.txt
 
-from . import __version__ as app_version
 
 app_name = "shipstation_integration"
 app_title = "Shipstation Integration"
@@ -18,6 +17,7 @@ app_license = "MIT"
 
 # Includes in <head>
 # ------------------
+extend_bootinfo = "shipstation_integration.shipstation_integration.boot.boot_session"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/shipstation_integration/css/shipstation_integration.css"
@@ -37,7 +37,9 @@ doctype_js = {
 	"Sales Order": "public/js/sales_order.js",
 }
 
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+doctype_list_js = {
+	"Sales Order": "public/js/sales_order_list.js",
+}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
@@ -63,9 +65,6 @@ doctype_js = {
 
 # Installation
 # ------------
-
-# TODO: move to custom JSON: https://github.com/agritheory/shipstation_integration/issues/2
-before_migrate = "shipstation_integration.tests.setup.setup_custom_fields"
 after_migrate = ["shipstation_integration.install.add_custom_queue"]
 after_install = "shipstation_integration.install.after_install"
 
@@ -106,6 +105,7 @@ scheduler_events = {
 	"all": [
 		"shipstation_integration.orders.queue_orders",
 		"shipstation_integration.shipments.queue_shipments",
+		"shipstation_integration.tags.queue_tags",
 	]
 }
 

@@ -17,6 +17,7 @@
 		"get_items",
 		"get_orders",
 		"get_shipments",
+		"get_tags",
 		"update_carriers_and_stores",
 		"sb_filters",
 		"since_date",
@@ -172,11 +173,17 @@
 			"fieldtype": "Link",
 			"label": "ShipStation User",
 			"options": "User"
+		},
+		{
+			"depends_on": "eval:!doc.__islocal",
+			"fieldname": "get_tags",
+			"fieldtype": "Button",
+			"label": "Get Tags"
 		}
 	],
 	"hide_toolbar": 1,
 	"links": [],
-	"modified": "2024-06-19 14:29:26.554275",
+	"modified": "2024-09-30 09:21:18.572013",
 	"modified_by": "Administrator",
 	"module": "Shipstation Integration",
 	"name": "Shipstation Settings",

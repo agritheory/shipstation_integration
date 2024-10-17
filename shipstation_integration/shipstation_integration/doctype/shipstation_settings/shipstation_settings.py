@@ -13,6 +13,7 @@ from shipstation import ShipStation
 from shipstation_integration.items import create_item
 from shipstation_integration.orders import list_orders
 from shipstation_integration.shipments import list_shipments
+from shipstation_integration.tags import list_tags
 from shipstation_integration.utils import get_marketplace
 
 
@@ -58,6 +59,10 @@ class ShipstationSettings(Document):
 	@frappe.whitelist()
 	def get_shipments(self):
 		list_shipments(self)
+
+	@frappe.whitelist()
+	def get_tags(self):
+		list_tags(self)
 
 	def client(self):
 		return ShipStation(
@@ -212,7 +217,7 @@ class ShipstationSettings(Document):
 		for product in products:
 			create_item(product, settings=self)
 
-		return f"{len(products.results)} product(s) imported succesfully"
+		return f"{len(products.results)} product(s) imported successfully"
 
 	def _carrier_data(self):
 		return json.loads(self.carrier_data)
