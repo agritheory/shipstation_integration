@@ -15,6 +15,7 @@ app_license = "MIT"
 
 # Includes in <head>
 # ------------------
+extend_bootinfo = "shipstation_integration.shipstation_integration.boot.boot_session"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/shipstation_integration/css/shipstation_integration.css"
@@ -34,7 +35,9 @@ doctype_js = {
 	"Sales Order": "public/js/sales_order.js",
 }
 
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+doctype_list_js = {
+	"Sales Order": "public/js/sales_order_list.js",
+}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
@@ -103,6 +106,7 @@ scheduler_events = {
 	"all": [
 		"shipstation_integration.orders.queue_orders",
 		"shipstation_integration.shipments.queue_shipments",
+		"shipstation_integration.tags.queue_tags",
 	]
 }
 

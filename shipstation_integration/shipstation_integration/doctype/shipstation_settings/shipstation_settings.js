@@ -42,7 +42,7 @@ frappe.ui.form.on('Shipstation Settings', {
 	},
 
 	update_carriers_and_stores: frm => {
-		frappe.show_alert('Updating Carriers and Stores')
+		frappe.show_alert(__('Updating Carriers and Stores'))
 		frm
 			.call({
 				doc: frm.doc,
@@ -55,7 +55,7 @@ frappe.ui.form.on('Shipstation Settings', {
 	},
 
 	get_items: frm => {
-		frappe.show_alert('Getting Items')
+		frappe.show_alert(__('Getting Items'))
 		frm
 			.call({
 				doc: frm.doc,
@@ -68,7 +68,7 @@ frappe.ui.form.on('Shipstation Settings', {
 	},
 
 	get_orders: frm => {
-		frappe.show_alert('Getting Orders')
+		frappe.show_alert(__('Getting Orders'))
 		frm.call({
 			doc: frm.doc,
 			method: 'get_orders',
@@ -77,10 +77,19 @@ frappe.ui.form.on('Shipstation Settings', {
 	},
 
 	get_shipments: frm => {
-		frappe.show_alert('Getting Shipments')
+		frappe.show_alert(__('Getting Shipments'))
 		frm.call({
 			doc: frm.doc,
 			method: 'get_shipments',
+			freeze: true,
+		})
+	},
+
+	get_tags: frm => {
+		frappe.show_alert(__('Getting Tags'))
+		frm.call({
+			doc: frm.doc,
+			method: 'get_tags',
 			freeze: true,
 		})
 	},
