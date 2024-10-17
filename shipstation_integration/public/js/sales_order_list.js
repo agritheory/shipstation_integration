@@ -10,7 +10,6 @@ const get_tag_color = tag => {
 }
 
 const get_tags_html = (user_tags, limit) => {
-	console.log(limit)
 	if (!user_tags || user_tags.trim() === ',') {
 		return ''
 	}
