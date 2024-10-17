@@ -37,20 +37,29 @@ shipping.add_label_button = frm => {
 		args: { doc: frm.doc },
 		callback: r => {
 			if (r.message) {
-				frappe.db.get_value('Shipstation Settings', { name: r.message }, 'enable_label_generation').then(settings => {
-					if (settings.message.enable_label_generation) {
-						frm.add_custom_button(`<i class="fa fa-tags"></i> Shipping Label`, () => {
-							if (!shipping.carrier_options) {
-								frappe.throw(
-									__(`No carriers found to process labels. Please ensure the current
-										document is connected to Shipstation.`)
-								)
-							} else {
-								shipping.dialog(frm)
-							}
-						})
-					}
-				})
+				frappe.db
+					.get_value(
+						"Shipstation Settings",
+						{ name: r.message },
+						"enable_label_generation",
+					)
+					.then((settings) => {
+						if (settings.message.enable_label_generation) {
+							frm.add_custom_button(
+								`<i class="fa fa-tags"></i> Shipping Label`,
+								() => {
+									if (!shipping.carrier_options) {
+										frappe.throw(
+											__(`No carriers found to process labels. Please ensure the current
+										document is connected to Shipstation.`),
+										);
+									} else {
+										shipping.dialog(frm);
+									}
+								},
+							);
+						}
+					});
 			}
 		},
 	})
@@ -73,13 +82,15 @@ shipping.dialog = frm => {
 				onchange: () => {
 					const values = dialog.get_values()
 					if (values.ship_method_type) {
-						const carrier = shipping.carrier_options.find(a => (a.nickname || a.name) === values.ship_method_type)
-						const packages = carrier.packages.map(a => a.name).join('\n')
-						dialog.set_df_property('package', 'options', packages)
-						dialog.set_df_property('package', 'read_only', 0)
-						const services = carrier.services.map(a => a.name).join('\n')
-						dialog.set_df_property('service', 'options', services)
-						dialog.set_df_property('service', 'read_only', 0)
+						const carrier = shipping.carrier_options.find(
+							(a) => (a.nickname || a.name) === values.ship_method_type,
+						);
+						const packages = carrier.packages.map((a) => a.name).join("\n");
+						dialog.set_df_property("package", "options", packages);
+						dialog.set_df_property("package", "read_only", 0);
+						const services = carrier.services.map((a) => a.name).join("\n");
+						dialog.set_df_property("service", "options", services);
+						dialog.set_df_property("service", "read_only", 0);
 					}
 				},
 			},

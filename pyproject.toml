@@ -8,7 +8,8 @@ requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
-    "shipstation-client @ git+https://github.com/AgriTheory/shipstation-client.git@master#egg=shipstation-client"
+    "shipstation-client @ git+https://github.com/AgriTheory/shipstation-client.git@master#egg=shipstation-client",
+    "test_utils @ git+https://github.com/AgriTheory/test_utils.git@master#egg=test_utils",
 ]
 
 [build-system]

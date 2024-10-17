@@ -63,9 +63,6 @@ doctype_list_js = {
 
 # Installation
 # ------------
-
-# TODO: move to custom JSON: https://github.com/agritheory/shipstation_integration/issues/2
-before_migrate = "shipstation_integration.tests.setup.setup_custom_fields"
 after_migrate = ["shipstation_integration.install.add_custom_queue"]
 after_install = "shipstation_integration.install.after_install"
 
