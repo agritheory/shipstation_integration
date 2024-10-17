@@ -1,4 +1,6 @@
-from . import __version__ as app_version
+# Copyright (c) 2024, AgriTheory and contributors
+# For license information, please see license.txt
+
 
 app_name = "shipstation_integration"
 app_title = "Shipstation Integration"

@@ -12,8 +12,8 @@ locale
 *.egg-info
 dist/
 # build/
-cloud_storage/docs/current
-cloud_storage/public/dist
+shipstation_integration/docs/current
+shipstation_integration/public/dist
 .vscode
 .vs
 node_modules
