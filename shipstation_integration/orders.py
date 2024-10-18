@@ -1,6 +1,6 @@
 import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 import frappe
 from erpnext.stock.doctype.item.item import get_uom_conv_factor
@@ -21,6 +21,15 @@ if TYPE_CHECKING:
 	from shipstation_integration.shipstation_integration.doctype.shipstation_store.shipstation_store import (
 		ShipstationStore,
 	)
+
+STATUS_MAPPING = {
+	"awaiting_payment": "To Bill",
+	"awaiting_shipment": "To Deliver",
+	"cancelled": "Cancelled",
+	"on_hold": "On Hold",
+	"pending_fulfillment": "To Deliver",
+	"shipped": "Completed",
+}
 
 
 def queue_orders():
@@ -94,8 +103,21 @@ def validate_order(
 	if not order:
 		return False
 
-	# if an order already exists, skip
-	if frappe.db.get_value("Sales Order", {"shipstation_order_id": order.order_id, "docstatus": 1}):
+	# if an order already exists, skip, unless the status needs to be updated
+	existing_so = frappe.db.get_value(
+		"Sales Order",
+		{"shipstation_order_id": order.order_id},
+		["name", "status"],
+		as_dict=True,
+	)
+	if existing_so:
+		so_status = STATUS_MAPPING.get(order.order_status)
+		if existing_so.status == so_status:
+			return False
+		if so_status == "Cancelled":
+			frappe.get_doc("Sales Order", existing_so.name).cancel()
+		else:
+			frappe.db.set_value("Sales Order", existing_so.name, "status", so_status)
 		return False
 
 	# only create orders for warehouses defined in Shipstation Settings;
@@ -284,20 +306,25 @@ def create_erpnext_order(
 			)
 
 	so.save()
+	so.status = STATUS_MAPPING.get(order.order_status)
 
-	before_submit_hook = frappe.get_hooks("update_shipstation_order_before_submit")
-	if before_submit_hook:
-		so = frappe.get_attr(before_submit_hook[0])(store, so, order)
+	if so.status == "Cancelled":
+		so.cancel()
+	else:
+		before_submit_hook = frappe.get_hooks("update_shipstation_order_before_submit")
+		if before_submit_hook:
+			so = frappe.get_attr(before_submit_hook[0])(store, so, order)
+			if so:
+				so.save()
+
 		if so:
-			so.save()
-	if so:
-		so.submit()
-		frappe.db.commit()
+			so.submit()
+			frappe.db.commit()
 
-	after_submit_hook = frappe.get_hooks("update_shipstation_order_after_submit")
-	if before_submit_hook:
-		frappe.get_attr(after_submit_hook[0])(store, so, order)
-		frappe.db.commit()
+		after_submit_hook = frappe.get_hooks("update_shipstation_order_after_submit")
+		if after_submit_hook:
+			frappe.get_attr(after_submit_hook[0])(store, so, order)
+			frappe.db.commit()
 
 	if order.tag_ids:
 		for tag_id in order.tag_ids:
