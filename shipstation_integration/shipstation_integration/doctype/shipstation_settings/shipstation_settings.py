@@ -217,7 +217,7 @@ class ShipstationSettings(Document):
 		for product in products:
 			create_item(product, settings=self)
 
-		return f"{len(products.results)} product(s) imported succesfully"
+		return f"{len(products.results)} product(s) imported successfully"
 
 	def _carrier_data(self):
 		return json.loads(self.carrier_data)
