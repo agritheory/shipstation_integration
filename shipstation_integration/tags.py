@@ -33,11 +33,12 @@ def list_tags(
 
 		client = sss_doc.client()
 		tags = client.list_tags()
-
+		frappe.set_user(settings.shipstation_user)
 		for tag in tags:
 			if frappe.db.exists("Tag", tag.name):
-				continue
-			tag_doc = frappe.new_doc("Tag")
+				tag_doc = frappe.get_doc("Tag", tag.name)
+			else:
+				tag_doc = frappe.new_doc("Tag")
 			tag_doc.update(
 				{
 					"name": tag.name,
@@ -46,4 +47,4 @@ def list_tags(
 				}
 			)
 			tag_doc.save()
-			frappe.db.commit()
+		frappe.db.commit()
