@@ -101,9 +101,9 @@ after_install = "shipstation_integration.install.after_install"
 
 scheduler_events = {
 	"all": [
+		"shipstation_integration.tags.queue_tags",
 		"shipstation_integration.orders.queue_orders",
 		"shipstation_integration.shipments.queue_shipments",
-		"shipstation_integration.tags.queue_tags",
 	]
 }
 
