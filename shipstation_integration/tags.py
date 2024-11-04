@@ -1,3 +1,6 @@
+# Copyright (c) 2024, AgriTheory and contributors
+# For license information, please see license.txt
+
 from typing import TYPE_CHECKING
 
 import frappe
@@ -18,9 +21,7 @@ def queue_tags():
 
 
 @frappe.whitelist()
-def list_tags(
-	settings: "ShipstationSettings" = None,
-):
+def list_tags(settings: "ShipstationSettings" = None):
 	if not settings:
 		settings = frappe.get_all("Shipstation Settings", filters={"enabled": True})
 	elif not isinstance(settings, list):

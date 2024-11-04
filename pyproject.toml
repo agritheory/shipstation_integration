@@ -1,20 +1,35 @@
-[project]
-name = "shipstation_integration"
-authors = [
-    { name = "AgriTheory", email = "support@agritheory.dev"}
-]
+[tool.poetry]
+name = "shipstation-integration"
+version = "0.1.0"
 description = "Shipstation integration for ERPNext"
-requires-python = ">=3.10"
+authors = ["AgriTheory <support@agritheory.dev>"]
+license = "MIT"
 readme = "README.md"
-dynamic = ["version"]
-dependencies = [
-    "shipstation-client @ git+https://github.com/AgriTheory/shipstation-client.git@master#egg=shipstation-client",
-    "test_utils @ git+https://github.com/AgriTheory/test_utils.git@main#egg=test_utils",
-]
+
+[tool.poetry.dependencies]
+python = " >=3.10,<3.13"
+shipstation-client = {git = "https://github.com/agritheory/shipstation-client.git", rev = "master"}
+test-utils = {git = "https://github.com/agritheory/test_utils.git", rev = "main"}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+pytest-cov = "^6.0.0"
 
 [build-system]
-requires = ['flit_core>=3.2,<4']
-build-backend = 'flit_core.buildapi'
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+addopts = "--cov=shipstation_integration --cov-report term-missing"
+
+[tool.coverage.report]
+skip_covered = true
+skip_empty = true
+omit = [
+    "*/config/*",
+    "*/patches/*",
+    "*/tests/*",
+]
 
 [tool.black]
 line-length = 99

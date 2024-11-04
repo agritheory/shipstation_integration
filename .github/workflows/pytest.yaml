@@ -1,11 +1,19 @@
-name: Pytest CI
+name: Tests
 
 on:
+  push:
+    branches:
+      - version-15
   pull_request:
+    branches:
+      - version-15
+
+env:
+    BRANCH_NAME: ${{ github.base_ref || github.ref_name }}
 
 jobs:
   tests:
-    name: Server
+    name: Pytest
     runs-on: ubuntu-latest
 
     services:
@@ -13,7 +21,7 @@ jobs:
         image: mariadb:10.6
         env:
           MYSQL_ALLOW_EMPTY_PASSWORD: YES
-          MYSQL_ROOT_PASSWORD: "admin"
+          MYSQL_ROOT_PASSWORD: 'admin'
         ports:
           - 3306:3306
         options: --health-cmd="mysqladmin ping" --health-interval=5s --health-timeout=2s --health-retries=3
@@ -25,13 +33,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          check-latest: true
+          python-version: '3.10'
 
       - name: Add to Hosts
         run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
@@ -45,25 +47,30 @@ jobs:
             ${{ runner.os }}-pip-
             ${{ runner.os }}-
 
-      - name: Install JS Dependencies
-        run: yarn --prefer-offline
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
 
       - name: Install App Dependencies
         run: bash ${{ github.workspace }}/.github/helper/install_dependencies.sh
 
       - name: Install Bench Site and Apps
         env:
-          MYSQL_HOST: "localhost"
-          MYSQL_PWD: "admin"
-        run: bash ${{ github.workspace }}/.github/helper/install.sh
+          MYSQL_HOST: 'localhost'
+          MYSQL_PWD: 'admin'
+          BRANCH_NAME: ${{ env.BRANCH_NAME}}
+        run: |
+          bash ${{ github.workspace }}/.github/helper/install.sh
 
-      # TODO: enable pytest after adding tests
       - name: Run Tests
         working-directory: /home/runner/frappe-bench
-        run: bench --site test_site run-tests --app shipstation_integration
+        run: |
+          source env/bin/activate
+          cd apps/shipstation_integration
+          poetry install
+          pytest --cov=shipstation_integration --cov-report=xml --disable-warnings -s | tee pytest-coverage.txt
 
-      # - name: Run Tests
-      #   working-directory: /home/runner/frappe-bench
-      #   run: |
-      #     source env/bin/activate
-      #     pytest ./apps/shipstation_integration/shipstation_integration/tests/ --disable-warnings -s
+      - name: Pytest coverage comment
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          pytest-coverage-path: /home/runner/frappe-bench/apps/shipstation_integration/pytest-coverage.txt
+          pytest-xml-coverage-path: /home/runner/frappe-bench/apps/shipstation_integration/coverage.xml

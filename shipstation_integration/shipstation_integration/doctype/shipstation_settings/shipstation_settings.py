@@ -14,7 +14,7 @@ from shipstation_integration.items import create_item
 from shipstation_integration.orders import list_orders
 from shipstation_integration.shipments import list_shipments
 from shipstation_integration.tags import list_tags
-from shipstation_integration.utils import get_marketplace
+from shipstation_integration.utils import MARKETPLACES
 
 
 class ShipstationSettings(Document):
@@ -179,7 +179,7 @@ class ShipstationSettings(Document):
 						"amazon_marketplace": store.account_name,
 						"enable_orders": 1,
 						"store_id": store.store_id,
-						"marketplace_name": get_marketplace(id=store.account_name).sales_partner,
+						"marketplace_name": MARKETPLACES.get(store.account_name),
 						"store_name": store.store_name,
 					},
 				)
@@ -217,7 +217,7 @@ class ShipstationSettings(Document):
 		for product in products:
 			create_item(product, settings=self)
 
-		return f"{len(products.results)} product(s) imported succesfully"
+		return f"{len(products.results)} product(s) imported successfully"
 
 	def _carrier_data(self):
 		return json.loads(self.carrier_data)
