@@ -25,7 +25,15 @@ addopts = "--cov=shipstation_integration --cov-report term-missing"
 [tool.coverage.report]
 skip_covered = true
 skip_empty = true
-omit = ["*/config/*", "*/patches/*", "*/tests/*", "*/test_*.py"]
+omit = [
+    "*/boot.py",
+    "*/config/*",
+    "*/hooks.py",
+    "*/install.py",
+    "*/patches/*",
+    "*/test_*.py",
+    "*/tests/*",
+]
 # https://coverage.readthedocs.io/en/latest/excluding.html#advanced-exclusion
 exclude_also = [
     "def __repr__",
