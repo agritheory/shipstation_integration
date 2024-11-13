@@ -233,7 +233,10 @@ def create_erpnext_order(
 	if store.customer:
 		so.customer_name = order.customer_email
 	# coupons
-	if order.get("amount_paid", 0) > 0 and Decimal(so.grand_total).quantize(Decimal(".01")) != order.amount_paid:
+	if (
+		order.get("amount_paid", 0) > 0 # skip negative (returned) amount_paid values
+		and Decimal(so.grand_total).quantize(Decimal(".01")) != order.amount_paid
+	):
 		difference_amount = Decimal(Decimal(so.grand_total).quantize(Decimal(".01")) - order.amount_paid)
 		so.shipstation_discount = difference_amount
 		account = store.difference_account
