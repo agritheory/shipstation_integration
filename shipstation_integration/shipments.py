@@ -174,7 +174,24 @@ def create_sales_invoice(shipment: "ShipStationOrder", store: "ShipstationStore"
 			},
 		)
 
-	si.save()
+	try:
+		si.save()
+	except Exception as e:
+		error_details = {
+			"shipstation_order_id": shipment.order_id,
+			"shipstation_shipment_id": shipment.shipment_id,
+			"grand_total": si.grand_total,
+			"base_grand_total": si.base_grand_total,
+			"shipment_cost": shipment.shipment_cost,
+			"exception": str(e),
+			"traceback": frappe.get_traceback(),
+		}
+		frappe.log_error(
+			message=f"Failed to submit Sales Invoice for ShipStation order {shipment.order_id}. Details: {error_details}",
+			title=f"SI Submission Error - {shipment.shipment_id}",
+		)
+		return
+
 	si.submit()
 	return si
 
