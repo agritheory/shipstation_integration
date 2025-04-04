@@ -8,6 +8,7 @@
 	"field_order": [
 		"enabled",
 		"enable_label_generation",
+		"sync_so_status",
 		"api_key",
 		"api_secret",
 		"default_item_group",
@@ -20,8 +21,9 @@
 		"get_tags",
 		"update_carriers_and_stores",
 		"sb_filters",
-		"since_date",
+		"hours_to_fetch",
 		"column_break_lzby",
+		"since_date",
 		"sb_warehouses",
 		"shipstation_warehouses",
 		"fetch_warehouses",
@@ -179,11 +181,23 @@
 			"fieldname": "get_tags",
 			"fieldtype": "Button",
 			"label": "Get Tags"
+		},
+		{
+			"default": "0",
+			"fieldname": "sync_so_status",
+			"fieldtype": "Check",
+			"label": "Synchronize Order Status"
+		},
+		{
+			"description": "How many hours should we look back for orders on the initial sync?",
+			"fieldname": "hours_to_fetch",
+			"fieldtype": "Int",
+			"label": "Order Age"
 		}
 	],
 	"hide_toolbar": 1,
 	"links": [],
-	"modified": "2024-09-30 09:21:18.572013",
+	"modified": "2024-11-12 12:06:40.629435",
 	"modified_by": "Administrator",
 	"module": "Shipstation Integration",
 	"name": "Shipstation Settings",

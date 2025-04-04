@@ -1,6 +1,8 @@
 import frappe
 from erpnext.selling.doctype.sales_order.sales_order import SalesOrder
 
+from shipstation_integration.orders import update_shipstation_order_status
+
 
 class ShipStationSalesOrder(SalesOrder):
 	def calculate_commission(self):
@@ -11,6 +13,33 @@ class ShipStationSalesOrder(SalesOrder):
 			super().calculate_commission()
 		elif self.shipstation_order_id and commission_formula:
 			self.total_commission = get_formula_based_commission(self, commission_formula)
+
+	def get_sss(self):
+		sss_name = frappe.db.get_value(
+			"Shipstation Store",
+			{
+				"store_name": self.shipstation_store_name,
+				"marketplace_name": self.marketplace,
+			},
+			["parent"],
+		)
+		if sss_name:
+			return frappe.get_doc("Shipstation Settings", sss_name)
+		else:
+			return None
+
+	# synchronize status with shipstation
+	def on_change(self):
+		if (
+			self.shipstation_order_id
+			and self.has_value_changed("status")
+			and self.status not in ["Draft", "Closed"]
+		):
+			sss = self.get_sss()
+			if sss and sss.enabled and sss.sync_so_status and frappe.session.user != sss.shipstation_user:
+				update_shipstation_order_status(
+					settings=sss, order_id=self.shipstation_order_id, status=self.status
+				)
 
 
 def get_formula_based_commission(doc, commission_formula=None):
