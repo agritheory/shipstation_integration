@@ -18,7 +18,7 @@ def shipstation_webhook():
 	store_id = parsed_qs.get("storeID", [None])[0]
 	import_batch = parsed_qs.get("importBatch", [None])[0]
 	store = frappe.get_doc("Shipstation Store", {"store_id": store_id})
-	sss_doc = frappe.get_doc("Shipstation Settings", store.shipstation_settings)
+	sss_doc = frappe.get_doc("Shipstation Settings", store.parent)
 	client = sss_doc.client()
 
 	if resource_type == "ORDER_NOTIFY":
