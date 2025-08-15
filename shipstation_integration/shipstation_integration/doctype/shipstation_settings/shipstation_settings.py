@@ -9,6 +9,7 @@ from frappe.model.document import Document
 from frappe.utils.nestedset import get_root_of
 from httpx import HTTPError
 from shipstation import ShipStation
+from shipstation.models import ShipStationWebhook
 
 from shipstation_integration.items import create_item
 from shipstation_integration.orders import list_orders
@@ -51,6 +52,11 @@ class ShipstationSettings(Document):
 		if self.enabled:
 			self.update_carriers_and_stores()
 			self.update_warehouses()
+			self.add_webhooks()
+
+	def on_update(self):
+		if self.enabled:
+			self.add_webhooks()
 
 	@frappe.whitelist()
 	def get_orders(self):
@@ -242,3 +248,40 @@ class ShipstationSettings(Document):
 						_package = pack["code"]
 
 		return _carrier, _service, _package
+
+	def add_webhooks(self):
+		if not self.enabled:
+			return
+
+		WEBHOOK_RECEIVER_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.webhook_receiver.shipstation_webhook"
+		WEBHOOK_TYPES = [
+			"ORDER_NOTIFY",
+			"SHIP_NOTIFY",
+		]  # ORDER_NOTIFY, ITEM_ORDER_NOTIFY, SHIP_NOTIFY, ITEM_SHIP_NOTIFY, FULFILLMENT_SHIPPED, FULFILLMENT_REJECTED
+
+		client = self.client()
+		existing_webhooks = client.list_webhooks()
+
+		for store in self.shipstation_stores:
+			for webhook_type in WEBHOOK_TYPES:
+				filtered_webhook = list(
+					filter(
+						lambda webhook: webhook.store_id == store.store_id
+						and webhook.hook_type == webhook_type
+						and webhook.url == WEBHOOK_RECEIVER_URL,
+						existing_webhooks,
+					)
+				)
+				if not filtered_webhook:
+					webhook = ShipStationWebhook(
+						active=True,
+						store_id=store.store_id,
+						resource_type=webhook_type,
+						event=webhook_type,
+						hook_type=webhook_type,
+						url=WEBHOOK_RECEIVER_URL,
+						target_url=WEBHOOK_RECEIVER_URL,
+						friendly_name="ERPNext",
+						name="ERPNext",
+					)
+					client.subscribe_to_webhook(webhook)

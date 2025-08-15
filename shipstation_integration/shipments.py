@@ -273,3 +273,32 @@ def create_shipment(
 	frappe.db.commit()
 
 	return shipment_doc
+
+
+def create_shipment_from_webhook(
+	shipment: dict, store: "ShipstationStore", settings: "ShipstationSettings"
+):
+	store = frappe.get_doc("Shipstation Store", store)
+	settings = frappe.fget_doc("Shipstation Settings", settings)
+	shipment = ShipStationOrder().json(shipment)
+
+	if not store.enable_shipments or not any(
+		[
+			store.create_sales_invoice,
+			store.create_delivery_note,
+			store.create_shipment,
+		]
+	):
+		return
+
+	if settings.since_date and getdate(shipment.create_date) < settings.since_date:
+		return
+
+	if frappe.db.exists(
+		"Delivery Note",
+		{"docstatus": 1, "shipstation_order_id": shipment.order_id},
+	):
+		if shipment.voided:
+			cancel_voided_shipments(shipment, settings)
+	else:
+		create_erpnext_shipment(shipment, store, settings)
