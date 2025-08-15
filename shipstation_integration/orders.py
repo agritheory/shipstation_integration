@@ -320,9 +320,7 @@ def get_item_notes(item: "ShipStationOrderItem"):
 	return notes
 
 
-def create_order_from_webhook(
-	order: dict, store: "ShipstationStore", settings: "ShipstationSettings"
-):
+def create_order_from_webhook(order: dict, store: str, settings: str):
 	store = frappe.get_doc("Shipstation Store", store)
 	settings = frappe.fget_doc("Shipstation Settings", settings)
 	order = ShipStationOrder().json(order)
