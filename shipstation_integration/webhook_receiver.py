@@ -6,12 +6,6 @@ import frappe
 
 @frappe.whitelist(allow_guest=True)
 def shipstation_webhook():
-	"""
-	{
-	    "resource_url": "https://ssapi.shipstation.com/orders?storeID=93850&importBatch=bc41e4db-3a89-4680-bf61-7a8018a0ab2d",
-	    "resource_type": "ORDER_NOTIFY"
-	}
-	"""
 	data = frappe.local.form_dict or json.loads(frappe.local.request.data)
 
 	resource_type = data.get("resource_type")
