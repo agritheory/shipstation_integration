@@ -277,7 +277,7 @@ def create_shipment(
 
 def create_shipment_from_webhook(shipment: dict, store: str, settings: str):
 	store = frappe.get_doc("Shipstation Store", store)
-	settings = frappe.fget_doc("Shipstation Settings", settings)
+	settings = frappe.get_doc("Shipstation Settings", settings)
 	shipment = ShipStationOrder().json(shipment)
 
 	if not store.enable_shipments or not any(
