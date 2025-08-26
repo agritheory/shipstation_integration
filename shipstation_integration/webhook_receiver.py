@@ -35,7 +35,7 @@ def shipstation_webhook():
 				settings=sss_doc.name,
 			)
 
-	elif resource_type == "SHIP_NOTIFY":
+	elif resource_type in ["SHIP_NOTIFY", "ITEM_SHIP_NOTIFY"]:
 		response = client.get(
 			endpoint="/shipments", payload={"storeID": store_id, "importBatch": import_batch}
 		)
