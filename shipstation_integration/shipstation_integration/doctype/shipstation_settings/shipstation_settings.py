@@ -258,7 +258,7 @@ class ShipstationSettings(Document):
 			"ORDER_NOTIFY",
 			"SHIP_NOTIFY",
 			"ITEM_SHIP_NOTIFY",
-		]  # ORDER_NOTIFY, ITEM_ORDER_NOTIFY, SHIP_NOTIFY, ITEM_SHIP_NOTIFY, FULFILLMENT_SHIPPED, FULFILLMENT_REJECTED
+		]
 
 		client = self.client()
 		existing_webhooks = client.list_webhooks()
