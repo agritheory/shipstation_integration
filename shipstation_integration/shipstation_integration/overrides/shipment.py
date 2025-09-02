@@ -6,7 +6,10 @@ class ShipStationShipment(Shipment):
 	def on_submit(self):
 		super().on_submit()
 		seventeentrack = frappe.get_single("Seventeen Track")
-		if self.amended_from:
+		if (
+			self.amended_from
+			and frappe.db.get_value(self.doctype, self.amended_from, "shipment_id") == self.shipment_id
+		):
 			seventeentrack.retrack(self.shipment_id, self.carrier)
 		else:
 			seventeentrack.track_shipment_id(self.shipment_id, self.carrier)
