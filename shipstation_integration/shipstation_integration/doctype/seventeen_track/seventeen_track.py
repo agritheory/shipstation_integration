@@ -97,18 +97,17 @@ class SeventeenTrack(Document):
 		if not shipment_id:
 			return
 
-		seventeentrack = frappe.get_single("Seventeen Track")
-		if not seventeentrack.api_key:
+		if not self.api_key:
 			frappe.throw(_("17Track API key is not configured."))
 
-		client = SeventeenTrackClient(seventeentrack.get_password("api_key"))
+		client = SeventeenTrackClient(self.get_password("api_key"))
 		tracks = [{"number": shipment_id, "carrier": carrier or ""}]
 
 		if action == "track":
 			client.register_tracks(tracks)
-		elif action == "retrack":
-			client.stop_tracking(tracks)
 		elif action == "stop":
+			client.stop_tracking(tracks)
+		elif action == "retrack":
 			client.retrack(tracks)
 
 
