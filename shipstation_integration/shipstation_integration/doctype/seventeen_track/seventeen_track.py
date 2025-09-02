@@ -83,13 +83,16 @@ STATUS_DESCRIPTION_MAP = {
 
 
 class SeventeenTrack(Document):
-	pass
+	def track_shipment_id(self, shipment_id: str | None = None, carrier: str | None = None) -> None:
+		self.action("track", shipment_id, carrier)
 
+	def stop_tracking(self, shipment_id: str | None = None, carrier: str | None = None) -> None:
+		self.action("stop", shipment_id, carrier)
 
-class SeventeenTrackAPIError(Exception):
-	def track_shipment_id(
-		self, shipment_id: str | None = None, carrier: str | None = None
-	) -> None | None:
+	def retrack(self, shipment_id: str | None = None, carrier: str | None = None) -> None:
+		self.action("retrack", shipment_id, carrier)
+
+	def action(self, action: str, shipment_id: str | None = None, carrier: str | None = None) -> None:
 
 		if not shipment_id:
 			return
@@ -100,7 +103,17 @@ class SeventeenTrackAPIError(Exception):
 
 		client = SeventeenTrackClient(seventeentrack.get_password("api_key"))
 		tracks = [{"number": shipment_id, "carrier": carrier or ""}]
-		client.register_tracks(tracks=tracks)
+
+		if action == "track":
+			client.register_tracks(tracks)
+		elif action == "retrack":
+			client.stop_tracking(tracks)
+		elif action == "stop":
+			client.retrack(tracks)
+
+
+class SeventeenTrackAPIError(Exception):
+	pass
 
 
 class SeventeenTrackClient:
