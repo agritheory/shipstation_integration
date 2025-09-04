@@ -183,9 +183,6 @@ class SeventeenTrackClient:
 
 @frappe.whitelist(allow_guest=True)
 def seventeentrack_webhook():
-	"""
-	/api/method/shipstation_integration.shipstation_integration.doctype.seventeen_track.seventeen_track.seventeentrack_webhook
-	"""
 	data = frappe.local.form_dict or json.loads(frappe.local.request.data)
 
 	if data.get("event") == "TRACKING_STOPPED":
