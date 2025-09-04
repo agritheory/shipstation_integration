@@ -22,7 +22,7 @@ It enables automatic tracking, status sync, and comment logging for shipments ha
   - `API Key`: Your 17TRACK API key. _(Required)_
   - `Add Updates as Comments`: Enable to log tracking status changes as comments on Shipment.
 
-![Screen shot of the Seventeen Track doctype formview.](./assets/seventeen_track.png)
+![Screen shot of the Seventeen Track doctype formview.](./assets/seventeentrack.png)
 
 --- 
 
