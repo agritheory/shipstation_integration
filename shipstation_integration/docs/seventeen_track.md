@@ -22,6 +22,8 @@ It enables automatic tracking, status sync, and comment logging for shipments ha
   - `API Key`: Your 17TRACK API key. _(Required)_
   - `Add Updates as Comments`: Enable to log tracking status changes as comments on Shipment.
 
+![Screen shot of the Seventeen Track doctype formview.](./assets/seventeen_track.png)
+
 --- 
 
 ## **Shipment Doctype Custom Fields**
@@ -42,6 +44,8 @@ The following custom fields are added to the Shipment doctype:
 
 - Carrier information is fetched from 17TRACK's API to a Virtual Doctype and cached for fast lookup.
 - **Manual Refresh:** On the **Carrier list view**, click the **"Update Carriers"** button to refresh the cache.
+
+![Screen shot of the Carrier virtual doctype listview.](./assets/carrier_listview.png)
 
 ---
 
