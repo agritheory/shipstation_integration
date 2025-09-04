@@ -2,7 +2,7 @@
 # For license information, please see license.txt
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import frappe
 import requests
@@ -215,28 +215,29 @@ def seventeentrack_webhook():
 
 	shipment.seventeen_track_latest_status_time = latest_event.get("time_utc")
 
-	# Not allowed after submision, maybe set_value?
-	# if carrier and not shipment.carrier:
-	# 	shipment.carrier = carrier
+	if carrier and not shipment.seventeen_track_carrier:
+		shipment.seventeen_track_carrier = carrier
 
-	shipment.add_comment(
-		comment_type="Comment",  # Info?
-		text=_(
-			"**17TRACK Update**\n"
-			"\n"
-			"- **Status:** {status}\n"
-			"- **Sub-status:** {sub_status}\n"
-			"- **Sub-status description:** {sub_status_desc}\n"
-			"- **Event Time:** {event_time}\n"
-			"- **Description:** {description}"
-		).format(
-			status=latest_status.get("status"),
-			sub_status=latest_status.get("sub_status"),
-			sub_status_desc=sub_status_desc,
-			event_time=latest_event.get("time_utc"),
-			description=latest_event.get("description"),
-		),
-	)
+	seventeen_track_settings = frappe.get_single("Seventeen Track")
+	if seventeen_track_settings.add_updates_as_comments:
+		shipment.add_comment(
+			comment_type="Comment",
+			text=_(
+				"**17TRACK Update**\n"
+				"\n"
+				"- **Status:** {status}\n"
+				"- **Sub-status:** {sub_status}\n"
+				"- **Sub-status description:** {sub_status_desc}\n"
+				"- **Event Time:** {event_time}\n"
+				"- **Description:** {description}"
+			).format(
+				status=latest_status.get("status"),
+				sub_status=latest_status.get("sub_status"),
+				sub_status_desc=sub_status_desc,
+				event_time=latest_event.get("time_utc"),
+				description=latest_event.get("description"),
+			),
+		)
 
 	shipment.save(ignore_permissions=True)
 	frappe.db.commit()

@@ -3,7 +3,10 @@
 
 import frappe
 import requests
+from frappe import _
 from frappe.model.document import Document
+
+CACHE_KEY = "seventeentrack_carriers"
 
 
 class Carrier(Document):
@@ -13,11 +16,9 @@ class Carrier(Document):
 
 	@staticmethod
 	def get_current_data() -> dict[str, dict]:
-		cache_key = "seventeentrack_carriers"
-		data = frappe.cache().get_value(cache_key)
+		data = frappe.cache().get_value(CACHE_KEY)
 		if data:
 			return data
-
 		carriers = requests.get("https://res.17track.net/asset/carrier/info/apicarrier.all.json").json()
 		data = {}
 		for carrier in carriers:
@@ -32,7 +33,7 @@ class Carrier(Document):
 					"email": carrier.get("_email", ""),
 				}
 			)
-		frappe.cache().set_value(cache_key, data)
+		frappe.cache().set_value(CACHE_KEY, data)
 		return data
 
 	@staticmethod
@@ -114,3 +115,10 @@ class Carrier(Document):
 
 	def delete(self):
 		pass
+
+
+@frappe.whitelist()
+def fetch_carriers():
+	frappe.cache().delete_value(CACHE_KEY)
+	Carrier.get_current_data()
+	return _("Carriers Updated.")
