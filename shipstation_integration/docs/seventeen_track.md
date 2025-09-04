@@ -1,4 +1,4 @@
-# SeventeenTrack Integration for ERPNext
+# 17Track Integration
 
 This integration connects [17TRACK](https://www.17track.net/) global shipment tracking with ERPNext via the Shipstation Integration app.  
 It enables automatic tracking, status sync, and comment logging for shipments handled via 17TRACK.
@@ -15,14 +15,16 @@ It enables automatic tracking, status sync, and comment logging for shipments ha
 
 ## Setup
 
-### 1. **Seventeen Track Doctype**
+### **Seventeen Track Doctype**
 
 - Go to **Seventeen Track** DocType.
 - **Fields:**
   - `API Key`: Your 17TRACK API key. _(Required)_
   - `Add Updates as Comments`: Enable to log tracking status changes as comments on Shipment.
 
-### 2. **Shipment Doctype Custom Fields**
+--- 
+
+## **Shipment Doctype Custom Fields**
 
 The following custom fields are added to the Shipment doctype:
 
@@ -92,12 +94,3 @@ If `Add Updates as Comments` is enabled, the following is added to Shipment as a
 
 - Obtain your 17TRACK API key from [17TRACK](https://www.17track.net/) account.
 - Enter it in Seventeen Track DocType.
-
----
-
-## Troubleshooting
-
-- **Webhook not updating:** Ensure 17TRACK is posting to the correct ERPNext endpoint and API key is set.
-- **Carrier autosuggest not working:** Refresh carrier cache via **Update Carriers** button.
-- **Comments not logged:** Check `Add Updates as Comments` setting in Seventeen Track.
-
