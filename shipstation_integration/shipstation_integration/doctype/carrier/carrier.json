@@ -1,9 +1,11 @@
 {
  "actions": [],
+ "autoname": "field:key",
  "creation": "2025-09-01 11:38:40.201019",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "key",
   "carrier_name",
   "country",
   "website",
@@ -38,16 +40,26 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Name"
+  },
+  {
+   "fieldname": "key",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Key",
+   "no_copy": 1,
+   "unique": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_virtual": 1,
  "links": [],
- "modified": "2025-09-01 12:15:45.420053",
+ "modified": "2025-09-04 08:35:36.677471",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Carrier",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {
@@ -64,7 +76,9 @@
   }
  ],
  "row_format": "Dynamic",
+ "show_title_field_in_link": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "title_field": "carrier_name"
 }
