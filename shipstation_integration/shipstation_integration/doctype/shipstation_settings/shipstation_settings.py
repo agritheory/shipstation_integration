@@ -130,8 +130,8 @@ class ShipstationSettings(Document):
 						}
 						for s in services
 					]
-				except Exception:
-					pass
+				except Exception as e:
+					frappe.logger("shipstation").warning(f"Failed to fetch carrier services for {carrier.get('carrier_code')}: {e}")
 
 				# Fetch packages for this carrier
 				try:
@@ -143,8 +143,8 @@ class ShipstationSettings(Document):
 						}
 						for p in packages
 					]
-				except Exception:
-					pass
+				except Exception as e:
+					frappe.logger("shipstation").warning(f"Failed to fetch carrier packages for {carrier.get('carrier_code')}: {e}")
 
 				carrier_list.append(carrier_data)
 

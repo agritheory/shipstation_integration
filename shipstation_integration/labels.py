@@ -343,14 +343,17 @@ def _download_and_attach_label(
 		with httpx.Client() as client:
 			response = client.get(label_url, headers=headers)
 			if response.status_code == 200:
-				# Check if response is base64 or direct PDF
 				content = response.content
-				try:
-					# Try to decode as base64
-					pdf_content = base64.b64decode(content)
-				except Exception:
-					# Already binary PDF
+				# Check Content-Type header or PDF magic bytes to determine if already binary PDF
+				content_type = response.headers.get("content-type", "")
+				if "application/pdf" in content_type or content[:4] == b"%PDF":
 					pdf_content = content
+				else:
+					# Assume base64 encoded
+					try:
+						pdf_content = base64.b64decode(content)
+					except Exception:
+						pdf_content = content
 
 				pdf = BytesIO(pdf_content)
 

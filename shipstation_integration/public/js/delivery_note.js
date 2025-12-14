@@ -63,7 +63,8 @@ function add_rate_shopping_button(frm) {
 function show_rate_selection_dialog(frm, rates) {
 	// Format rates for display
 	const rate_options = rates.map(rate => {
-		const amount = rate.shipping_amount?.amount || rate.shipping_amount || 0
+		const rawAmount = rate.shipping_amount?.amount ?? rate.shipping_amount ?? 0
+		const amount = typeof rawAmount === 'number' ? rawAmount : parseFloat(rawAmount) || 0
 		const currency = rate.shipping_amount?.currency || 'USD'
 		const delivery_info = rate.delivery_days ? ` (${rate.delivery_days} days)` : ''
 		return {
@@ -113,7 +114,8 @@ function show_rate_selection_dialog(frm, rates) {
 
 		if (selected && selected.rate) {
 			const rate = selected.rate
-			const amount = rate.shipping_amount?.amount || rate.shipping_amount || 0
+			const rawAmount = rate.shipping_amount?.amount ?? rate.shipping_amount ?? 0
+			const amount = typeof rawAmount === 'number' ? rawAmount : parseFloat(rawAmount) || 0
 			const currency = rate.shipping_amount?.currency || 'USD'
 
 			let details_html = `

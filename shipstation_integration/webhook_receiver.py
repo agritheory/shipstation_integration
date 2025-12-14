@@ -127,10 +127,7 @@ def shipstation_api_webhook():
 		return {"status": "ignored", "message": "No event type specified"}
 
 	# Log the webhook for debugging
-	frappe.log_error(
-		title=f"ShipStation API Webhook: {event_type}",
-		message=json.dumps(data, indent=2),
-	)
+	frappe.logger("shipstation").debug(f"Webhook received: {event_type}\n{json.dumps(data, indent=2)}")
 
 	# Route to appropriate handler
 	handlers = {
@@ -163,10 +160,7 @@ def _handle_batch_complete(data: dict) -> dict:
 		return {"status": "ignored", "message": "No batch_id in payload"}
 
 	# Log batch completion
-	frappe.log_error(
-		title="ShipStation Batch Complete",
-		message=f"Batch {batch_id} processing complete",
-	)
+	frappe.logger("shipstation").debug(f"Batch {batch_id} processing complete")
 
 	# Could trigger follow-up actions like downloading labels
 	# For now, just acknowledge
@@ -196,7 +190,6 @@ def _handle_tracking_update(data: dict) -> dict:
 			"tracking_status",
 			status,
 		)
-		frappe.db.commit()
 
 	# Also update Shipment documents
 	shipments = frappe.get_all(
@@ -212,7 +205,6 @@ def _handle_tracking_update(data: dict) -> dict:
 			"tracking_status",
 			status,
 		)
-		frappe.db.commit()
 
 	return {
 		"status": "success",
@@ -225,10 +217,7 @@ def _handle_carrier_connected(data: dict) -> dict:
 	carrier_data = data.get("data", {})
 	carrier_name = carrier_data.get("friendly_name") or carrier_data.get("carrier_code")
 
-	frappe.log_error(
-		title="ShipStation Carrier Connected",
-		message=f"New carrier connected: {carrier_name}",
-	)
+	frappe.logger("shipstation").info(f"New carrier connected: {carrier_name}")
 
 	return {"status": "success", "message": f"Carrier {carrier_name} connection noted"}
 
@@ -261,7 +250,6 @@ def _handle_label_created(data: dict) -> dict:
 					"carrier": label_data.get("carrier_code", "").upper(),
 				},
 			)
-			frappe.db.commit()
 
 	return {"status": "success", "message": f"Label {label_id} noted"}
 
@@ -287,6 +275,5 @@ def _handle_order_status_change(data: dict) -> dict:
 				"shipstation_order_status",
 				new_status,
 			)
-			frappe.db.commit()
 
 	return {"status": "success", "message": f"Order {order_id} status update noted"}

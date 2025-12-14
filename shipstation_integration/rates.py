@@ -260,7 +260,18 @@ def _format_rates_response(rates_response) -> list[dict]:
 	"""Format rates response for frontend consumption."""
 	rates = []
 
-	rate_list = rates_response if isinstance(rates_response, list) else rates_response.get("rate_response", {}).get("rates", [])
+	try:
+		if isinstance(rates_response, list):
+			rate_list = rates_response
+		elif hasattr(rates_response, "rate_response"):
+			rate_list = rates_response.rate_response.rates or []
+		elif isinstance(rates_response, dict):
+			rate_list = rates_response.get("rate_response", {}).get("rates", [])
+		else:
+			rate_list = []
+	except Exception as e:
+		frappe.logger("shipstation").warning(f"Failed to parse rates response: {e}")
+		rate_list = []
 
 	for rate in rate_list:
 		rates.append(_format_single_rate(rate))

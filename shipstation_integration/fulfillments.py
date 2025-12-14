@@ -42,7 +42,8 @@ def create_fulfillment(
 	if not dn.tracking_number:
 		frappe.throw(_("Delivery Note must have a tracking number to create a fulfillment"))
 
-	settings = _get_settings(settings_name or dn.integration_doc)
+	effective_settings = settings_name or (dn.integration_doc if dn.integration_doc else None)
+	settings = _get_settings(effective_settings)
 	client = settings.shipstation_api_client()
 
 	# Get shipping address
@@ -53,7 +54,7 @@ def create_fulfillment(
 		"shipment_number": dn.name,
 		"tracking_number": dn.tracking_number,
 		"carrier_code": (dn.carrier or "").lower().replace(" ", "_"),
-		"ship_date": str(dn.posting_date) if dn.posting_date else None,
+		"ship_date": dn.posting_date.isoformat() if dn.posting_date else None,
 	}
 
 	# Add ship-to info if available
