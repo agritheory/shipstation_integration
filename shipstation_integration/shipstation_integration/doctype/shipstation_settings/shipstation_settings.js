@@ -31,6 +31,8 @@ frappe.ui.form.on('Shipstation Settings', {
 
 	refresh: frm => {
 		frm.trigger('toggle_mandatory_table_fields')
+		frm.trigger('enable_shipstation_api')
+
 		if (frm.doc.carrier_data) {
 			const wrapper = $(frm.fields_dict.carriers_html.wrapper)
 			wrapper.html(
@@ -38,6 +40,21 @@ frappe.ui.form.on('Shipstation Settings', {
 					carriers: frm.doc.__onload.carriers,
 				})
 			)
+		}
+
+		// Show API v2 carrier count if available
+		if (frm.doc.enable_shipstation_api && frm.doc.shipstation_api_carrier_data) {
+			try {
+				const api_carriers = JSON.parse(frm.doc.shipstation_api_carrier_data)
+				if (api_carriers.length > 0) {
+					frm.dashboard.add_indicator(
+						__('API v2 Carriers: {0}', [api_carriers.length]),
+						'blue'
+					)
+				}
+			} catch (e) {
+				// Ignore parse errors
+			}
 		}
 	},
 
@@ -105,6 +122,44 @@ frappe.ui.form.on('Shipstation Settings', {
 	reset_warehouses: frm => {
 		frm.set_value('shipstation_warehouses', [])
 		frm.save()
+	},
+
+	// ShipStation API v2 handlers
+	test_api_connection: frm => {
+		if (!frm.doc.enable_shipstation_api) {
+			frappe.msgprint(__('Please enable ShipStation API v2 first.'))
+			return
+		}
+		frappe.show_alert(__('Testing API connection...'))
+		frm.call({
+			doc: frm.doc,
+			method: 'test_shipstation_api_connection',
+			freeze: true,
+		})
+	},
+
+	fetch_api_carriers: frm => {
+		if (!frm.doc.enable_shipstation_api) {
+			frappe.msgprint(__('Please enable ShipStation API v2 first.'))
+			return
+		}
+		frappe.show_alert(__('Fetching API carriers...'))
+		frm
+			.call({
+				doc: frm.doc,
+				method: 'fetch_api_carriers',
+				freeze: true,
+			})
+			.done(() => {
+				frm.reload_doc()
+			})
+	},
+
+	enable_shipstation_api: frm => {
+		// Show/hide API key field based on checkbox
+		frm.toggle_display('shipstation_api_key', frm.doc.enable_shipstation_api)
+		frm.toggle_display('test_api_connection', frm.doc.enable_shipstation_api && !frm.is_new())
+		frm.toggle_display('fetch_api_carriers', frm.doc.enable_shipstation_api && !frm.is_new())
 	},
 
 	toggle_mandatory_table_fields: frm => {

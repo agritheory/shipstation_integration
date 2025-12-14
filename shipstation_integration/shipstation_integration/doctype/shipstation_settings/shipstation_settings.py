@@ -8,6 +8,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils.nestedset import get_root_of
 from httpx import HTTPError
+from shipengine import ShipEngine
 from shipstation import ShipStation
 from shipstation.models import ShipStationWebhook
 
@@ -77,6 +78,111 @@ class ShipstationSettings(Document):
 			debug=False,
 			timeout=30,
 		)
+
+	def shipstation_api_client(self):
+		"""Returns a ShipEngine client for ShipStation API v2."""
+		if not self.enable_shipstation_api:
+			frappe.throw(_("ShipStation API v2 is not enabled"))
+		api_key = self.get_password("shipstation_api_key")
+		if not api_key:
+			frappe.throw(_("ShipStation API key not configured"))
+		return ShipEngine(api_key=api_key)
+
+	@frappe.whitelist()
+	def test_shipstation_api_connection(self):
+		"""Test the ShipStation API v2 connection."""
+		try:
+			client = self.shipstation_api_client()
+			# Test by fetching carriers
+			result = client.list_carriers()
+			frappe.msgprint(_("Connection successful! Found {0} carriers.").format(len(result)))
+			return True
+		except Exception as e:
+			frappe.throw(_("Connection failed: {0}").format(str(e)))
+
+	@frappe.whitelist()
+	def fetch_api_carriers(self):
+		"""Fetch carrier data from ShipStation API v2."""
+		try:
+			client = self.shipstation_api_client()
+			carriers = client.list_carriers()
+
+			carrier_list = []
+			for carrier in carriers:
+				carrier_data = {
+					"carrier_id": carrier.get("carrier_id"),
+					"carrier_code": carrier.get("carrier_code"),
+					"account_number": carrier.get("account_number"),
+					"name": carrier.get("friendly_name") or carrier.get("nickname"),
+					"services": [],
+					"packages": [],
+				}
+
+				# Fetch services for this carrier
+				try:
+					services = client.list_carrier_services(carrier.get("carrier_id"))
+					carrier_data["services"] = [
+						{
+							"service_code": s.get("service_code"),
+							"name": s.get("name"),
+							"domestic": s.get("domestic"),
+							"international": s.get("international"),
+						}
+						for s in services
+					]
+				except Exception:
+					pass
+
+				# Fetch packages for this carrier
+				try:
+					packages = client.list_carrier_package_types(carrier.get("carrier_id"))
+					carrier_data["packages"] = [
+						{
+							"package_code": p.get("package_code"),
+							"name": p.get("name"),
+						}
+						for p in packages
+					]
+				except Exception:
+					pass
+
+				carrier_list.append(carrier_data)
+
+			self.shipstation_api_carrier_data = json.dumps(carrier_list)
+			self.save()
+			frappe.msgprint(_("Successfully fetched {0} carriers from ShipStation API v2.").format(len(carrier_list)))
+			return carrier_list
+		except Exception as e:
+			frappe.throw(_("Failed to fetch carriers: {0}").format(str(e)))
+
+	def _api_carrier_data(self):
+		"""Return parsed API carrier data."""
+		if not self.shipstation_api_carrier_data:
+			return []
+		return json.loads(self.shipstation_api_carrier_data)
+
+	def get_api_carrier_codes(self, carrier_name, service_name, package_name=None):
+		"""Get carrier, service, and package codes from API carrier data."""
+		_carrier_id, _service_code, _package_code = None, None, None
+
+		for carrier in self._api_carrier_data():
+			if carrier_name in [carrier.get("name"), carrier.get("carrier_code")]:
+				_carrier_id = carrier.get("carrier_id")
+
+				for service in carrier.get("services", []):
+					if service.get("name") == service_name:
+						_service_code = service.get("service_code")
+						break
+
+				if package_name:
+					for package in carrier.get("packages", []):
+						if package.get("name") == package_name:
+							_package_code = package.get("package_code")
+							break
+
+				break
+
+		return _carrier_id, _service_code, _package_code
 
 	def validate_label_generation(self):
 		if not self.enabled and self.enable_label_generation:
@@ -286,3 +392,55 @@ class ShipstationSettings(Document):
 						name="ERPNext",
 					)
 					client.subscribe_to_webhook(webhook)
+
+		# Also add v2 webhooks if enabled
+		self.add_v2_webhooks()
+
+	def add_v2_webhooks(self):
+		"""Register webhooks for ShipStation API v2."""
+		if not self.enable_shipstation_api:
+			return
+
+		try:
+			api_key = self.get_password("shipstation_api_key")
+			if not api_key:
+				return
+
+			import httpx
+
+			WEBHOOK_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.webhook_receiver.shipstation_api_webhook"
+			V2_WEBHOOK_EVENTS = ["batch", "track"]
+
+			headers = {
+				"API-Key": api_key,
+				"Content-Type": "application/json",
+			}
+
+			# List existing webhooks
+			with httpx.Client() as client:
+				response = client.get(
+					"https://api.shipstation.com/v2/environment/webhooks",
+					headers=headers,
+				)
+				if response.status_code != 200:
+					return
+
+				existing_webhooks = response.json().get("webhooks", [])
+				existing_urls = {w.get("url") for w in existing_webhooks}
+
+				# Only create if not already registered
+				if WEBHOOK_URL not in existing_urls:
+					for event in V2_WEBHOOK_EVENTS:
+						client.post(
+							"https://api.shipstation.com/v2/environment/webhooks",
+							headers=headers,
+							json={
+								"url": WEBHOOK_URL,
+								"event": event,
+							},
+						)
+		except Exception as e:
+			frappe.log_error(
+				title="Failed to register ShipStation API v2 webhooks",
+				message=str(e),
+			)

@@ -19,6 +19,13 @@
 		"get_shipments",
 		"get_tags",
 		"update_carriers_and_stores",
+		"sb_shipstation_api",
+		"enable_shipstation_api",
+		"shipstation_api_key",
+		"column_break_api",
+		"test_api_connection",
+		"fetch_api_carriers",
+		"shipstation_api_carrier_data",
 		"sb_filters",
 		"since_date",
 		"column_break_lzby",
@@ -179,11 +186,52 @@
 			"fieldname": "get_tags",
 			"fieldtype": "Button",
 			"label": "Get Tags"
+		},
+		{
+			"fieldname": "sb_shipstation_api",
+			"fieldtype": "Section Break",
+			"label": "ShipStation API v2",
+			"description": "Configure ShipStation API v2 (formerly ShipEngine) for rate shopping and direct label generation with additional carriers."
+		},
+		{
+			"default": "0",
+			"fieldname": "enable_shipstation_api",
+			"fieldtype": "Check",
+			"label": "Enable ShipStation API v2"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api",
+			"fieldname": "shipstation_api_key",
+			"fieldtype": "Password",
+			"label": "ShipStation API Key",
+			"description": "API key for ShipStation API v2. Obtain from your ShipStation account settings."
+		},
+		{
+			"fieldname": "column_break_api",
+			"fieldtype": "Column Break"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",
+			"fieldname": "test_api_connection",
+			"fieldtype": "Button",
+			"label": "Test API Connection"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",
+			"fieldname": "fetch_api_carriers",
+			"fieldtype": "Button",
+			"label": "Fetch API Carriers"
+		},
+		{
+			"fieldname": "shipstation_api_carrier_data",
+			"fieldtype": "Code",
+			"hidden": 1,
+			"label": "API Carrier Data"
 		}
 	],
 	"hide_toolbar": 1,
 	"links": [],
-	"modified": "2024-09-30 09:21:18.572013",
+	"modified": "2024-12-14 12:00:00.000000",
 	"modified_by": "Administrator",
 	"module": "Shipstation Integration",
 	"name": "Shipstation Settings",

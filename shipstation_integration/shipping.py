@@ -37,8 +37,36 @@ def update_carriers_and_stores():  # scheduled daily
 
 @frappe.whitelist()
 def create_shipping_label(doc: str, values: str):
+	"""
+	Create a shipping label using either v1 or v2 API based on configuration.
+
+	If values contains a rate_id (from v2 rate shopping), use v2 API.
+	Otherwise, use the traditional v1 API.
+	"""
 	create_shipping_label_folder()
-	_create_shipping_label(doc, values, user=frappe.session.user)
+
+	if isinstance(doc, str):
+		doc_dict = frappe._dict(json.loads(doc))
+		values_dict = frappe._dict(json.loads(values))
+	else:
+		doc_dict = doc
+		values_dict = values
+
+	# Check if we should use v2 API
+	use_v2 = False
+	settings_name = get_shipstation_settings(doc_dict)
+
+	if settings_name:
+		settings = frappe.get_cached_doc("Shipstation Settings", settings_name)
+		# Use v2 if rate_id provided or explicitly requested
+		if values_dict.get("rate_id") or values_dict.get("use_api_v2"):
+			if settings.enable_shipstation_api:
+				use_v2 = True
+
+	if use_v2:
+		_create_shipping_label_v2(doc_dict, values_dict, user=frappe.session.user)
+	else:
+		_create_shipping_label(doc, values, user=frappe.session.user)
 
 
 def create_shipping_label_folder():
@@ -46,6 +74,38 @@ def create_shipping_label_folder():
 		folder: "File" = frappe.new_doc("File")
 		folder.update({"file_name": "Shipstation Labels", "is_folder": True, "folder": "Home"})
 		folder.save()
+
+
+def _create_shipping_label_v2(doc: frappe._dict, values: frappe._dict, user: str = ""):
+	"""Create shipping label using ShipStation API v2 with rate_id or direct shipment."""
+	from shipstation_integration.labels import create_label_for_delivery_note
+
+	settings_name = get_shipstation_settings(doc)
+	if not settings_name:
+		frappe.throw(_("No Shipstation settings reference found"))
+
+	try:
+		label_response = create_label_for_delivery_note(
+			delivery_note=doc.name,
+			rate_id=values.get("rate_id"),
+			carrier_id=values.get("carrier_id"),
+			service_code=values.get("service_code"),
+		)
+
+		if user and label_response.get("attached_file"):
+			# Refresh the document to show the new attachment
+			js = f"if (cur_frm.doc.name =='{doc.name}') {{cur_frm.refresh();}}"
+			frappe.publish_realtime("eval_js", js, user=user)
+
+		frappe.msgprint(
+			_("Label created successfully. Tracking number: {0}").format(
+				label_response.get("tracking_number")
+			)
+		)
+
+	except Exception as e:
+		frappe.log_error(title="Error creating v2 shipping label", message=str(e))
+		frappe.throw(_("Failed to create shipping label: {0}").format(str(e)))
 
 
 def _create_shipping_label(doc: str, values: str, user: str = ""):
@@ -198,6 +258,31 @@ def get_carrier_services(settings: str):
 	if settings:
 		shipstation_settings: "ShipstationSettings" = frappe.get_doc("Shipstation Settings", settings)
 		return shipstation_settings._carrier_data()
+
+
+@frappe.whitelist()
+def get_api_carrier_services(settings: str):
+	"""Get carrier services from ShipStation API v2."""
+	if settings:
+		shipstation_settings: "ShipstationSettings" = frappe.get_doc("Shipstation Settings", settings)
+		if shipstation_settings.enable_shipstation_api:
+			return shipstation_settings._api_carrier_data()
+	return []
+
+
+@frappe.whitelist()
+def get_rates_for_document(doctype: str, docname: str):
+	"""
+	Get shipping rates for a document (Delivery Note or Sales Order).
+
+	This provides rate shopping functionality using ShipStation API v2.
+	"""
+	from shipstation_integration.rates import get_rates_for_delivery_note
+
+	if doctype == "Delivery Note":
+		return get_rates_for_delivery_note(docname)
+	else:
+		frappe.throw(_("Rate shopping is only supported for Delivery Notes"))
 
 
 @frappe.whitelist()
