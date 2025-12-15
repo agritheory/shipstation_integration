@@ -42,7 +42,7 @@ def create_fulfillment(
 	if not dn.tracking_number:
 		frappe.throw(_("Delivery Note must have a tracking number to create a fulfillment"))
 
-	effective_settings = settings_name or (dn.integration_doc if dn.integration_doc else None)
+	effective_settings = settings_name or getattr(dn, "integration_doc", None)
 	settings = _get_settings(effective_settings)
 	client = settings.shipstation_api_client()
 

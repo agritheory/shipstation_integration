@@ -294,8 +294,8 @@ def get_shipstation_settings(doc: str) -> str | None:
 		doc = frappe._dict(json.loads(doc))
 
 	settings = None
-	if doc.integration_doctype == "Shipstation Settings" and doc.integration_doc:
-		settings = doc.integration_doc
+	if doc.get("integration_doctype") == "Shipstation Settings" and doc.get("integration_doc"):
+		settings = doc.get("integration_doc")
 	elif doc.shipstation_store_name:
 		settings = frappe.db.get_value(
 			"Shipstation Store", {"store_name": doc.shipstation_store_name}, "parent"

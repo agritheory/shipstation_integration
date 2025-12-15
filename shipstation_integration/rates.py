@@ -8,10 +8,16 @@ This module provides functionality for comparing shipping rates across
 multiple carriers before purchasing labels.
 """
 
+import json
 from typing import TYPE_CHECKING, Optional
 
 import frappe
 from frappe import _
+
+try:
+	from shipengine.errors import ShipEngineError
+except ImportError:
+	ShipEngineError = None
 
 if TYPE_CHECKING:
 	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
@@ -41,18 +47,32 @@ def get_rates(
 	settings = _get_settings(settings_name)
 	client = settings.shipstation_api_client()
 
-	shipment = {
+	# Build the shipment object
+	shipment_data = {
 		"ship_from": _format_address(ship_from),
 		"ship_to": _format_address(ship_to),
 		"packages": [_format_package(p) for p in packages],
 	}
 
+	# ShipEngine API expects a rate_options + shipment structure
+	rate_request = {
+		"shipment": shipment_data,
+		"rate_options": {
+			"carrier_ids": _get_carrier_ids(settings),
+		},
+	}
+
 	try:
-		rates_response = client.get_rates_from_shipment(shipment)
-		return _format_rates_response(rates_response)
+		rates_response = client.get_rates_from_shipment(rate_request)
+		result = _format_rates_response(rates_response)
+		if not result:
+			# Log the full response for debugging if no rates found
+			frappe.logger("shipstation").info(f"No rates found. Request: {rate_request}, Response: {rates_response}")
+		return result
 	except Exception as e:
-		frappe.log_error(title="Error fetching shipping rates", message=str(e))
-		frappe.throw(_("Failed to fetch shipping rates: {0}").format(str(e)))
+		error_msg = _get_error_message(e)
+		frappe.log_error(title="Error fetching shipping rates", message=f"Rate Request: {rate_request}\n\nError: {error_msg}")
+		frappe.throw(_("Failed to fetch shipping rates: {0}").format(error_msg))
 
 
 @frappe.whitelist()
@@ -98,8 +118,9 @@ def estimate_rates(
 		rates = client.estimate_rates(estimate_request)
 		return _format_rates_response(rates)
 	except Exception as e:
-		frappe.log_error(title="Error estimating shipping rates", message=str(e))
-		frappe.throw(_("Failed to estimate shipping rates: {0}").format(str(e)))
+		error_msg = _get_error_message(e)
+		frappe.log_error(title="Error estimating shipping rates", message=error_msg)
+		frappe.throw(_("Failed to estimate shipping rates: {0}").format(error_msg))
 
 
 @frappe.whitelist()
@@ -121,8 +142,9 @@ def get_rate_by_id(rate_id: str, settings_name: Optional[str] = None) -> dict:
 		rate = client.get_rate_by_id(rate_id)
 		return _format_single_rate(rate)
 	except Exception as e:
-		frappe.log_error(title="Error fetching rate", message=str(e))
-		frappe.throw(_("Failed to fetch rate: {0}").format(str(e)))
+		error_msg = _get_error_message(e)
+		frappe.log_error(title="Error fetching rate", message=error_msg)
+		frappe.throw(_("Failed to fetch rate: {0}").format(error_msg))
 
 
 @frappe.whitelist()
@@ -165,12 +187,12 @@ def get_rates_for_delivery_note(delivery_note: str) -> list[dict]:
 	if total_weight <= 0:
 		total_weight = 1.0  # Default to 1 lb if no weight
 
-	# Get settings
+	# Get settings - use getattr for fields that may not exist yet
 	settings_name = None
-	if dn.integration_doctype == "Shipstation Settings" and dn.integration_doc:
+	if getattr(dn, "integration_doctype", None) == "Shipstation Settings" and getattr(dn, "integration_doc", None):
 		settings_name = dn.integration_doc
 
-	# Build address dicts
+	# Build address dicts - include phone which is required by ShipEngine
 	ship_from = {
 		"name": dn.company,
 		"street1": ship_from_address.address_line1,
@@ -179,6 +201,7 @@ def get_rates_for_delivery_note(delivery_note: str) -> list[dict]:
 		"state": ship_from_address.state,
 		"postal_code": ship_from_address.pincode,
 		"country": frappe.db.get_value("Country", ship_from_address.country, "code") or "US",
+		"phone": ship_from_address.phone or "0000000000",
 	}
 
 	ship_to = {
@@ -189,6 +212,7 @@ def get_rates_for_delivery_note(delivery_note: str) -> list[dict]:
 		"state": ship_to_address.state,
 		"postal_code": ship_to_address.pincode,
 		"country": frappe.db.get_value("Country", ship_to_address.country, "code") or "US",
+		"phone": ship_to_address.phone or "0000000000",
 	}
 
 	packages = [
@@ -223,10 +247,39 @@ def _get_settings(settings_name: Optional[str] = None) -> "ShipstationSettings":
 	return frappe.get_doc("Shipstation Settings", settings_list[0].name)
 
 
+def _get_error_message(e: Exception) -> str:
+	"""Extract error message from ShipEngineError or other exceptions."""
+	# ShipEngineError has a message attribute but str(e) returns empty
+	if ShipEngineError and isinstance(e, ShipEngineError):
+		if hasattr(e, "message") and e.message:
+			error_details = [e.message]
+			if hasattr(e, "error_code") and e.error_code:
+				error_details.append(f"Code: {e.error_code}")
+			if hasattr(e, "error_type") and e.error_type:
+				error_details.append(f"Type: {e.error_type}")
+			return " | ".join(error_details)
+		# Try to_dict() as fallback
+		if hasattr(e, "to_dict"):
+			error_dict = e.to_dict()
+			return error_dict.get("message", str(error_dict))
+	# For other exceptions, just use str()
+	return str(e) or repr(e)
+
+
+def _get_carrier_ids(settings: "ShipstationSettings") -> list[str]:
+	"""Get list of carrier IDs from settings."""
+	carrier_ids = []
+	if settings.shipstation_api_carrier_data:
+		carriers = json.loads(settings.shipstation_api_carrier_data)
+		carrier_ids = [c.get("carrier_id") for c in carriers if c.get("carrier_id")]
+	return carrier_ids
+
+
 def _format_address(address: dict) -> dict:
 	"""Format address for ShipStation API v2."""
 	return {
 		"name": address.get("name", ""),
+		"phone": address.get("phone", "0000000000"),
 		"address_line1": address.get("street1", address.get("address_line1", "")),
 		"address_line2": address.get("street2", address.get("address_line2", "")),
 		"city_locality": address.get("city", address.get("city_locality", "")),
@@ -263,12 +316,21 @@ def _format_rates_response(rates_response) -> list[dict]:
 	try:
 		if isinstance(rates_response, list):
 			rate_list = rates_response
+		elif isinstance(rates_response, dict):
+			# ShipEngine returns response with rate_response.rates structure
+			rate_response = rates_response.get("rate_response", rates_response)
+			if isinstance(rate_response, dict):
+				rate_list = rate_response.get("rates", [])
+			else:
+				rate_list = []
 		elif hasattr(rates_response, "rate_response"):
 			rate_list = rates_response.rate_response.rates or []
-		elif isinstance(rates_response, dict):
-			rate_list = rates_response.get("rate_response", {}).get("rates", [])
 		else:
 			rate_list = []
+
+		# Log for debugging
+		if not rate_list:
+			frappe.logger("shipstation").info(f"Rates response structure: {type(rates_response)}, keys: {rates_response.keys() if isinstance(rates_response, dict) else 'N/A'}")
 	except Exception as e:
 		frappe.logger("shipstation").warning(f"Failed to parse rates response: {e}")
 		rate_list = []

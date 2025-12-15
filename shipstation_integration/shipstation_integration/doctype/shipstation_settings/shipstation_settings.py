@@ -96,16 +96,18 @@ class ShipstationSettings(Document):
 		api_key = self.get_password("shipstation_api_key")
 		if not api_key:
 			frappe.throw(_("ShipStation API key not configured"))
-		return ShipEngine(api_key=api_key)
+		# Use longer timeout for rate requests (default is 5s which is too short)
+		return ShipEngine({"api_key": api_key, "timeout": 30})
 
 	@frappe.whitelist()
 	def test_shipstation_api_connection(self):
 		"""Test the ShipStation API v2 connection."""
 		try:
 			client = self.shipstation_api_client()
-			# Test by fetching carriers
+			# Test by fetching carriers - response is a dict with 'carriers' key
 			result = client.list_carriers()
-			frappe.msgprint(_("Connection successful! Found {0} carriers.").format(len(result)))
+			carriers = result.get("carriers", []) if isinstance(result, dict) else result
+			frappe.msgprint(_("Connection successful! Found {0} carriers.").format(len(carriers)))
 			return True
 		except Exception as e:
 			frappe.throw(_("Connection failed: {0}").format(str(e)))
@@ -115,46 +117,67 @@ class ShipstationSettings(Document):
 		"""Fetch carrier data from ShipStation API v2."""
 		try:
 			client = self.shipstation_api_client()
-			carriers = client.list_carriers()
+			# ShipEngine returns a dict with 'carriers' key
+			response = client.list_carriers()
+			carriers = response.get("carriers", []) if isinstance(response, dict) else response
 
 			carrier_list = []
 			for carrier in carriers:
+				# Handle both dict and object responses from ShipEngine
+				if isinstance(carrier, dict):
+					carrier_id = carrier.get("carrier_id")
+					carrier_code = carrier.get("carrier_code")
+					account_number = carrier.get("account_number")
+					name = carrier.get("friendly_name") or carrier.get("nickname")
+					# Services and packages are included in the carrier response
+					services = carrier.get("services", [])
+					packages = carrier.get("packages", [])
+				else:
+					carrier_id = getattr(carrier, "carrier_id", None)
+					carrier_code = getattr(carrier, "carrier_code", None)
+					account_number = getattr(carrier, "account_number", None)
+					name = getattr(carrier, "friendly_name", None) or getattr(carrier, "nickname", None)
+					services = getattr(carrier, "services", [])
+					packages = getattr(carrier, "packages", [])
+
 				carrier_data = {
-					"carrier_id": carrier.get("carrier_id"),
-					"carrier_code": carrier.get("carrier_code"),
-					"account_number": carrier.get("account_number"),
-					"name": carrier.get("friendly_name") or carrier.get("nickname"),
+					"carrier_id": carrier_id,
+					"carrier_code": carrier_code,
+					"account_number": account_number,
+					"name": name,
 					"services": [],
 					"packages": [],
 				}
 
-				# Fetch services for this carrier
-				try:
-					services = client.list_carrier_services(carrier.get("carrier_id"))
-					carrier_data["services"] = [
-						{
+				# Process services from the carrier response
+				for s in services or []:
+					if isinstance(s, dict):
+						carrier_data["services"].append({
 							"service_code": s.get("service_code"),
 							"name": s.get("name"),
 							"domestic": s.get("domestic"),
 							"international": s.get("international"),
-						}
-						for s in services
-					]
-				except Exception as e:
-					frappe.logger("shipstation").warning(f"Failed to fetch carrier services for {carrier.get('carrier_code')}: {e}")
+						})
+					else:
+						carrier_data["services"].append({
+							"service_code": getattr(s, "service_code", None),
+							"name": getattr(s, "name", None),
+							"domestic": getattr(s, "domestic", None),
+							"international": getattr(s, "international", None),
+						})
 
-				# Fetch packages for this carrier
-				try:
-					packages = client.list_carrier_package_types(carrier.get("carrier_id"))
-					carrier_data["packages"] = [
-						{
+				# Process packages from the carrier response
+				for p in packages or []:
+					if isinstance(p, dict):
+						carrier_data["packages"].append({
 							"package_code": p.get("package_code"),
 							"name": p.get("name"),
-						}
-						for p in packages
-					]
-				except Exception as e:
-					frappe.logger("shipstation").warning(f"Failed to fetch carrier packages for {carrier.get('carrier_code')}: {e}")
+						})
+					else:
+						carrier_data["packages"].append({
+							"package_code": getattr(p, "package_code", None),
+							"name": getattr(p, "name", None),
+						})
 
 				carrier_list.append(carrier_data)
 

@@ -155,9 +155,9 @@ def create_label_for_delivery_note(
 	if not dn.shipping_address_name:
 		frappe.throw(_("Delivery Note must have a shipping address"))
 
-	# Get settings
+	# Get settings - use getattr for fields that may not exist yet
 	settings_name = None
-	if dn.integration_doctype == "Shipstation Settings" and dn.integration_doc:
+	if getattr(dn, "integration_doctype", None) == "Shipstation Settings" and getattr(dn, "integration_doc", None):
 		settings_name = dn.integration_doc
 
 	settings = _get_settings(settings_name)
