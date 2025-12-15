@@ -122,6 +122,9 @@ def _create_shipping_label(doc: str, values: str, user: str = ""):
 	if not settings.enabled:
 		return
 
+	if not settings.enable_legacy_api:
+		frappe.throw(_("Legacy API (v1) is not enabled. Please enable it in Shipstation Settings or use ShipStation API v2 for label generation."))
+
 	values.package = "package" if values.package.lower() == "package" else values.package
 
 	doc.carrier_service = values.service
@@ -320,6 +323,8 @@ def fetch_shipment(delivery_note: str):
 
 	for setting in settings:
 		sss_doc = frappe.get_doc("Shipstation Settings", setting)
+		if not sss_doc.enable_legacy_api:
+			continue
 		client = sss_doc.client()
 		client.timeout = 60
 

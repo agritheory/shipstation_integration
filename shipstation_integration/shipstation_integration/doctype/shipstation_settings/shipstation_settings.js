@@ -32,8 +32,9 @@ frappe.ui.form.on('Shipstation Settings', {
 	refresh: frm => {
 		frm.trigger('toggle_mandatory_table_fields')
 		frm.trigger('enable_shipstation_api')
+		frm.trigger('enable_legacy_api')
 
-		if (frm.doc.carrier_data) {
+		if (frm.doc.enable_legacy_api && frm.doc.carrier_data) {
 			const wrapper = $(frm.fields_dict.carriers_html.wrapper)
 			wrapper.html(
 				frappe.render_template('carriers', {
@@ -59,6 +60,10 @@ frappe.ui.form.on('Shipstation Settings', {
 	},
 
 	update_carriers_and_stores: frm => {
+		if (!frm.doc.enable_legacy_api) {
+			frappe.msgprint(__('Please enable Legacy API (v1) first.'))
+			return
+		}
 		frappe.show_alert(__('Updating Carriers and Stores'))
 		frm
 			.call({
@@ -72,6 +77,10 @@ frappe.ui.form.on('Shipstation Settings', {
 	},
 
 	get_items: frm => {
+		if (!frm.doc.enable_legacy_api) {
+			frappe.msgprint(__('Please enable Legacy API (v1) first.'))
+			return
+		}
 		frappe.show_alert(__('Getting Items'))
 		frm
 			.call({
@@ -85,6 +94,10 @@ frappe.ui.form.on('Shipstation Settings', {
 	},
 
 	get_orders: frm => {
+		if (!frm.doc.enable_legacy_api) {
+			frappe.msgprint(__('Please enable Legacy API (v1) first.'))
+			return
+		}
 		frappe.show_alert(__('Getting Orders'))
 		frm.call({
 			doc: frm.doc,
@@ -94,6 +107,10 @@ frappe.ui.form.on('Shipstation Settings', {
 	},
 
 	get_shipments: frm => {
+		if (!frm.doc.enable_legacy_api) {
+			frappe.msgprint(__('Please enable Legacy API (v1) first.'))
+			return
+		}
 		frappe.show_alert(__('Getting Shipments'))
 		frm.call({
 			doc: frm.doc,
@@ -103,6 +120,10 @@ frappe.ui.form.on('Shipstation Settings', {
 	},
 
 	get_tags: frm => {
+		if (!frm.doc.enable_legacy_api) {
+			frappe.msgprint(__('Please enable Legacy API (v1) first.'))
+			return
+		}
 		frappe.show_alert(__('Getting Tags'))
 		frm.call({
 			doc: frm.doc,
@@ -112,6 +133,10 @@ frappe.ui.form.on('Shipstation Settings', {
 	},
 
 	fetch_warehouses: frm => {
+		if (!frm.doc.enable_legacy_api) {
+			frappe.msgprint(__('Please enable Legacy API (v1) first.'))
+			return
+		}
 		frm.call({
 			doc: frm.doc,
 			method: 'update_warehouses',
@@ -160,6 +185,18 @@ frappe.ui.form.on('Shipstation Settings', {
 		frm.toggle_display('shipstation_api_key', frm.doc.enable_shipstation_api)
 		frm.toggle_display('test_api_connection', frm.doc.enable_shipstation_api && !frm.is_new())
 		frm.toggle_display('fetch_api_carriers', frm.doc.enable_shipstation_api && !frm.is_new())
+	},
+
+	enable_legacy_api: frm => {
+		// Show/hide legacy API fields based on checkbox
+		frm.toggle_display('api_key', frm.doc.enable_legacy_api)
+		frm.toggle_display('api_secret', frm.doc.enable_legacy_api)
+		frm.toggle_display('get_items', frm.doc.enable_legacy_api && !frm.is_new())
+		frm.toggle_display('get_orders', frm.doc.enable_legacy_api && !frm.is_new())
+		frm.toggle_display('get_shipments', frm.doc.enable_legacy_api && !frm.is_new())
+		frm.toggle_display('get_tags', frm.doc.enable_legacy_api && !frm.is_new())
+		frm.toggle_display('update_carriers_and_stores', frm.doc.enable_legacy_api && !frm.is_new())
+		frm.toggle_display('fetch_warehouses', frm.doc.enable_legacy_api && !frm.is_new())
 	},
 
 	toggle_mandatory_table_fields: frm => {

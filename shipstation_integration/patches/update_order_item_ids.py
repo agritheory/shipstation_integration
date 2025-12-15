@@ -10,6 +10,8 @@ def execute():
 
 	for settings in shipstation_settings:
 		settings_doc = frappe.get_doc("Shipstation Settings", settings.name)
+		if not settings_doc.enable_legacy_api:
+			continue
 		client = settings_doc.client()
 
 		for store in settings_doc.shipstation_stores:

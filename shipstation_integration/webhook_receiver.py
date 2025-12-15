@@ -24,7 +24,7 @@ def shipstation_webhook():
 	store = frappe.get_doc("Shipstation Store", {"store_id": store_id})
 	sss_doc = frappe.get_doc("Shipstation Settings", store.parent)
 
-	if not sss_doc.enabled:
+	if not sss_doc.enabled or not sss_doc.enable_legacy_api:
 		return
 
 	client = sss_doc.client()

@@ -50,9 +50,10 @@ class ShipstationSettings(Document):
 		self.validate_api_connection()
 
 	def after_insert(self):
-		if self.enabled:
+		if self.enabled and self.enable_legacy_api:
 			self.update_carriers_and_stores()
 			self.update_warehouses()
+		if self.enabled:
 			self.add_webhooks()
 
 	def on_update(self):
@@ -61,17 +62,26 @@ class ShipstationSettings(Document):
 
 	@frappe.whitelist()
 	def get_orders(self):
+		if not self.enable_legacy_api:
+			frappe.throw(_("Legacy API is not enabled"))
 		list_orders(self)
 
 	@frappe.whitelist()
 	def get_shipments(self):
+		if not self.enable_legacy_api:
+			frappe.throw(_("Legacy API is not enabled"))
 		list_shipments(self)
 
 	@frappe.whitelist()
 	def get_tags(self):
+		if not self.enable_legacy_api:
+			frappe.throw(_("Legacy API is not enabled"))
 		list_tags(self)
 
 	def client(self):
+		"""Returns a ShipStation legacy API client."""
+		if not self.enable_legacy_api:
+			frappe.throw(_("ShipStation Legacy API (v1) is not enabled"))
 		return ShipStation(
 			key=self.get_password("api_key"),
 			secret=self.get_password("api_secret"),
@@ -199,14 +209,23 @@ class ShipstationSettings(Document):
 	def validate_api_connection(self):
 		if not self.enabled:
 			return
-		try:
-			client = self.client()
-			client.list_carriers()
-		except HTTPError as e:
-			if e.response.status_code == 401:
-				frappe.throw(_("Invalid API key or secret"))
-			else:
-				frappe.throw(_(e.text))
+
+		# Validate legacy API credentials if enabled
+		if self.enable_legacy_api:
+			try:
+				client = self.client()
+				client.list_carriers()
+			except HTTPError as e:
+				if e.response.status_code == 401:
+					frappe.throw(_("Invalid Legacy API key or secret"))
+				else:
+					frappe.throw(_(e.text))
+
+		# Validate v2 API credentials if enabled
+		if self.enable_shipstation_api:
+			api_key = self.get_password("shipstation_api_key")
+			if not api_key:
+				frappe.throw(_("ShipStation API v2 key is required when API v2 is enabled"))
 
 	@frappe.whitelist()
 	def update_carriers_and_stores(self):
@@ -229,6 +248,9 @@ class ShipstationSettings(Document):
 
 	@frappe.whitelist()
 	def update_warehouses(self):
+		if not self.enable_legacy_api:
+			frappe.msgprint(_("Legacy API is not enabled. Cannot fetch warehouses."))
+			return
 		self.shipstation_warehouses = []
 		root_warehouse = get_root_of("Warehouse")
 
@@ -267,6 +289,8 @@ class ShipstationSettings(Document):
 		self.save()
 
 	def update_stores(self):
+		if not self.enable_legacy_api:
+			return self
 		stores = self.client().list_stores(show_inactive=False)
 		for store in stores:
 			store_exists = False
@@ -321,6 +345,8 @@ class ShipstationSettings(Document):
 
 	@frappe.whitelist()
 	def get_items(self):
+		if not self.enable_legacy_api:
+			frappe.throw(_("Legacy API is not enabled"))
 		products = self.client().list_products()
 
 		if not products.results:
@@ -332,26 +358,35 @@ class ShipstationSettings(Document):
 		return f"{len(products.results)} product(s) imported succesfully"
 
 	def _carrier_data(self):
+		if not self.carrier_data:
+			return []
 		return json.loads(self.carrier_data)
 
 	def get_carrier_services(self, carrier):
-		for ss_carrier in self._carrier_data():
-			if carrier in [ss_carrier["name"], ss_carrier["nickname"]]:
-				return "\n".join([s["name"] for s in ss_carrier["services"]])
+		carrier_data = self._carrier_data()
+		if not carrier_data:
+			return ""
+		for ss_carrier in carrier_data:
+			if carrier in [ss_carrier.get("name"), ss_carrier.get("nickname")]:
+				return "\n".join([s["name"] for s in ss_carrier.get("services", [])])
+		return ""
 
 	def get_codes(self, carrier, service, package):
 		_carrier, _service, _package = None, None, "Package"
-		for ss_carrier in self._carrier_data():
+		carrier_data = self._carrier_data()
+		if not carrier_data:
+			return _carrier, _service, _package
+		for ss_carrier in carrier_data:
 			if carrier in [ss_carrier.get("name"), ss_carrier.get("nickname")]:
-				_carrier = ss_carrier["code"]
+				_carrier = ss_carrier.get("code")
 
-				for serv in ss_carrier["services"]:
-					if serv["name"] == service:
-						_service = serv["code"]
+				for serv in ss_carrier.get("services", []):
+					if serv.get("name") == service:
+						_service = serv.get("code")
 
-				for pack in ss_carrier["packages"]:
-					if pack["name"] == package:
-						_package = pack["code"]
+				for pack in ss_carrier.get("packages", []):
+					if pack.get("name") == package:
+						_package = pack.get("code")
 
 		return _carrier, _service, _package
 
@@ -359,41 +394,43 @@ class ShipstationSettings(Document):
 		if not self.enabled:
 			return
 
-		WEBHOOK_RECEIVER_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.webhook_receiver.shipstation_webhook"
-		WEBHOOK_TYPES = [
-			"ORDER_NOTIFY",
-			"SHIP_NOTIFY",
-			"ITEM_SHIP_NOTIFY",
-		]
+		# Only register v1 webhooks if legacy API is enabled
+		if self.enable_legacy_api:
+			WEBHOOK_RECEIVER_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.webhook_receiver.shipstation_webhook"
+			WEBHOOK_TYPES = [
+				"ORDER_NOTIFY",
+				"SHIP_NOTIFY",
+				"ITEM_SHIP_NOTIFY",
+			]
 
-		client = self.client()
-		existing_webhooks = client.list_webhooks()
+			client = self.client()
+			existing_webhooks = client.list_webhooks()
 
-		for store in self.shipstation_stores:
-			for webhook_type in WEBHOOK_TYPES:
-				filtered_webhook = list(
-					filter(
-						lambda webhook: webhook.store_id == store.store_id
-						and webhook.hook_type == webhook_type
-						and webhook.url == WEBHOOK_RECEIVER_URL,
-						existing_webhooks,
+			for store in self.shipstation_stores:
+				for webhook_type in WEBHOOK_TYPES:
+					filtered_webhook = list(
+						filter(
+							lambda webhook: webhook.store_id == store.store_id
+							and webhook.hook_type == webhook_type
+							and webhook.url == WEBHOOK_RECEIVER_URL,
+							existing_webhooks,
+						)
 					)
-				)
-				if not filtered_webhook:
-					webhook = ShipStationWebhook(
-						active=True,
-						store_id=store.store_id,
-						resource_type=webhook_type,
-						event=webhook_type,
-						hook_type=webhook_type,
-						url=WEBHOOK_RECEIVER_URL,
-						target_url=WEBHOOK_RECEIVER_URL,
-						friendly_name="ERPNext",
-						name="ERPNext",
-					)
-					client.subscribe_to_webhook(webhook)
+					if not filtered_webhook:
+						webhook = ShipStationWebhook(
+							active=True,
+							store_id=store.store_id,
+							resource_type=webhook_type,
+							event=webhook_type,
+							hook_type=webhook_type,
+							url=WEBHOOK_RECEIVER_URL,
+							target_url=WEBHOOK_RECEIVER_URL,
+							friendly_name="ERPNext",
+							name="ERPNext",
+						)
+						client.subscribe_to_webhook(webhook)
 
-		# Also add v2 webhooks if enabled
+		# Always try to add v2 webhooks if enabled
 		self.add_v2_webhooks()
 
 	def add_v2_webhooks(self):
