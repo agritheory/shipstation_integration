@@ -16,6 +16,11 @@ import frappe
 from frappe import _
 from frappe.utils.file_manager import save_file
 
+try:
+	from shipengine.errors import ShipEngineError
+except ImportError:
+	ShipEngineError = None
+
 if TYPE_CHECKING:
 	from frappe.core.doctype.file.file import File
 
@@ -69,11 +74,17 @@ def create_label_from_rate(
 	client = settings.shipstation_api_client()
 
 	try:
-		label_response = client.create_label_from_rate(rate_id=rate_id)
+		# create_label_from_rate_id requires rate_id and params dict
+		label_params = {
+			"label_format": "pdf",
+			"label_layout": "4x6",
+		}
+		label_response = client.create_label_from_rate_id(rate_id=rate_id, params=label_params)
 		return _format_label_response(label_response)
 	except Exception as e:
-		frappe.log_error(title="Error creating label from rate", message=str(e))
-		frappe.throw(_("Failed to create label from rate: {0}").format(str(e)))
+		error_msg = _get_error_message(e)
+		frappe.log_error(title="Error creating label from rate", message=error_msg)
+		frappe.throw(_("Failed to create label from rate: {0}").format(error_msg))
 
 
 @frappe.whitelist()
@@ -218,6 +229,22 @@ def create_return_label(
 	except Exception as e:
 		frappe.log_error(title="Error creating return label", message=str(e))
 		frappe.throw(_("Failed to create return label: {0}").format(str(e)))
+
+
+def _get_error_message(e: Exception) -> str:
+	"""Extract error message from ShipEngineError or other exceptions."""
+	if ShipEngineError and isinstance(e, ShipEngineError):
+		if hasattr(e, "message") and e.message:
+			error_details = [e.message]
+			if hasattr(e, "error_code") and e.error_code:
+				error_details.append(f"Code: {e.error_code}")
+			if hasattr(e, "error_type") and e.error_type:
+				error_details.append(f"Type: {e.error_type}")
+			return " | ".join(error_details)
+		if hasattr(e, "to_dict"):
+			error_dict = e.to_dict()
+			return error_dict.get("message", str(error_dict))
+	return str(e) or repr(e)
 
 
 def _get_settings(settings_name: Optional[str] = None) -> "ShipstationSettings":

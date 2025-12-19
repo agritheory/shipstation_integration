@@ -215,9 +215,17 @@ def get_rates_for_delivery_note(delivery_note: str) -> list[dict]:
 		"phone": ship_to_address.phone or "0000000000",
 	}
 
+	# Package with weight and dimensions (dimensions required by some carriers like FedEx)
+	# TODO: In the future, pull actual dimensions from Shipment Parcel if available
 	packages = [
 		{
 			"weight": {"value": total_weight, "unit": "pound"},
+			"dimensions": {
+				"length": 12,  # Default dimensions in inches
+				"width": 9,
+				"height": 6,
+				"unit": "inch",
+			},
 		}
 	]
 
