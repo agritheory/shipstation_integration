@@ -64,7 +64,7 @@ repos:
           - tomli
 
   - repo: https://github.com/agritheory/test_utils
-    rev: v1.3.1
+    rev: v1.1.0
     hooks:
       - id: validate_customizations
       - id: validate_copyright
