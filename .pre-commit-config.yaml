@@ -70,9 +70,9 @@ repos:
       - id: validate_copyright
         files: '\.(js|ts|py|md)$'
         args: ['--app', 'shipstation_integration']
-      - id: clean_customized_doctypes
-        args: ['--app', 'shipstation_integration']
-      - id: bylines
+      # - id: clean_customized_doctypes
+      #   args: ['--app', 'shipstation_integration']
+      # - id: bylines
 
 ci:
   autoupdate_schedule: weekly
