@@ -1,4 +1,12 @@
+<!-- Copyright (c) 2026, AgriTheory and contributors
+For license information, please see license.txt-->
+
 # Contribution Guide
+
+<div class="byline">
+  Tyler Matteson 2025-04-04
+</div>
+
 
 In this guide you will get an overview of the contribution workflow from opening an issue, creating a PR, reviewing, and merging the PR.
 

@@ -26,8 +26,8 @@ repos:
       - id: pyupgrade
         args: ['--py310-plus']
 
-  - repo: https://github.com/frappe/black
-    rev: 22.1.0
+  - repo: https://github.com/agritheory/black
+    rev: 951ccf4d5bb0d692b457a5ebc4215d755618eb68
     hooks:
       - id: black
 

@@ -1,4 +1,12 @@
+<!-- Copyright (c) 2026, AgriTheory and contributors
+For license information, please see license.txt-->
+
 # Shipstation Integration
+
+<div class="byline">
+  Tyler Matteson 2025-04-04
+</div>
+
 
 A custom ShipStation application built on top of the [Frappe](https://github.com/frappe/frappe) framework and [ERPNext](https://github.com/frappe/erpnext).
 
