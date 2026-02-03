@@ -27,7 +27,9 @@
 		"column_break_api",
 		"test_api_connection",
 		"fetch_api_carriers",
+		"sync_carrier_packages",
 		"shipstation_api_carrier_data",
+		"api_carriers_html",
 		"sb_filters",
 		"since_date",
 		"column_break_lzby",
@@ -237,18 +239,31 @@
 			"depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",
 			"fieldname": "fetch_api_carriers",
 			"fieldtype": "Button",
-			"label": "Fetch API Carriers"
+			"label": "Fetch Carriers"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",
+			"fieldname": "sync_carrier_packages",
+			"fieldtype": "Button",
+			"label": "Sync Package Types",
+			"description": "Fetch detailed package types with dimensions for all carriers"
 		},
 		{
 			"fieldname": "shipstation_api_carrier_data",
 			"fieldtype": "Code",
 			"hidden": 1,
 			"label": "API Carrier Data"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api && doc.shipstation_api_carrier_data",
+			"fieldname": "api_carriers_html",
+			"fieldtype": "HTML",
+			"label": "API Carriers"
 		}
 	],
 	"hide_toolbar": 1,
 	"links": [],
-	"modified": "2024-12-14 12:00:00.000000",
+	"modified": "2026-01-31 12:00:00.000000",
 	"modified_by": "Administrator",
 	"module": "Shipstation Integration",
 	"name": "Shipstation Settings",

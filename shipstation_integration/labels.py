@@ -14,12 +14,20 @@ from typing import TYPE_CHECKING, Optional
 
 import frappe
 from frappe import _
+from frappe.utils import flt
 from frappe.utils.file_manager import save_file
 
 try:
 	from shipengine.errors import ShipEngineError
 except ImportError:
 	ShipEngineError = None
+
+from shipstation_integration.rates import (
+	DIMENSION_UOM_MAP,
+	WEIGHT_UOM_MAP,
+	get_package_from_packing_slip,
+	get_state_code,
+)
 
 if TYPE_CHECKING:
 	from frappe.core.doctype.file.file import File
@@ -32,17 +40,17 @@ if TYPE_CHECKING:
 @frappe.whitelist()
 def create_label(
 	shipment_data: dict,
-	settings_name: Optional[str] = None,
+	settings_name: str | None = None,
 ) -> dict:
 	"""
 	Purchase a shipping label directly.
 
 	Args:
-		shipment_data: Shipment dict with ship_to, ship_from, packages, carrier_id, service_code
-		settings_name: Optional Shipstation Settings document name
+	        shipment_data: Shipment dict with ship_to, ship_from, packages, carrier_id, service_code
+	        settings_name: Optional Shipstation Settings document name
 
 	Returns:
-		Label response with label_id, tracking_number, label_download URL
+	        Label response with label_id, tracking_number, label_download URL
 	"""
 	settings = _get_settings(settings_name)
 	client = settings.shipstation_api_client()
@@ -58,17 +66,17 @@ def create_label(
 @frappe.whitelist()
 def create_label_from_rate(
 	rate_id: str,
-	settings_name: Optional[str] = None,
+	settings_name: str | None = None,
 ) -> dict:
 	"""
 	Purchase a shipping label using a pre-selected rate.
 
 	Args:
-		rate_id: Rate ID from a previous rate request
-		settings_name: Optional Shipstation Settings document name
+	        rate_id: Rate ID from a previous rate request
+	        settings_name: Optional Shipstation Settings document name
 
 	Returns:
-		Label response with label_id, tracking_number, label_download URL
+	        Label response with label_id, tracking_number, label_download URL
 	"""
 	settings = _get_settings(settings_name)
 	client = settings.shipstation_api_client()
@@ -90,17 +98,17 @@ def create_label_from_rate(
 @frappe.whitelist()
 def void_label(
 	label_id: str,
-	settings_name: Optional[str] = None,
+	settings_name: str | None = None,
 ) -> dict:
 	"""
 	Void a previously purchased label.
 
 	Args:
-		label_id: The label ID to void
-		settings_name: Optional Shipstation Settings document name
+	        label_id: The label ID to void
+	        settings_name: Optional Shipstation Settings document name
 
 	Returns:
-		Void response with status
+	        Void response with status
 	"""
 	settings = _get_settings(settings_name)
 	client = settings.shipstation_api_client()
@@ -119,17 +127,17 @@ def void_label(
 @frappe.whitelist()
 def get_label(
 	label_id: str,
-	settings_name: Optional[str] = None,
+	settings_name: str | None = None,
 ) -> dict:
 	"""
 	Retrieve label details by ID.
 
 	Args:
-		label_id: The label ID to retrieve
-		settings_name: Optional Shipstation Settings document name
+	        label_id: The label ID to retrieve
+	        settings_name: Optional Shipstation Settings document name
 
 	Returns:
-		Label details dict
+	        Label details dict
 	"""
 	settings = _get_settings(settings_name)
 	client = settings.shipstation_api_client()
@@ -143,82 +151,142 @@ def get_label(
 
 
 @frappe.whitelist()
-def create_label_for_delivery_note(
-	delivery_note: str,
-	rate_id: Optional[str] = None,
-	carrier_id: Optional[str] = None,
-	service_code: Optional[str] = None,
+def create_label_for_packing_slip(
+	packing_slip: str,
+	rate_id: str | None = None,
+	carrier_id: str | None = None,
+	service_code: str | None = None,
 ) -> dict:
 	"""
-	Create a shipping label for a Delivery Note using ShipStation API v2.
+	Create a shipping label for a Packing Slip using ShipStation API v2.
+
+	Each Packing Slip = 1 physical package = 1 label = 1 tracking number.
+	The label info is stored in the Packing Slip's Parcel Dimensions child table.
 
 	Args:
-		delivery_note: Delivery Note document name
-		rate_id: Optional rate ID from previous rate request
-		carrier_id: Carrier ID (required if rate_id not provided)
-		service_code: Service code (required if rate_id not provided)
+	        packing_slip: Packing Slip document name
+	        rate_id: Optional rate ID from previous rate request
+	        carrier_id: Carrier ID (required if rate_id not provided)
+	        service_code: Service code (required if rate_id not provided)
 
 	Returns:
-		Label response and attached file info
+	        Label response and attached file info
 	"""
-	dn = frappe.get_doc("Delivery Note", delivery_note)
+	ps = frappe.get_doc("Packing Slip", packing_slip)
 
-	if not dn.shipping_address_name:
-		frappe.throw(_("Delivery Note must have a shipping address"))
+	if not ps.shipping_address_name:
+		frappe.throw(_("Packing Slip must have a shipping address"))
 
-	# Get settings - use getattr for fields that may not exist yet
-	settings_name = None
-	if getattr(dn, "integration_doctype", None) == "Shipstation Settings" and getattr(dn, "integration_doc", None):
-		settings_name = dn.integration_doc
+	if not ps.dispatch_address_name:
+		frappe.throw(_("Packing Slip must have a dispatch (ship from) address"))
 
-	settings = _get_settings(settings_name)
+	settings = _get_settings()
 
 	# If rate_id provided, use it directly
 	if rate_id:
-		label_response = create_label_from_rate(rate_id=rate_id, settings_name=settings_name)
+		label_response = create_label_from_rate(rate_id=rate_id)
 	else:
 		if not carrier_id or not service_code:
 			frappe.throw(_("Either rate_id or both carrier_id and service_code are required"))
 
-		# Build shipment data
-		shipment_data = _build_shipment_from_delivery_note(dn, carrier_id, service_code)
-		label_response = create_label(shipment_data=shipment_data, settings_name=settings_name)
+		# Build shipment data from Packing Slip
+		shipment_data = _build_shipment_from_packing_slip(ps, carrier_id, service_code)
+		label_response = create_label(shipment_data=shipment_data)
 
-	# Download and attach label PDF
+	# Download and attach label PDF to Packing Slip
 	if label_response.get("label_download"):
 		file_doc = _download_and_attach_label(
 			label_response["label_download"],
-			dn.doctype,
-			dn.name,
+			ps.doctype,
+			ps.name,
 			settings,
 		)
 		label_response["attached_file"] = file_doc.name if file_doc else None
 
-	# Update Delivery Note with tracking info
-	frappe.db.set_value(dn.doctype, dn.name, {
-		"shipstation_shipment_id": label_response.get("shipment_id"),
-		"tracking_number": label_response.get("tracking_number"),
-		"carrier": label_response.get("carrier_code", "").upper(),
-		"carrier_service": label_response.get("service_code", "").upper(),
-	})
+	# Update Packing Slip's Parcel Dimensions with tracking info
+	_update_packing_slip_tracking(ps, label_response)
 
 	return label_response
+
+
+def _update_packing_slip_tracking(ps, label_response: dict) -> None:
+	"""
+	Update the Packing Slip's Parcel Dimensions with label/tracking info.
+
+	Since 1 Packing Slip = 1 package = 1 label, we update the first
+	Parcel Dimensions row with the tracking information.
+	"""
+	tracking_number = label_response.get("tracking_number")
+	label_url = label_response.get("label_download")
+	carrier_code = label_response.get("carrier_code", "").upper()
+
+	# Build tracking URL based on carrier
+	tracking_url = _build_tracking_url(tracking_number, carrier_code)
+
+	# Update the first Parcel Dimensions row (or create one if none exist)
+	if ps.parcel_dimensions and len(ps.parcel_dimensions) > 0:
+		row = ps.parcel_dimensions[0]
+		frappe.db.set_value(
+			"Parcel Dimensions",
+			row.name,
+			{
+				"tracking_number": tracking_number,
+				"tracking_url": tracking_url,
+				"label_url": label_url,
+			},
+		)
+	else:
+		# No parcel dimensions - add tracking to a new row
+		ps.append(
+			"parcel_dimensions",
+			{
+				"tracking_number": tracking_number,
+				"tracking_url": tracking_url,
+				"label_url": label_url,
+				"length": 1,
+				"width": 1,
+				"height": 1,
+				"dimension_uom": "Inch",
+				"weight": ps.gross_weight_pkg or 1,
+				"weight_uom": ps.gross_weight_uom or "Pound",
+			},
+		)
+		ps.save(ignore_permissions=True)
+
+	frappe.db.commit()
+
+
+def _build_tracking_url(tracking_number: str, carrier_code: str) -> str:
+	"""Build carrier-specific tracking URL."""
+	if not tracking_number:
+		return ""
+
+	carrier_code = (carrier_code or "").lower()
+
+	tracking_urls = {
+		"ups": f"https://www.ups.com/track?tracknum={tracking_number}",
+		"usps": f"https://tools.usps.com/go/TrackConfirmAction?tLabels={tracking_number}",
+		"fedex": f"https://www.fedex.com/fedextrack/?trknbr={tracking_number}",
+		"dhl": f"https://www.dhl.com/en/express/tracking.html?AWB={tracking_number}",
+	}
+
+	return tracking_urls.get(carrier_code, "")
 
 
 @frappe.whitelist()
 def create_return_label(
 	label_id: str,
-	settings_name: Optional[str] = None,
+	settings_name: str | None = None,
 ) -> dict:
 	"""
 	Create a return label for a previously created outbound label.
 
 	Args:
-		label_id: The original outbound label ID
-		settings_name: Optional Shipstation Settings document name
+	        label_id: The original outbound label ID
+	        settings_name: Optional Shipstation Settings document name
 
 	Returns:
-		Return label response
+	        Return label response
 	"""
 	settings = _get_settings(settings_name)
 	client = settings.shipstation_api_client()
@@ -247,7 +315,7 @@ def _get_error_message(e: Exception) -> str:
 	return str(e) or repr(e)
 
 
-def _get_settings(settings_name: Optional[str] = None) -> "ShipstationSettings":
+def _get_settings(settings_name: str | None = None) -> "ShipstationSettings":
 	"""Get Shipstation Settings document."""
 	if settings_name:
 		return frappe.get_doc("Shipstation Settings", settings_name)
@@ -294,63 +362,59 @@ def _format_label_response(label_response) -> dict:
 	return label_response
 
 
-def _build_shipment_from_delivery_note(dn, carrier_id: str, service_code: str) -> dict:
-	"""Build shipment payload from Delivery Note."""
-	# Get shipping address
-	ship_to_address = frappe.get_doc("Address", dn.shipping_address_name)
+def _build_shipment_from_packing_slip(ps, carrier_id: str, service_code: str) -> dict:
+	"""
+	Build shipment payload from Packing Slip.
 
-	# Get company address (ship from)
-	company_address = frappe.db.get_value(
-		"Dynamic Link",
-		{"link_doctype": "Company", "link_name": dn.company, "parenttype": "Address"},
-		"parent",
-	)
+	Each Packing Slip = 1 physical package.
+	Addresses come from the Packing Slip's address fields.
+	"""
+	# Get addresses from Packing Slip
+	ship_to_address = frappe.get_doc("Address", ps.shipping_address_name)
+	ship_from_address = frappe.get_doc("Address", ps.dispatch_address_name)
 
-	if not company_address:
-		frappe.throw(_("Company must have a primary address configured"))
+	# Get company/customer names from linked Delivery Note
+	dn = frappe.get_doc("Delivery Note", ps.delivery_note)
+	company_name = dn.company
+	customer_name = dn.customer_name or dn.customer
 
-	ship_from_address = frappe.get_doc("Address", company_address)
+	# Build package from this Packing Slip
+	package = get_package_from_packing_slip(ps)
+	if not package:
+		frappe.throw(_("Packing Slip must have parcel dimensions configured"))
 
-	# Calculate total weight
-	total_weight = 0.0
-	for item in dn.items:
-		item_weight = frappe.db.get_value("Item", item.item_code, "weight_per_unit") or 0
-		total_weight += item_weight * item.qty
-
-	if total_weight <= 0:
-		total_weight = 1.0
+	# Get country codes and convert state names to 2-char codes for US
+	ship_to_country = (
+		frappe.db.get_value("Country", ship_to_address.country, "code") or "US"
+	).upper()
+	ship_from_country = (
+		frappe.db.get_value("Country", ship_from_address.country, "code") or "US"
+	).upper()
 
 	return {
 		"carrier_id": carrier_id,
 		"service_code": service_code,
 		"ship_to": {
-			"name": dn.customer_name or dn.customer,
+			"name": customer_name,
 			"address_line1": ship_to_address.address_line1,
 			"address_line2": ship_to_address.address_line2 or "",
 			"city_locality": ship_to_address.city,
-			"state_province": ship_to_address.state,
+			"state_province": get_state_code(ship_to_address.state, ship_to_country),
 			"postal_code": ship_to_address.pincode,
-			"country_code": (frappe.db.get_value("Country", ship_to_address.country, "code") or "US").upper(),
+			"country_code": ship_to_country,
 			"phone": ship_to_address.phone or "",
 		},
 		"ship_from": {
-			"name": dn.company,
+			"name": company_name,
 			"address_line1": ship_from_address.address_line1,
 			"address_line2": ship_from_address.address_line2 or "",
 			"city_locality": ship_from_address.city,
-			"state_province": ship_from_address.state,
+			"state_province": get_state_code(ship_from_address.state, ship_from_country),
 			"postal_code": ship_from_address.pincode,
-			"country_code": (frappe.db.get_value("Country", ship_from_address.country, "code") or "US").upper(),
+			"country_code": ship_from_country,
 			"phone": ship_from_address.phone or "",
 		},
-		"packages": [
-			{
-				"weight": {
-					"value": total_weight,
-					"unit": "pound",
-				}
-			}
-		],
+		"packages": [package],
 	}
 
 
@@ -403,4 +467,3 @@ def _download_and_attach_label(
 		frappe.log_error(title="Error downloading label PDF", message=str(e))
 
 	return None
-

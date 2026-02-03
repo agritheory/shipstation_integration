@@ -1,4 +1,64 @@
 import frappe
+from frappe import _
+
+# UOM conversion factors to centimeters (for dimension matching)
+DIMENSION_TO_CM = {
+	"Centimeter": 1.0,
+	"Inch": 2.54,
+	"Meter": 100.0,
+	"Millimeter": 0.1,
+}
+
+
+@frappe.whitelist()
+def find_matching_parcel_template(
+	length: float,
+	width: float,
+	height: float,
+	dimension_uom: str,
+	tolerance: float = 0.1,
+) -> str | None:
+	"""
+	Find a Shipment Parcel Template that matches the given dimensions.
+
+	Shipment Parcel Template stores dimensions in cm, so we convert the input dimensions
+	to cm for comparison.
+
+	Args:
+	        length: Length in the given UOM
+	        width: Width in the given UOM
+	        height: Height in the given UOM
+	        dimension_uom: UOM of the input dimensions
+	        tolerance: Tolerance for matching (in cm)
+
+	Returns:
+	        Name of the matching Shipment Parcel Template, or None if no match
+	"""
+	if not all([length, width, height, dimension_uom]):
+		return None
+
+	# Convert input dimensions to cm
+	conversion_factor = DIMENSION_TO_CM.get(dimension_uom, 1.0)
+	length_cm = float(length) * conversion_factor
+	width_cm = float(width) * conversion_factor
+	height_cm = float(height) * conversion_factor
+
+	# Get all parcel templates
+	templates = frappe.get_all(
+		"Shipment Parcel Template",
+		fields=["name", "length", "width", "height"],
+	)
+
+	for template in templates:
+		# Check if dimensions match within tolerance
+		if (
+			abs(template.length - length_cm) <= tolerance
+			and abs(template.width - width_cm) <= tolerance
+			and abs(template.height - height_cm) <= tolerance
+		):
+			return template.name
+
+	return None
 
 
 def get_marketplace(id=None, name=None, region=None, domain=None):

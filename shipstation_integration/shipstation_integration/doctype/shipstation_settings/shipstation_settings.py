@@ -41,6 +41,8 @@ class ShipstationSettings(Document):
 	def onload(self):
 		if self.carrier_data:
 			self.set_onload("carriers", self._carrier_data())
+		if self.shipstation_api_carrier_data:
+			self.set_onload("api_carriers", self._api_carrier_data())
 
 	def validate(self):
 		self.validate_label_generation()
@@ -152,38 +154,48 @@ class ShipstationSettings(Document):
 				# Process services from the carrier response
 				for s in services or []:
 					if isinstance(s, dict):
-						carrier_data["services"].append({
-							"service_code": s.get("service_code"),
-							"name": s.get("name"),
-							"domestic": s.get("domestic"),
-							"international": s.get("international"),
-						})
+						carrier_data["services"].append(
+							{
+								"service_code": s.get("service_code"),
+								"name": s.get("name"),
+								"domestic": s.get("domestic"),
+								"international": s.get("international"),
+							}
+						)
 					else:
-						carrier_data["services"].append({
-							"service_code": getattr(s, "service_code", None),
-							"name": getattr(s, "name", None),
-							"domestic": getattr(s, "domestic", None),
-							"international": getattr(s, "international", None),
-						})
+						carrier_data["services"].append(
+							{
+								"service_code": getattr(s, "service_code", None),
+								"name": getattr(s, "name", None),
+								"domestic": getattr(s, "domestic", None),
+								"international": getattr(s, "international", None),
+							}
+						)
 
 				# Process packages from the carrier response
 				for p in packages or []:
 					if isinstance(p, dict):
-						carrier_data["packages"].append({
-							"package_code": p.get("package_code"),
-							"name": p.get("name"),
-						})
+						carrier_data["packages"].append(
+							{
+								"package_code": p.get("package_code"),
+								"name": p.get("name"),
+							}
+						)
 					else:
-						carrier_data["packages"].append({
-							"package_code": getattr(p, "package_code", None),
-							"name": getattr(p, "name", None),
-						})
+						carrier_data["packages"].append(
+							{
+								"package_code": getattr(p, "package_code", None),
+								"name": getattr(p, "name", None),
+							}
+						)
 
 				carrier_list.append(carrier_data)
 
 			self.shipstation_api_carrier_data = json.dumps(carrier_list)
 			self.save()
-			frappe.msgprint(_("Successfully fetched {0} carriers from ShipStation API v2.").format(len(carrier_list)))
+			frappe.msgprint(
+				_("Successfully fetched {0} carriers from ShipStation API v2.").format(len(carrier_list))
+			)
 			return carrier_list
 		except Exception as e:
 			frappe.throw(_("Failed to fetch carriers: {0}").format(str(e)))
@@ -193,6 +205,13 @@ class ShipstationSettings(Document):
 		if not self.shipstation_api_carrier_data:
 			return []
 		return json.loads(self.shipstation_api_carrier_data)
+
+	@frappe.whitelist()
+	def sync_carrier_packages(self):
+		"""Sync carrier package types with detailed dimensions from ShipEngine API."""
+		from shipstation_integration.carriers import sync_carrier_package_types
+
+		return sync_carrier_package_types(self.name)
 
 	def get_api_carrier_codes(self, carrier_name, service_name, package_name=None):
 		"""Get carrier, service, and package codes from API carrier data."""

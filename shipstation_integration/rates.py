@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 
 import frappe
 from frappe import _
+from frappe.utils import flt
 
 try:
 	from shipengine.errors import ShipEngineError
@@ -25,24 +26,148 @@ if TYPE_CHECKING:
 	)
 
 
+# UOM mappings for ShipEngine API
+# ShipEngine accepts: pound, ounce, gram, kilogram for weight
+# ShipEngine accepts: inch, centimeter for dimensions
+DIMENSION_UOM_MAP = {
+	"Inch": "inch",
+	"Centimeter": "centimeter",
+	"inch": "inch",
+	"centimeter": "centimeter",
+	"cm": "centimeter",
+	"in": "inch",
+}
+
+WEIGHT_UOM_MAP = {
+	"Pound": "pound",
+	"Kilogram": "kilogram",
+	"Ounce": "ounce",
+	"Gram": "gram",
+	"pound": "pound",
+	"kilogram": "kilogram",
+	"ounce": "ounce",
+	"gram": "gram",
+	"lb": "pound",
+	"Lb": "pound",
+	"kg": "kilogram",
+	"oz": "ounce",
+	"g": "gram",
+}
+
+
+def get_state_code(state: str, country_code: str = "US") -> str:
+	"""
+	Convert state name to 2-character state code for US addresses.
+
+	ShipEngine requires 2-character state codes for US addresses.
+	For non-US addresses, returns the state as-is.
+
+	Args:
+	        state: State name or code (e.g., "California" or "CA")
+	        country_code: 2-character country code
+
+	Returns:
+	        2-character state code for US, original value for other countries
+	"""
+	if not state:
+		return ""
+
+	# If already 2 characters, assume it's a code
+	if len(state) <= 2:
+		return state.upper()
+
+	# Only convert for US addresses
+	if country_code.upper() != "US":
+		return state
+
+	# US state name to code mapping
+	us_states = {
+		"Alabama": "AL",
+		"Alaska": "AK",
+		"Arizona": "AZ",
+		"Arkansas": "AR",
+		"California": "CA",
+		"Colorado": "CO",
+		"Connecticut": "CT",
+		"Delaware": "DE",
+		"Florida": "FL",
+		"Georgia": "GA",
+		"Hawaii": "HI",
+		"Idaho": "ID",
+		"Illinois": "IL",
+		"Indiana": "IN",
+		"Iowa": "IA",
+		"Kansas": "KS",
+		"Kentucky": "KY",
+		"Louisiana": "LA",
+		"Maine": "ME",
+		"Maryland": "MD",
+		"Massachusetts": "MA",
+		"Michigan": "MI",
+		"Minnesota": "MN",
+		"Mississippi": "MS",
+		"Missouri": "MO",
+		"Montana": "MT",
+		"Nebraska": "NE",
+		"Nevada": "NV",
+		"New Hampshire": "NH",
+		"New Jersey": "NJ",
+		"New Mexico": "NM",
+		"New York": "NY",
+		"North Carolina": "NC",
+		"North Dakota": "ND",
+		"Ohio": "OH",
+		"Oklahoma": "OK",
+		"Oregon": "OR",
+		"Pennsylvania": "PA",
+		"Rhode Island": "RI",
+		"South Carolina": "SC",
+		"South Dakota": "SD",
+		"Tennessee": "TN",
+		"Texas": "TX",
+		"Utah": "UT",
+		"Vermont": "VT",
+		"Virginia": "VA",
+		"Washington": "WA",
+		"West Virginia": "WV",
+		"Wisconsin": "WI",
+		"Wyoming": "WY",
+		"District of Columbia": "DC",
+		# Territories
+		"Puerto Rico": "PR",
+		"Guam": "GU",
+		"American Samoa": "AS",
+		"U.S. Virgin Islands": "VI",
+		"Northern Mariana Islands": "MP",
+	}
+
+	# Case-insensitive lookup
+	for name, code in us_states.items():
+		if name.lower() == state.lower():
+			return code
+
+	# If no match found, return first 2 characters uppercase as last resort
+	return state[:2].upper()
+
+
 @frappe.whitelist()
 def get_rates(
 	ship_from: dict,
 	ship_to: dict,
 	packages: list[dict],
-	settings_name: Optional[str] = None,
+	settings_name: str | None = None,
 ) -> list[dict]:
 	"""
 	Get rate quotes from multiple carriers.
 
 	Args:
-		ship_from: Origin address dict with keys: name, street1, city, state, postal_code, country
-		ship_to: Destination address dict with same keys
-		packages: List of package dicts with keys: weight (dict with value/unit), dimensions (optional)
-		settings_name: Optional Shipstation Settings document name
+	        ship_from: Origin address dict with keys: name, street1, city, state, postal_code, country
+	        ship_to: Destination address dict with same keys
+	        packages: List of package dicts with keys: weight (dict with value/unit), dimensions (optional)
+	        settings_name: Optional Shipstation Settings document name
 
 	Returns:
-		List of rate quotes from available carriers
+	        List of rate quotes from available carriers
 	"""
 	settings = _get_settings(settings_name)
 	client = settings.shipstation_api_client()
@@ -67,11 +192,16 @@ def get_rates(
 		result = _format_rates_response(rates_response)
 		if not result:
 			# Log the full response for debugging if no rates found
-			frappe.logger("shipstation").info(f"No rates found. Request: {rate_request}, Response: {rates_response}")
+			frappe.logger("shipstation").info(
+				f"No rates found. Request: {rate_request}, Response: {rates_response}"
+			)
 		return result
 	except Exception as e:
 		error_msg = _get_error_message(e)
-		frappe.log_error(title="Error fetching shipping rates", message=f"Rate Request: {rate_request}\n\nError: {error_msg}")
+		frappe.log_error(
+			title="Error fetching shipping rates",
+			message=f"Rate Request: {rate_request}\n\nError: {error_msg}",
+		)
 		frappe.throw(_("Failed to fetch shipping rates: {0}").format(error_msg))
 
 
@@ -83,22 +213,22 @@ def estimate_rates(
 	to_country: str,
 	weight_value: float,
 	weight_unit: str = "pound",
-	settings_name: Optional[str] = None,
+	settings_name: str | None = None,
 ) -> list[dict]:
 	"""
 	Quick rate estimation with minimal address information.
 
 	Args:
-		from_postal_code: Origin postal/zip code
-		from_country: Origin country code (e.g., "US")
-		to_postal_code: Destination postal/zip code
-		to_country: Destination country code
-		weight_value: Package weight
-		weight_unit: Weight unit (pound, ounce, gram, kilogram)
-		settings_name: Optional Shipstation Settings document name
+	        from_postal_code: Origin postal/zip code
+	        from_country: Origin country code (e.g., "US")
+	        to_postal_code: Destination postal/zip code
+	        to_country: Destination country code
+	        weight_value: Package weight
+	        weight_unit: Weight unit (pound, ounce, gram, kilogram)
+	        settings_name: Optional Shipstation Settings document name
 
 	Returns:
-		List of estimated rates
+	        List of estimated rates
 	"""
 	settings = _get_settings(settings_name)
 	client = settings.shipstation_api_client()
@@ -124,16 +254,16 @@ def estimate_rates(
 
 
 @frappe.whitelist()
-def get_rate_by_id(rate_id: str, settings_name: Optional[str] = None) -> dict:
+def get_rate_by_id(rate_id: str, settings_name: str | None = None) -> dict:
 	"""
 	Retrieve a previously cached rate by its ID.
 
 	Args:
-		rate_id: The rate ID returned from a previous rate request
-		settings_name: Optional Shipstation Settings document name
+	        rate_id: The rate ID returned from a previous rate request
+	        settings_name: Optional Shipstation Settings document name
 
 	Returns:
-		Rate details dict
+	        Rate details dict
 	"""
 	settings = _get_settings(settings_name)
 	client = settings.shipstation_api_client()
@@ -148,36 +278,140 @@ def get_rate_by_id(rate_id: str, settings_name: Optional[str] = None) -> dict:
 
 
 @frappe.whitelist()
-def get_rates_for_delivery_note(delivery_note: str) -> list[dict]:
+def get_rates_for_packing_slip(packing_slip: str) -> list[dict]:
 	"""
-	Get shipping rates for a Delivery Note document.
+	Get shipping rates for a Packing Slip.
+
+	Each Packing Slip represents one physical package. Addresses are read
+	from the Packing Slip's shipping_address_name and dispatch_address_name fields.
+	Package dimensions come from the Parcel Dimensions child table.
 
 	Args:
-		delivery_note: Delivery Note document name
+	        packing_slip: Packing Slip document name
 
 	Returns:
-		List of available shipping rates
+	        List of available shipping rates
 	"""
-	dn = frappe.get_doc("Delivery Note", delivery_note)
+	ps = frappe.get_doc("Packing Slip", packing_slip)
 
-	if not dn.shipping_address_name:
-		frappe.throw(_("Delivery Note must have a shipping address"))
+	if not ps.shipping_address_name:
+		frappe.throw(_("Packing Slip must have a shipping address"))
 
-	# Get shipping address
-	ship_to_address = frappe.get_doc("Address", dn.shipping_address_name)
+	if not ps.dispatch_address_name:
+		frappe.throw(_("Packing Slip must have a dispatch (ship from) address"))
 
-	# Get company address (ship from)
-	company_address = frappe.db.get_value(
-		"Dynamic Link",
-		{"link_doctype": "Company", "link_name": dn.company, "parenttype": "Address"},
-		"parent",
+	# Get addresses
+	ship_to_address = frappe.get_doc("Address", ps.shipping_address_name)
+	ship_from_address = frappe.get_doc("Address", ps.dispatch_address_name)
+
+	# Get company name from linked Delivery Note
+	dn = frappe.get_doc("Delivery Note", ps.delivery_note)
+	company_name = dn.company
+	customer_name = dn.customer_name or dn.customer
+
+	# Build address dicts - include phone which is required by ShipEngine
+	# State must be 2-character code for US addresses
+	ship_from_country = frappe.db.get_value("Country", ship_from_address.country, "code") or "US"
+	ship_to_country = frappe.db.get_value("Country", ship_to_address.country, "code") or "US"
+
+	ship_from = {
+		"name": company_name,
+		"street1": ship_from_address.address_line1,
+		"street2": ship_from_address.address_line2 or "",
+		"city": ship_from_address.city,
+		"state": get_state_code(ship_from_address.state, ship_from_country),
+		"postal_code": ship_from_address.pincode,
+		"country": ship_from_country,
+		"phone": ship_from_address.phone or "0000000000",
+	}
+
+	ship_to = {
+		"name": customer_name,
+		"street1": ship_to_address.address_line1,
+		"street2": ship_to_address.address_line2 or "",
+		"city": ship_to_address.city,
+		"state": get_state_code(ship_to_address.state, ship_to_country),
+		"postal_code": ship_to_address.pincode,
+		"country": ship_to_country,
+		"phone": ship_to_address.phone or "0000000000",
+	}
+
+	# Build package from this Packing Slip's Parcel Dimensions
+	package = get_package_from_packing_slip(ps)
+	if not package:
+		frappe.throw(_("Packing Slip must have parcel dimensions configured"))
+
+	return get_rates(
+		ship_from=ship_from,
+		ship_to=ship_to,
+		packages=[package],
 	)
 
-	if not company_address:
-		frappe.throw(_("Company must have a primary address configured"))
 
-	ship_from_address = frappe.get_doc("Address", company_address)
+def get_package_from_packing_slip(packing_slip) -> dict | None:
+	"""
+	Build a package dict from a Packing Slip document.
 
+	Args:
+	        packing_slip: Packing Slip document
+
+	Returns:
+	        Package dict for rate request, or None if no valid data
+	"""
+	# Get parcel dimensions from the child table
+	parcel_dims = None
+	if hasattr(packing_slip, "parcel_dimensions") and packing_slip.parcel_dimensions:
+		parcel_dims = (
+			packing_slip.parcel_dimensions[0] if len(packing_slip.parcel_dimensions) > 0 else None
+		)
+
+	if parcel_dims:
+		# Use dimensions from Parcel Dimensions child table
+		dimension_unit = DIMENSION_UOM_MAP.get(parcel_dims.dimension_uom, "inch")
+		weight_unit = WEIGHT_UOM_MAP.get(parcel_dims.weight_uom, "pound")
+
+		return {
+			"weight": {
+				"value": flt(parcel_dims.weight) or 1.0,
+				"unit": weight_unit,
+			},
+			"dimensions": {
+				"length": flt(parcel_dims.length) or 1,
+				"width": flt(parcel_dims.width) or 1,
+				"height": flt(parcel_dims.height) or 1,
+				"unit": dimension_unit,
+			},
+		}
+
+	# Fallback: use Packing Slip gross weight if available
+	if packing_slip.gross_weight_pkg:
+		weight_unit = WEIGHT_UOM_MAP.get(packing_slip.gross_weight_uom, "pound")
+		return {
+			"weight": {
+				"value": flt(packing_slip.gross_weight_pkg),
+				"unit": weight_unit,
+			},
+			"dimensions": {
+				"length": 12,
+				"width": 9,
+				"height": 6,
+				"unit": "inch",
+			},
+		}
+
+	return None
+
+
+def get_fallback_package(dn) -> dict:
+	"""
+	Create a fallback package using calculated weight from Delivery Note items.
+
+	Args:
+	        dn: Delivery Note document
+
+	Returns:
+	        Package dict with default dimensions
+	"""
 	# Calculate total weight from items
 	total_weight = 0.0
 	for item in dn.items:
@@ -187,57 +421,18 @@ def get_rates_for_delivery_note(delivery_note: str) -> list[dict]:
 	if total_weight <= 0:
 		total_weight = 1.0  # Default to 1 lb if no weight
 
-	# Get settings - use getattr for fields that may not exist yet
-	settings_name = None
-	if getattr(dn, "integration_doctype", None) == "Shipstation Settings" and getattr(dn, "integration_doc", None):
-		settings_name = dn.integration_doc
-
-	# Build address dicts - include phone which is required by ShipEngine
-	ship_from = {
-		"name": dn.company,
-		"street1": ship_from_address.address_line1,
-		"street2": ship_from_address.address_line2 or "",
-		"city": ship_from_address.city,
-		"state": ship_from_address.state,
-		"postal_code": ship_from_address.pincode,
-		"country": frappe.db.get_value("Country", ship_from_address.country, "code") or "US",
-		"phone": ship_from_address.phone or "0000000000",
+	return {
+		"weight": {"value": total_weight, "unit": "pound"},
+		"dimensions": {
+			"length": 12,  # Default dimensions in inches
+			"width": 9,
+			"height": 6,
+			"unit": "inch",
+		},
 	}
 
-	ship_to = {
-		"name": dn.customer_name or dn.customer,
-		"street1": ship_to_address.address_line1,
-		"street2": ship_to_address.address_line2 or "",
-		"city": ship_to_address.city,
-		"state": ship_to_address.state,
-		"postal_code": ship_to_address.pincode,
-		"country": frappe.db.get_value("Country", ship_to_address.country, "code") or "US",
-		"phone": ship_to_address.phone or "0000000000",
-	}
 
-	# Package with weight and dimensions (dimensions required by some carriers like FedEx)
-	# TODO: In the future, pull actual dimensions from Shipment Parcel if available
-	packages = [
-		{
-			"weight": {"value": total_weight, "unit": "pound"},
-			"dimensions": {
-				"length": 12,  # Default dimensions in inches
-				"width": 9,
-				"height": 6,
-				"unit": "inch",
-			},
-		}
-	]
-
-	return get_rates(
-		ship_from=ship_from,
-		ship_to=ship_to,
-		packages=packages,
-		settings_name=settings_name,
-	)
-
-
-def _get_settings(settings_name: Optional[str] = None) -> "ShipstationSettings":
+def _get_settings(settings_name: str | None = None) -> "ShipstationSettings":
 	"""Get Shipstation Settings document."""
 	if settings_name:
 		return frappe.get_doc("Shipstation Settings", settings_name)
@@ -338,7 +533,9 @@ def _format_rates_response(rates_response) -> list[dict]:
 
 		# Log for debugging
 		if not rate_list:
-			frappe.logger("shipstation").info(f"Rates response structure: {type(rates_response)}, keys: {rates_response.keys() if isinstance(rates_response, dict) else 'N/A'}")
+			frappe.logger("shipstation").info(
+				f"Rates response structure: {type(rates_response)}, keys: {rates_response.keys() if isinstance(rates_response, dict) else 'N/A'}"
+			)
 	except Exception as e:
 		frappe.logger("shipstation").warning(f"Failed to parse rates response: {e}")
 		rate_list = []
@@ -374,4 +571,3 @@ def _format_single_rate(rate) -> dict:
 			"trackable": rate.get("trackable", True),
 		}
 	return rate
-
