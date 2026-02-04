@@ -56,7 +56,7 @@ frappe.ui.form.on('Packing Slip', {
 		// Set query for parcel_template in Parcel Dimensions - respect carrier if selected
 		frm.set_query('parcel_template', 'parcel_dimensions', function (doc, cdt, cdn) {
 			const row = locals[cdt][cdn]
-			if (frm.do.carrier) {
+			if (frm.doc.carrier) {
 				return {
 					filters: {
 						carrier: frm.doc.carrier,
@@ -72,9 +72,12 @@ frappe.ui.form.on('Packing Slip', {
 			frm.trigger('delivery_note')
 		}
 
-		if (frm.doc.docstatus === 1) {
-			setup_shipping_actions(frm)
+		// Load carrier services if carrier is already set (ensures service_code_map is populated)
+		if (frm.doc.carrier && !frm.service_code_map) {
+			load_carrier_services(frm, frm.doc.carrier)
 		}
+
+		setup_shipping_actions(frm)
 	},
 
 	delivery_note: function (frm) {
@@ -153,31 +156,49 @@ frappe.ui.form.on('Packing Slip', {
 	},
 
 	carrier: function (frm) {
-		// When carrier changes, load available services
+		// When carrier changes, load available services with friendly names
 		if (frm.doc.carrier) {
-			frappe.call({
-				method: 'shipstation_integration.carriers.get_services_for_supplier',
-				args: {
-					supplier_name: frm.doc.carrier,
-				},
-				callback: function (r) {
-					if (r.message && r.message.length > 0) {
-						// Build options for carrier_service field
-						const options = [''].concat(r.message.map(s => s.service_code))
-						frm.set_df_property('carrier_service', 'options', options.join('\n'))
-						frm.set_df_property('carrier_service', 'fieldtype', 'Select')
-						frm.refresh_field('carrier_service')
-					}
-				},
-			})
+			load_carrier_services(frm, frm.doc.carrier)
 		} else {
 			// Reset to Data field if no carrier
 			frm.set_df_property('carrier_service', 'fieldtype', 'Data')
 			frm.set_df_property('carrier_service', 'options', null)
+			frm.service_code_map = null
 			frm.refresh_field('carrier_service')
 		}
 	},
 })
+
+/**
+ * Load carrier services and populate service_code_map
+ * This is called both when carrier changes and on refresh if carrier is already set
+ */
+function load_carrier_services(frm, supplier_name) {
+	frappe.call({
+		method: 'shipstation_integration.carriers.get_services_for_supplier',
+		args: {
+			supplier_name: supplier_name,
+		},
+		callback: function (r) {
+			if (r.message && r.message.length > 0) {
+				// Build options with friendly names
+				const options = [''].concat(r.message.map(s => s.name || s.service_code))
+
+				// Store mapping for lookup when creating label
+				// Maps friendly name -> service_code
+				frm.service_code_map = {}
+				r.message.forEach(s => {
+					const label = s.name || s.service_code
+					frm.service_code_map[label] = s.service_code
+				})
+
+				frm.set_df_property('carrier_service', 'options', options.join('\n'))
+				frm.set_df_property('carrier_service', 'fieldtype', 'Select')
+				frm.refresh_field('carrier_service')
+			}
+		},
+	})
+}
 
 function fetch_weight_from_delivery_note(frm, dn) {
 	let net_weight = 0
@@ -369,16 +390,31 @@ function create_label_with_rate(frm, carrier_id, service_code) {
  */
 function create_label_direct(frm) {
 	const carrier_supplier = frm.doc.carrier || get_carrier_from_parcel_dimensions(frm)
-	const service_code = frm.doc.carrier_service
+	const service_display = frm.doc.carrier_service
 
 	if (!carrier_supplier) {
 		frappe.msgprint(__('Please select a carrier first.'))
 		return
 	}
 
-	if (!service_code) {
+	if (!service_display) {
 		frappe.msgprint(__('Please select a carrier service first.'))
 		return
+	}
+
+	// Convert service display name to service_code if we have a mapping
+	let service_code = service_display
+
+	// Try to look up the actual service code from the friendly name
+	if (frm.service_code_map && frm.service_code_map[service_display]) {
+		service_code = frm.service_code_map[service_display]
+	} else {
+		// If no map, the value might already be a service_code (e.g., "ups_ground")
+		// or we need to load services first - warn user if it looks like a friendly name
+		if (service_display.includes(' ') || /[A-Z]/.test(service_display.charAt(0))) {
+			// Looks like a friendly name, not a service code - reload services
+			console.warn('Service code map not found, service_display may be friendly name:', service_display)
+		}
 	}
 
 	// Look up ShipEngine carrier_id from Supplier name
@@ -439,38 +475,41 @@ function create_shipping_label(frm) {
 }
 
 /**
- * Show dialog for carrier/service selection
+ * Show dialog for carrier/service selection with user-friendly names
  */
 function show_carrier_selection_dialog(frm, carriers) {
-	const carrier_options = carriers.map(c => c.carrier_id)
+	// Build carrier options with friendly names
+	// Format: "carrier_id\nCarrier Name" for select display
+	const carrier_options = carriers.map(c => ({
+		value: c.carrier_id,
+		label: c.name || c.friendly_name || c.carrier_code || c.carrier_id,
+	}))
+
+	// Store carriers for service lookup
+	const carriers_map = {}
+	carriers.forEach(c => {
+		carriers_map[c.carrier_id] = c
+	})
 
 	const dialog = new frappe.ui.Dialog({
 		title: __('Select Carrier and Service'),
 		fields: [
 			{
-				fieldtype: 'Select',
+				fieldtype: 'Autocomplete',
 				fieldname: 'carrier_id',
 				label: __('Carrier'),
-				options: carrier_options,
+				options: carrier_options.map(c => c.label),
 				reqd: 1,
 				onchange: function () {
-					const carrier_id = dialog.get_value('carrier_id')
-					if (carrier_id) {
-						frappe.call({
-							method: 'shipstation_integration.carriers.list_carrier_services',
-							args: { carrier_id: carrier_id },
-							callback: function (r) {
-								if (r.message) {
-									const service_options = r.message.map(s => s.service_code)
-									dialog.set_df_property('service_code', 'options', service_options)
-								}
-							},
-						})
+					const carrier_label = dialog.get_value('carrier_id')
+					const carrier = carrier_options.find(c => c.label === carrier_label)
+					if (carrier) {
+						load_services_for_dialog(dialog, carrier.value)
 					}
 				},
 			},
 			{
-				fieldtype: 'Select',
+				fieldtype: 'Autocomplete',
 				fieldname: 'service_code',
 				label: __('Service'),
 				options: [],
@@ -479,14 +518,64 @@ function show_carrier_selection_dialog(frm, carriers) {
 		],
 		primary_action_label: __('Create Label'),
 		primary_action: function () {
-			const carrier_id = dialog.get_value('carrier_id')
-			const service_code = dialog.get_value('service_code')
+			const carrier_label = dialog.get_value('carrier_id')
+			const service_label = dialog.get_value('service_code')
+
+			// Find carrier_id from label
+			const carrier = carrier_options.find(c => c.label === carrier_label)
+			if (!carrier) {
+				frappe.msgprint(__('Please select a valid carrier.'))
+				return
+			}
+
+			// Find service_code from label (stored in dialog data)
+			const service_code = dialog.service_code_map?.[service_label] || service_label
+
 			dialog.hide()
-			create_label_with_rate(frm, carrier_id, service_code)
+			create_label_with_rate(frm, carrier.value, service_code)
 		},
 	})
 
 	dialog.show()
+}
+
+/**
+ * Load services for the carrier selection dialog
+ */
+function load_services_for_dialog(dialog, carrier_id) {
+	frappe.call({
+		method: 'shipstation_integration.carriers.list_carrier_services',
+		args: { carrier_id: carrier_id },
+		callback: function (r) {
+			if (r.message && r.message.length > 0) {
+				// Build service options with friendly names
+				const service_options = r.message.map(s => s.name || s.service_code)
+
+				// Store mapping of label -> service_code for lookup
+				dialog.service_code_map = {}
+				r.message.forEach(s => {
+					const label = s.name || s.service_code
+					dialog.service_code_map[label] = s.service_code
+				})
+
+				// For Autocomplete fields, use set_data() to update options
+				const service_field = dialog.fields_dict.service_code
+				if (service_field && service_field.set_data) {
+					service_field.set_data(service_options)
+				} else if (service_field && service_field.awesomplete) {
+					service_field.awesomplete.list = service_options
+				}
+			} else {
+				const service_field = dialog.fields_dict.service_code
+				if (service_field && service_field.set_data) {
+					service_field.set_data([])
+				}
+			}
+		},
+		error: function (err) {
+			console.error('Error loading carrier services:', err)
+		},
+	})
 }
 
 frappe.ui.form.on('Parcel Dimensions', {
