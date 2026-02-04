@@ -33,6 +33,8 @@ app_include_js = ["shipstation_integration.bundle.js"]
 doctype_js = {
 	"Delivery Note": "public/js/delivery_note.js",
 	"Sales Order": "public/js/sales_order.js",
+	"Shipment Parcel Template": "public/js/shipment_parcel_template.js",
+	"Shipment": "public/js/shipment.js",
 }
 
 doctype_list_js = {
@@ -115,9 +117,9 @@ scheduler_events = {
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "shipstation_integration.event.get_events"
-# }
+override_whitelisted_methods = {
+	"erpnext.shipping.rates.get_parcels_from_shipment": "shipstation_integration.overrides.rates.get_parcels_from_shipment"
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
