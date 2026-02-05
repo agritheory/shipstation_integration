@@ -9,6 +9,7 @@ retrieving shipping labels directly through the API.
 """
 
 import base64
+import json
 from io import BytesIO
 from typing import TYPE_CHECKING, Optional
 
@@ -55,12 +56,19 @@ def create_label(
 	settings = _get_settings(settings_name)
 	client = settings.shipstation_api_client()
 
+	# ShipEngine SDK expects data wrapped in a "shipment" key
+	wrapped_data = {"shipment": shipment_data}
+
 	try:
-		label_response = client.create_label_from_shipment(shipment_data)
+		label_response = client.create_label_from_shipment(wrapped_data)
 		return _format_label_response(label_response)
 	except Exception as e:
-		frappe.log_error(title="Error creating shipping label", message=str(e))
-		frappe.throw(_("Failed to create shipping label: {0}").format(str(e)))
+		error_msg = _get_error_message(e)
+		frappe.log_error(
+			title="Error creating shipping label",
+			message=f"Error: {error_msg}\n\nShipment data: {json.dumps(shipment_data, indent=2, default=str)}",
+		)
+		frappe.throw(_("Failed to create shipping label: {0}").format(error_msg))
 
 
 @frappe.whitelist()
@@ -188,6 +196,12 @@ def create_label_for_packing_slip(
 	else:
 		if not carrier_id or not service_code:
 			frappe.throw(_("Either rate_id or both carrier_id and service_code are required"))
+
+		# Log the inputs for debugging
+		frappe.log_error(
+			title="Label creation inputs",
+			message=f"Packing Slip: {packing_slip}\nCarrier ID: {carrier_id}\nService Code: {service_code}",
+		)
 
 		# Build shipment data from Packing Slip
 		shipment_data = _build_shipment_from_packing_slip(ps, carrier_id, service_code)
@@ -391,28 +405,33 @@ def _build_shipment_from_packing_slip(ps, carrier_id: str, service_code: str) ->
 		frappe.db.get_value("Country", ship_from_address.country, "code") or "US"
 	).upper()
 
+	# Phone is required by ShipEngine - use placeholder if empty
+	# Format: "+1 000-000-0000" for US numbers
+	ship_to_phone = ship_to_address.phone or "+1 000-000-0000"
+	ship_from_phone = ship_from_address.phone or "+1 000-000-0000"
+
 	return {
 		"carrier_id": carrier_id,
 		"service_code": service_code,
 		"ship_to": {
 			"name": customer_name,
+			"phone": ship_to_phone,
 			"address_line1": ship_to_address.address_line1,
 			"address_line2": ship_to_address.address_line2 or "",
 			"city_locality": ship_to_address.city,
 			"state_province": get_state_code(ship_to_address.state, ship_to_country),
 			"postal_code": ship_to_address.pincode,
 			"country_code": ship_to_country,
-			"phone": ship_to_address.phone or "",
 		},
 		"ship_from": {
 			"name": company_name,
+			"phone": ship_from_phone,
 			"address_line1": ship_from_address.address_line1,
 			"address_line2": ship_from_address.address_line2 or "",
 			"city_locality": ship_from_address.city,
 			"state_province": get_state_code(ship_from_address.state, ship_from_country),
 			"postal_code": ship_from_address.pincode,
 			"country_code": ship_from_country,
-			"phone": ship_from_address.phone or "",
 		},
 		"packages": [package],
 	}

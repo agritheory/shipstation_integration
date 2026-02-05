@@ -715,12 +715,34 @@ def get_carrier_id_for_supplier(
 	for carrier in carrier_data:
 		carrier_name = carrier.get("name", "")
 		if carrier_name and carrier_name.lower() == supplier_name_lower:
-			return carrier.get("carrier_id")
+			carrier_id = carrier.get("carrier_id")
+			# Validate carrier_id format (should be like "se-123456")
+			if carrier_id and carrier_id.startswith("se-"):
+				return carrier_id
+			frappe.log_error(
+				title="Invalid carrier_id format",
+				message=f"Carrier '{carrier_name}' has invalid carrier_id: {carrier_id}",
+			)
+			return None
 
 		# Also check supplier field if it was stored
 		carrier_supplier = carrier.get("supplier", "")
 		if carrier_supplier and carrier_supplier.lower() == supplier_name_lower:
-			return carrier.get("carrier_id")
+			carrier_id = carrier.get("carrier_id")
+			if carrier_id and carrier_id.startswith("se-"):
+				return carrier_id
+			frappe.log_error(
+				title="Invalid carrier_id format",
+				message=f"Carrier with supplier '{carrier_supplier}' has invalid carrier_id: {carrier_id}",
+			)
+			return None
+
+	# Not found - log for debugging
+	available_carriers = [f"{c.get('name')} (supplier: {c.get('supplier')})" for c in carrier_data]
+	frappe.log_error(
+		title="Carrier not found for supplier",
+		message=f"Looking for supplier: {supplier_name}\nAvailable carriers: {', '.join(available_carriers)}",
+	)
 
 	return None
 
@@ -740,11 +762,21 @@ def get_services_for_supplier(supplier_name: str, settings_name: str | None = No
 	Returns:
 	        List of service dicts with service_code, name, etc.
 	"""
-	carrier_id = get_carrier_id_for_supplier(supplier_name, settings_name)
-	if not carrier_id:
-		return []
+	try:
+		carrier_id = get_carrier_id_for_supplier(supplier_name, settings_name)
+		if not carrier_id:
+			# No matching carrier found - return empty list without error
+			return []
 
-	return list_carrier_services(carrier_id, settings_name)
+		return list_carrier_services(carrier_id, settings_name)
+	except Exception as e:
+		# Don't throw on service lookup failure - just return empty list
+		# This prevents page load failures
+		frappe.log_error(
+			title="Error getting services for supplier",
+			message=f"Supplier: {supplier_name}\nError: {str(e)}",
+		)
+		return []
 
 
 def _get_settings(settings_name: str | None = None) -> "ShipstationSettings":
