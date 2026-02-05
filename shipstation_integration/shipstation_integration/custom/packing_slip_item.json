@@ -154,7 +154,7 @@
 			"is_system_generated": 0,
 			"modified": "2026-02-02 10:51:43.578089",
 			"modified_by": "Administrator",
-			"module": "UltraPRO",
+			"module": "ShipStation Integration",
 			"name": "Packing Slip Item-net_weight-hidden",
 			"owner": "Administrator",
 			"parent": null,
