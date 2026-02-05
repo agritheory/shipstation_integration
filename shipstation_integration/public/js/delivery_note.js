@@ -68,7 +68,9 @@ function show_rate_selection_dialog(frm, rates) {
 		const currency = rate.shipping_amount?.currency || 'USD'
 		const delivery_info = rate.delivery_days ? ` (${rate.delivery_days} days)` : ''
 		return {
-			label: `${rate.carrier_name} - ${rate.service_type || rate.service_code} - ${currency} ${amount.toFixed(2)}${delivery_info}`,
+			label: `${rate.carrier_name} - ${rate.service_type || rate.service_code} - ${currency} ${amount.toFixed(
+				2
+			)}${delivery_info}`,
 			value: rate.rate_id,
 			rate: rate,
 		}
