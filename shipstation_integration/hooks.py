@@ -34,6 +34,7 @@ doctype_js = {
 	"Delivery Note": "public/js/delivery_note.js",
 	"Packing Slip": "public/js/packing_slip.js",
 	"Sales Order": "public/js/sales_order.js",
+	"Shipment Parcel Template": "public/js/shipment_parcel_template.js",
 }
 
 doctype_list_js = {
