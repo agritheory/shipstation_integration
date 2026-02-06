@@ -2,7 +2,7 @@ import frappe
 
 
 def execute():
-	create_field("User", "length_uom", "Length UOM", "Link", "UOM")
+	create_field("User", "dimension_uom", "Dimension UOM", "Link", "UOM")
 
 	create_field("User", "weight_uom", "Weight UOM", "Link", "UOM")
 

@@ -9,6 +9,6 @@ def boot_session(bootinfo):
 	user = frappe.get_cached_doc("User", frappe.session.user)
 
 	bootinfo.parcel_uom = {
-		"length_uom": user.length_uom or "Centimeter",
+		"dimension_uom": user.dimension_uom or "Centimeter",
 		"weight_uom": user.weight_uom or "Kilogram",
 	}

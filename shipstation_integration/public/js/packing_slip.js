@@ -68,20 +68,20 @@ frappe.ui.form.on('Packing Slip', {
 	},
 
 	refresh: function (frm) {
-		if (frm.doc.delivery_note && is_empty_or_null(frm.doc.shipping_address_name)) {
-			frm.trigger('delivery_note')
-		}
-
 		// Load carrier services if carrier is already set (ensures service_code_map is populated)
 		if (frm.doc.carrier && !frm.service_code_map) {
 			load_carrier_services(frm, frm.doc.carrier)
 		}
 
 		setup_shipping_actions(frm)
+		set_uom_labels(frm)
 	},
 
 	delivery_note: function (frm) {
 		if (!frm.doc.delivery_note) return
+
+		if (frm.__delivery_note_loaded) return
+		frm.__delivery_note_loaded = true
 
 		// Fetch customer, addresses, and weight info from Delivery Note
 		frappe.call({
@@ -576,6 +576,20 @@ function load_services_for_dialog(dialog, carrier_id) {
 			console.error('Error loading carrier services:', err)
 		},
 	})
+}
+
+function set_uom_labels(frm) {
+	const uom = frappe.boot.parcel_uom || {}
+
+	const length = uom.dimension_uom || 'Centimeter'
+	const weight = uom.weight_uom || 'Kilogram'
+
+	frm.fields_dict.parcel_dimensions.grid.update_docfield_property('length_display', 'label', `Length (${length})`)
+
+	frm.fields_dict.parcel_dimensions.grid.update_docfield_property('width_display', 'label', `Width (${length})`)
+	frm.fields_dict.parcel_dimensions.grid.update_docfield_property('height_display', 'label', `Height (${length})`)
+
+	frm.fields_dict.parcel_dimensions.grid.update_docfield_property('weight_display', 'label', `Weight (${weight})`)
 }
 
 frappe.ui.form.on('Parcel Dimensions', {

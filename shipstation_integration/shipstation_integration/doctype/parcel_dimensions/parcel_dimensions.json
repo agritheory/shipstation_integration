@@ -20,7 +20,13 @@
   "tracking_url",
   "column_break_labels",
   "label_url",
-  "bol_url"
+  "bol_url",
+  "measurement_preferences_section",
+  "length_display",
+  "width_display",
+  "column_break_gqcr",
+  "height_display",
+  "weight_display"
  ],
  "fields": [
   {
@@ -132,11 +138,44 @@
    "fieldtype": "Link",
    "label": "Carrier",
    "options": "Supplier"
+  },
+  {
+   "fieldname": "measurement_preferences_section",
+   "fieldtype": "Section Break",
+   "label": "Measurement Preferences"
+  },
+  {
+   "fieldname": "length_display",
+   "fieldtype": "Float",
+   "is_virtual": 1,
+   "label": "Length Display"
+  },
+  {
+   "fieldname": "width_display",
+   "fieldtype": "Float",
+   "is_virtual": 1,
+   "label": "Width Display"
+  },
+  {
+   "fieldname": "column_break_gqcr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "height_display",
+   "fieldtype": "Float",
+   "is_virtual": 1,
+   "label": "Height Display"
+  },
+  {
+   "fieldname": "weight_display",
+   "fieldtype": "Float",
+   "is_virtual": 1,
+   "label": "Weight Display"
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-02-02 10:47:54.820683",
+ "modified": "2026-02-06 03:50:37.692095",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Parcel Dimensions",
