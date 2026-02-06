@@ -127,7 +127,9 @@ def shipstation_api_webhook():
 		return {"status": "ignored", "message": "No event type specified"}
 
 	# Log the webhook for debugging
-	frappe.logger("shipstation").debug(f"Webhook received: {event_type}\n{json.dumps(data, indent=2)}")
+	frappe.logger("shipstation").debug(
+		f"Webhook received: {event_type}\n{json.dumps(data, indent=2)}"
+	)
 
 	# Route to appropriate handler
 	handlers = {
