@@ -15,11 +15,8 @@ from typing import TYPE_CHECKING, Optional
 import frappe
 import httpx
 from frappe import _
-
-try:
-	from shipengine.errors import ShipEngineError
-except ImportError:
-	ShipEngineError = None
+from shipengine.errors import ShipEngineError
+from shipstation.utils import get_error_message, get_shipstation_settings
 
 if TYPE_CHECKING:
 	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
@@ -192,7 +189,7 @@ def list_carriers(
 	Returns:
 	        List of carrier dicts with carrier_id, carrier_code, name, supplier, etc.
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	client = settings.shipstation_api_client()
 
 	try:
@@ -212,7 +209,7 @@ def list_carriers(
 
 		return result
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error listing carriers", message=error_msg)
 		frappe.throw(_("Failed to list carriers: {0}").format(error_msg))
 
@@ -229,7 +226,7 @@ def get_carrier(carrier_id: str, settings_name: str | None = None) -> dict:
 	Returns:
 	        Carrier details dict
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	api_key = settings.get_password("shipstation_api_key")
 
 	try:
@@ -247,7 +244,7 @@ def get_carrier(carrier_id: str, settings_name: str | None = None) -> dict:
 		)
 		frappe.throw(_("Failed to get carrier: {0}").format(e.response.text))
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error getting carrier", message=error_msg)
 		frappe.throw(_("Failed to get carrier: {0}").format(error_msg))
 
@@ -267,7 +264,7 @@ def list_carrier_package_types(carrier_id: str, settings_name: str | None = None
 	Returns:
 	        List of package type dicts with package_id, package_code, name, dimensions, description
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	api_key = settings.get_password("shipstation_api_key")
 
 	try:
@@ -288,7 +285,7 @@ def list_carrier_package_types(carrier_id: str, settings_name: str | None = None
 		)
 		frappe.throw(_("Failed to list carrier package types: {0}").format(e.response.text))
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error listing carrier package types", message=error_msg)
 		frappe.throw(_("Failed to list carrier package types: {0}").format(error_msg))
 
@@ -305,7 +302,7 @@ def list_carrier_services(carrier_id: str, settings_name: str | None = None) -> 
 	Returns:
 	        List of service dicts with service_code, name, domestic, international flags
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	api_key = settings.get_password("shipstation_api_key")
 
 	try:
@@ -326,7 +323,7 @@ def list_carrier_services(carrier_id: str, settings_name: str | None = None) -> 
 		)
 		frappe.throw(_("Failed to list carrier services: {0}").format(e.response.text))
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error listing carrier services", message=error_msg)
 		frappe.throw(_("Failed to list carrier services: {0}").format(error_msg))
 
@@ -339,7 +336,7 @@ def get_all_carrier_package_types(settings_name: str | None = None) -> dict[str,
 	Returns:
 	        Dict mapping carrier_id to list of package types
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 
 	# Get carrier IDs from stored carrier data
 	carrier_data = []
@@ -384,7 +381,7 @@ def sync_carrier_package_types(settings_name: str | None = None) -> dict:
 	Returns:
 	        Dict with sync results including carriers, packages, and templates counts
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	api_key = settings.get_password("shipstation_api_key")
 
 	# First fetch all carriers
@@ -702,7 +699,7 @@ def get_carrier_id_for_supplier(
 	if not supplier_name:
 		return None
 
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 
 	# Get cached carrier data
 	if not settings.shipstation_api_carrier_data:
@@ -777,40 +774,6 @@ def get_services_for_supplier(supplier_name: str, settings_name: str | None = No
 			message=f"Supplier: {supplier_name}\nError: {str(e)}",
 		)
 		return []
-
-
-def _get_settings(settings_name: str | None = None) -> "ShipstationSettings":
-	"""Get Shipstation Settings document."""
-	if settings_name:
-		return frappe.get_doc("Shipstation Settings", settings_name)
-
-	# Find first enabled settings with API v2 enabled
-	settings_list = frappe.get_all(
-		"Shipstation Settings",
-		filters={"enabled": 1, "enable_shipstation_api": 1},
-		limit=1,
-	)
-
-	if not settings_list:
-		frappe.throw(_("No Shipstation Settings found with ShipStation API v2 enabled"))
-
-	return frappe.get_doc("Shipstation Settings", settings_list[0].name)
-
-
-def _get_error_message(e: Exception) -> str:
-	"""Extract error message from ShipEngineError or other exceptions."""
-	if ShipEngineError and isinstance(e, ShipEngineError):
-		if hasattr(e, "message") and e.message:
-			error_details = [e.message]
-			if hasattr(e, "error_code") and e.error_code:
-				error_details.append(f"Code: {e.error_code}")
-			if hasattr(e, "error_type") and e.error_type:
-				error_details.append(f"Type: {e.error_type}")
-			return " | ".join(error_details)
-		if hasattr(e, "to_dict"):
-			error_dict = e.to_dict()
-			return error_dict.get("message", str(error_dict))
-	return str(e) or repr(e)
 
 
 def _format_carrier(carrier) -> dict:

@@ -17,11 +17,8 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 from frappe.utils.file_manager import save_file
-
-try:
-	from shipengine.errors import ShipEngineError
-except ImportError:
-	ShipEngineError = None
+from shipengine.errors import ShipEngineError
+from shipstation.utils import get_error_message, get_shipstation_settings
 
 from shipstation_integration.rates import (
 	DIMENSION_UOM_MAP,
@@ -53,7 +50,7 @@ def create_label(
 	Returns:
 	        Label response with label_id, tracking_number, label_download URL
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	client = settings.shipstation_api_client()
 
 	# ShipEngine SDK expects data wrapped in a "shipment" key
@@ -63,7 +60,7 @@ def create_label(
 		label_response = client.create_label_from_shipment(wrapped_data)
 		return _format_label_response(label_response)
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(
 			title="Error creating shipping label",
 			message=f"Error: {error_msg}\n\nShipment data: {json.dumps(shipment_data, indent=2, default=str)}",
@@ -86,7 +83,7 @@ def create_label_from_rate(
 	Returns:
 	        Label response with label_id, tracking_number, label_download URL
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	client = settings.shipstation_api_client()
 
 	try:
@@ -98,7 +95,7 @@ def create_label_from_rate(
 		label_response = client.create_label_from_rate_id(rate_id=rate_id, params=label_params)
 		return _format_label_response(label_response)
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error creating label from rate", message=error_msg)
 		frappe.throw(_("Failed to create label from rate: {0}").format(error_msg))
 
@@ -118,7 +115,7 @@ def void_label(
 	Returns:
 	        Void response with status
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	client = settings.shipstation_api_client()
 
 	try:
@@ -147,7 +144,7 @@ def get_label(
 	Returns:
 	        Label details dict
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	client = settings.shipstation_api_client()
 
 	try:
@@ -188,7 +185,7 @@ def create_label_for_packing_slip(
 	if not ps.dispatch_address_name:
 		frappe.throw(_("Packing Slip must have a dispatch (ship from) address"))
 
-	settings = _get_settings()
+	settings = get_shipstation_settings()
 
 	# If rate_id provided, use it directly
 	if rate_id:
@@ -302,7 +299,7 @@ def create_return_label(
 	Returns:
 	        Return label response
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	client = settings.shipstation_api_client()
 
 	try:
@@ -311,39 +308,6 @@ def create_return_label(
 	except Exception as e:
 		frappe.log_error(title="Error creating return label", message=str(e))
 		frappe.throw(_("Failed to create return label: {0}").format(str(e)))
-
-
-def _get_error_message(e: Exception) -> str:
-	"""Extract error message from ShipEngineError or other exceptions."""
-	if ShipEngineError and isinstance(e, ShipEngineError):
-		if hasattr(e, "message") and e.message:
-			error_details = [e.message]
-			if hasattr(e, "error_code") and e.error_code:
-				error_details.append(f"Code: {e.error_code}")
-			if hasattr(e, "error_type") and e.error_type:
-				error_details.append(f"Type: {e.error_type}")
-			return " | ".join(error_details)
-		if hasattr(e, "to_dict"):
-			error_dict = e.to_dict()
-			return error_dict.get("message", str(error_dict))
-	return str(e) or repr(e)
-
-
-def _get_settings(settings_name: str | None = None) -> "ShipstationSettings":
-	"""Get Shipstation Settings document."""
-	if settings_name:
-		return frappe.get_doc("Shipstation Settings", settings_name)
-
-	settings_list = frappe.get_all(
-		"Shipstation Settings",
-		filters={"enabled": 1, "enable_shipstation_api": 1},
-		limit=1,
-	)
-
-	if not settings_list:
-		frappe.throw(_("No Shipstation Settings found with ShipStation API v2 enabled"))
-
-	return frappe.get_doc("Shipstation Settings", settings_list[0].name)
 
 
 def _format_label_response(label_response) -> dict:

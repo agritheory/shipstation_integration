@@ -1,5 +1,13 @@
+from typing import TYPE_CHECKING, Optional
+
 import frappe
 from frappe import _
+from shipengine.errors import ShipEngineError
+
+if TYPE_CHECKING:
+	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
+		ShipstationSettings,
+	)
 
 # UOM conversion factors to centimeters (for dimension matching)
 DIMENSION_TO_CM = {
@@ -8,6 +16,24 @@ DIMENSION_TO_CM = {
 	"Meter": 100.0,
 	"Millimeter": 0.1,
 }
+
+
+@frappe.whitelist()
+def get_shipstation_settings(settings_name: str | None = None) -> "ShipstationSettings":
+	"""Get Shipstation Settings document."""
+	if settings_name:
+		return frappe.get_doc("Shipstation Settings", settings_name)
+
+	settings_list = frappe.get_all(
+		"Shipstation Settings",
+		filters={"enabled": 1, "enable_shipstation_api": 1},
+		limit=1,
+	)
+
+	if not settings_list:
+		frappe.throw(_("No Shipstation Settings found with ShipStation API v2 enabled"))
+
+	return frappe.get_doc("Shipstation Settings", settings_list[0].name)
 
 
 @frappe.whitelist()
@@ -80,6 +106,22 @@ def get_marketplace(id=None, name=None, region=None, domain=None):
 				return frappe._dict(data)
 
 	return frappe._dict()
+
+
+def get_error_message(e: Exception) -> str:
+	"""Extract error message from ShipEngineError or other exceptions."""
+	if ShipEngineError and isinstance(e, ShipEngineError):
+		if hasattr(e, "message") and e.message:
+			error_details = [e.message]
+			if hasattr(e, "error_code") and e.error_code:
+				error_details.append(f"Code: {e.error_code}")
+			if hasattr(e, "error_type") and e.error_type:
+				error_details.append(f"Type: {e.error_type}")
+			return " | ".join(error_details)
+		if hasattr(e, "to_dict"):
+			error_dict = e.to_dict()
+			return error_dict.get("message", str(error_dict))
+	return str(e) or repr(e)
 
 
 MARKETPLACES = {
