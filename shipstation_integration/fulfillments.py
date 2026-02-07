@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 @frappe.whitelist()
 def create_fulfillment(
 	delivery_note: str,
-	settings_name: Optional[str] = None,
+	settings_name: str | None = None,
 ) -> dict:
 	"""
 	Create a fulfillment record in ShipStation API v2.
@@ -31,11 +31,11 @@ def create_fulfillment(
 	back to connected marketplaces (Shopify, Amazon, etc.).
 
 	Args:
-		delivery_note: Delivery Note document name
-		settings_name: Optional Shipstation Settings document name
+	        delivery_note: Delivery Note document name
+	        settings_name: Optional Shipstation Settings document name
 
 	Returns:
-		Fulfillment response with fulfillment_id
+	        Fulfillment response with fulfillment_id
 	"""
 	dn = frappe.get_doc("Delivery Note", delivery_note)
 
@@ -47,7 +47,9 @@ def create_fulfillment(
 	client = settings.shipstation_api_client()
 
 	# Get shipping address
-	ship_to_address = frappe.get_doc("Address", dn.shipping_address_name) if dn.shipping_address_name else None
+	ship_to_address = (
+		frappe.get_doc("Address", dn.shipping_address_name) if dn.shipping_address_name else None
+	)
 
 	# Build fulfillment payload
 	fulfillment_data = {
@@ -66,18 +68,22 @@ def create_fulfillment(
 			"city_locality": ship_to_address.city,
 			"state_province": ship_to_address.state,
 			"postal_code": ship_to_address.pincode,
-			"country_code": (frappe.db.get_value("Country", ship_to_address.country, "code") or "US").upper(),
+			"country_code": (
+				frappe.db.get_value("Country", ship_to_address.country, "code") or "US"
+			).upper(),
 		}
 
 	# Add items if present
 	if dn.items:
 		fulfillment_data["items"] = []
 		for item in dn.items:
-			fulfillment_data["items"].append({
-				"name": item.item_name,
-				"sku": item.item_code,
-				"quantity": int(item.qty),
-			})
+			fulfillment_data["items"].append(
+				{
+					"name": item.item_name,
+					"sku": item.item_code,
+					"quantity": int(item.qty),
+				}
+			)
 
 	# Add order reference if available
 	if dn.shipstation_order_id:
@@ -125,22 +131,22 @@ def create_fulfillment(
 
 @frappe.whitelist()
 def list_fulfillments(
-	filters: Optional[dict] = None,
+	filters: dict | None = None,
 	page: int = 1,
 	page_size: int = 25,
-	settings_name: Optional[str] = None,
+	settings_name: str | None = None,
 ) -> dict:
 	"""
 	List fulfillments with optional filters.
 
 	Args:
-		filters: Optional filter dict with keys: tracking_number, ship_date_start, ship_date_end, etc.
-		page: Page number for pagination
-		page_size: Number of results per page
-		settings_name: Optional Shipstation Settings document name
+	        filters: Optional filter dict with keys: tracking_number, ship_date_start, ship_date_end, etc.
+	        page: Page number for pagination
+	        page_size: Number of results per page
+	        settings_name: Optional Shipstation Settings document name
 
 	Returns:
-		Dict with fulfillments list and pagination info
+	        Dict with fulfillments list and pagination info
 	"""
 	settings = _get_settings(settings_name)
 
@@ -192,17 +198,17 @@ def list_fulfillments(
 @frappe.whitelist()
 def get_fulfillment(
 	fulfillment_id: str,
-	settings_name: Optional[str] = None,
+	settings_name: str | None = None,
 ) -> dict:
 	"""
 	Get a specific fulfillment by ID.
 
 	Args:
-		fulfillment_id: The fulfillment ID
-		settings_name: Optional Shipstation Settings document name
+	        fulfillment_id: The fulfillment ID
+	        settings_name: Optional Shipstation Settings document name
 
 	Returns:
-		Fulfillment details dict
+	        Fulfillment details dict
 	"""
 	settings = _get_settings(settings_name)
 
@@ -238,19 +244,19 @@ def get_fulfillment(
 
 @frappe.whitelist()
 def sync_fulfillment_from_delivery_notes(
-	delivery_notes: Optional[list[str]] = None,
-	settings_name: Optional[str] = None,
+	delivery_notes: list[str] | None = None,
+	settings_name: str | None = None,
 ) -> dict:
 	"""
 	Sync fulfillments for multiple Delivery Notes.
 
 	Args:
-		delivery_notes: Optional list of Delivery Note names. If not provided,
-						syncs all submitted DNs with tracking numbers but no fulfillment ID.
-		settings_name: Optional Shipstation Settings document name
+	        delivery_notes: Optional list of Delivery Note names. If not provided,
+	                                        syncs all submitted DNs with tracking numbers but no fulfillment ID.
+	        settings_name: Optional Shipstation Settings document name
 
 	Returns:
-		Summary of sync results
+	        Summary of sync results
 	"""
 	if not delivery_notes:
 		# Get all submitted DNs with tracking but no fulfillment
@@ -294,7 +300,7 @@ def sync_fulfillment_from_delivery_notes(
 	return results
 
 
-def _get_settings(settings_name: Optional[str] = None) -> "ShipstationSettings":
+def _get_settings(settings_name: str | None = None) -> "ShipstationSettings":
 	"""Get Shipstation Settings document."""
 	if settings_name:
 		return frappe.get_doc("Shipstation Settings", settings_name)
@@ -309,4 +315,3 @@ def _get_settings(settings_name: Optional[str] = None) -> "ShipstationSettings":
 		frappe.throw(_("No Shipstation Settings found with ShipStation API v2 enabled"))
 
 	return frappe.get_doc("Shipstation Settings", settings_list[0].name)
-
