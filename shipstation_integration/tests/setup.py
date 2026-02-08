@@ -32,7 +32,6 @@ def before_test():
 	for module in frappe.get_all("Module Onboarding"):
 		frappe.db.set_value("Module Onboarding", module, "is_complete", True)
 	frappe.db.set_single_value("Website Settings", "home_page", "login")
-	frappe.db.commit()
 
 
 def create_test_data():

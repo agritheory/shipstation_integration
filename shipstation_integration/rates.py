@@ -14,11 +14,8 @@ from typing import TYPE_CHECKING, Optional
 import frappe
 from frappe import _
 from frappe.utils import flt
-
-try:
-	from shipengine.errors import ShipEngineError
-except ImportError:
-	ShipEngineError = None
+from shipengine.errors import ShipEngineError
+from shipstation.utils import get_error_message, get_shipstation_settings
 
 if TYPE_CHECKING:
 	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
@@ -169,7 +166,7 @@ def get_rates(
 	Returns:
 	        List of rate quotes from available carriers
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	client = settings.shipstation_api_client()
 
 	# Build the shipment object
@@ -197,7 +194,7 @@ def get_rates(
 			)
 		return result
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(
 			title="Error fetching shipping rates",
 			message=f"Rate Request: {rate_request}\n\nError: {error_msg}",
@@ -230,7 +227,7 @@ def estimate_rates(
 	Returns:
 	        List of estimated rates
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	client = settings.shipstation_api_client()
 
 	estimate_request = {
@@ -248,7 +245,7 @@ def estimate_rates(
 		rates = client.estimate_rates(estimate_request)
 		return _format_rates_response(rates)
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error estimating shipping rates", message=error_msg)
 		frappe.throw(_("Failed to estimate shipping rates: {0}").format(error_msg))
 
@@ -265,14 +262,14 @@ def get_rate_by_id(rate_id: str, settings_name: str | None = None) -> dict:
 	Returns:
 	        Rate details dict
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	client = settings.shipstation_api_client()
 
 	try:
 		rate = client.get_rate_by_id(rate_id)
 		return _format_single_rate(rate)
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error fetching rate", message=error_msg)
 		frappe.throw(_("Failed to fetch rate: {0}").format(error_msg))
 
@@ -430,43 +427,6 @@ def get_fallback_package(dn) -> dict:
 			"unit": "inch",
 		},
 	}
-
-
-def _get_settings(settings_name: str | None = None) -> "ShipstationSettings":
-	"""Get Shipstation Settings document."""
-	if settings_name:
-		return frappe.get_doc("Shipstation Settings", settings_name)
-
-	# Find first enabled settings with API v2 enabled
-	settings_list = frappe.get_all(
-		"Shipstation Settings",
-		filters={"enabled": 1, "enable_shipstation_api": 1},
-		limit=1,
-	)
-
-	if not settings_list:
-		frappe.throw(_("No Shipstation Settings found with ShipStation API v2 enabled"))
-
-	return frappe.get_doc("Shipstation Settings", settings_list[0].name)
-
-
-def _get_error_message(e: Exception) -> str:
-	"""Extract error message from ShipEngineError or other exceptions."""
-	# ShipEngineError has a message attribute but str(e) returns empty
-	if ShipEngineError and isinstance(e, ShipEngineError):
-		if hasattr(e, "message") and e.message:
-			error_details = [e.message]
-			if hasattr(e, "error_code") and e.error_code:
-				error_details.append(f"Code: {e.error_code}")
-			if hasattr(e, "error_type") and e.error_type:
-				error_details.append(f"Type: {e.error_type}")
-			return " | ".join(error_details)
-		# Try to_dict() as fallback
-		if hasattr(e, "to_dict"):
-			error_dict = e.to_dict()
-			return error_dict.get("message", str(error_dict))
-	# For other exceptions, just use str()
-	return str(e) or repr(e)
 
 
 def _get_carrier_ids(settings: "ShipstationSettings") -> list[str]:
