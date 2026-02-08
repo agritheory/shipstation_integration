@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Optional
 
 import frappe
 from frappe import _
+from shipstation.utils import get_shipstation_settings
 
 if TYPE_CHECKING:
 	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
@@ -43,7 +44,7 @@ def create_fulfillment(
 		frappe.throw(_("Delivery Note must have a tracking number to create a fulfillment"))
 
 	effective_settings = settings_name or getattr(dn, "integration_doc", None)
-	settings = _get_settings(effective_settings)
+	settings = get_shipstation_settings(effective_settings)
 	client = settings.shipstation_api_client()
 
 	# Get shipping address
@@ -148,7 +149,7 @@ def list_fulfillments(
 	Returns:
 	        Dict with fulfillments list and pagination info
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 
 	try:
 		import httpx
@@ -210,7 +211,7 @@ def get_fulfillment(
 	Returns:
 	        Fulfillment details dict
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 
 	try:
 		import httpx
@@ -298,20 +299,3 @@ def sync_fulfillment_from_delivery_notes(
 			results["failed"].append({"name": dn_name, "error": str(e)})
 
 	return results
-
-
-def _get_settings(settings_name: str | None = None) -> "ShipstationSettings":
-	"""Get Shipstation Settings document."""
-	if settings_name:
-		return frappe.get_doc("Shipstation Settings", settings_name)
-
-	settings_list = frappe.get_all(
-		"Shipstation Settings",
-		filters={"enabled": 1, "enable_shipstation_api": 1},
-		limit=1,
-	)
-
-	if not settings_list:
-		frappe.throw(_("No Shipstation Settings found with ShipStation API v2 enabled"))
-
-	return frappe.get_doc("Shipstation Settings", settings_list[0].name)
