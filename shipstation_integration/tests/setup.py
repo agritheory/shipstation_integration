@@ -7,6 +7,7 @@ from frappe.utils import getdate
 def before_test():
 	frappe.clear_cache()
 	today = getdate()
+
 	setup_complete(
 		{
 			"currency": "USD",
@@ -26,9 +27,12 @@ def before_test():
 			"bank_account": "Primary Checking",
 		}
 	)
+
 	set_defaults_for_tests()
 	frappe.db.commit()
+
 	create_test_data()
+
 	for module in frappe.get_all("Module Onboarding"):
 		frappe.db.set_value("Module Onboarding", module, "is_complete", True)
 	frappe.db.set_single_value("Website Settings", "home_page", "login")
