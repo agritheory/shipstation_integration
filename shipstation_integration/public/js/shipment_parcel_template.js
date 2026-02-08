@@ -2,7 +2,7 @@ frappe.ui.form.on('Shipment Parcel Template', {
 	refresh(frm) {
 		set_labels(frm)
 
-		if (!frm.is_new()) {
+		if (!frm.is_new() && !frm.doc.skip_shipstation_sync) {
 			frm.add_custom_button(__('Sync to ShipStation'), () => {
 				frm.call({
 					method:

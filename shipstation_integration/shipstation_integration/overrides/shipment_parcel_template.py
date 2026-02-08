@@ -6,7 +6,7 @@ from erpnext.stock.doctype.shipment_parcel_template.shipment_parcel_template imp
 from frappe import _
 from frappe.utils import now
 
-from shipstation_integration.carriers import _get_settings
+from shipstation_integration.utils import get_shipstation_settings
 
 
 class ShipstationShipmentParcelTemplate(ShipmentParcelTemplate):
@@ -64,13 +64,16 @@ def get_conversion_factor(from_uom, to_uom):
 def sync_parcel_template(template_name: str):
 	doc = frappe.get_doc("Shipment Parcel Template", template_name)
 
+	if doc.get("skip_shipstation_sync"):
+		frappe.throw(_("This parcel template is marked to skip ShipStation sync"))
+
 	if not doc.length or not doc.width or not doc.height:
 		frappe.throw(_("Package dimensions are required"))
 
 	if not doc.package_code:
 		frappe.throw(_("Package Code is required"))
 
-	settings = _get_settings(None)
+	settings = get_shipstation_settings(None)
 	api_key = settings.get_password("shipstation_api_key")
 
 	package_code = doc.package_code
