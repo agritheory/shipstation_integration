@@ -78,6 +78,56 @@ def update_customer_details(
 	return existing_so_doc
 
 
+def get_or_create_address(
+	address: "ShipStationAddress", customer_name: str, email: str, address_type: str
+) -> str | None:
+	if not address or not getattr(address, "street1", None):
+		return None
+
+	country = (
+		frappe.get_cached_value("Country", {"code": address.country}, "name")
+		if address.country
+		else None
+	)
+
+	filters = {
+		"customer_name": customer_name,
+		"address_line1": address.street1,
+		"city": address.city or "",
+		"pincode": address.postal_code or "",
+	}
+
+	conditions = [
+		"`tabDynamic Link`.link_doctype = 'Customer'",
+		"`tabDynamic Link`.link_name = %(customer_name)s",
+		"`tabAddress`.address_line1 = %(address_line1)s",
+		"`tabAddress`.city = %(city)s",
+		"`tabAddress`.pincode = %(pincode)s",
+	]
+
+	if country:
+		conditions.append("`tabAddress`.country = %(country)s")
+		filters["country"] = country
+
+	existing = frappe.db.sql(
+		f"""
+			SELECT `tabAddress`.name
+			FROM `tabDynamic Link`
+			JOIN `tabAddress` ON `tabAddress`.name = `tabDynamic Link`.parent
+			WHERE {' AND '.join(conditions)}
+			LIMIT 1
+		""",
+		filters,
+		as_dict=True,
+	)
+
+	if existing:
+		return existing[0].name
+
+	new_addr = create_address(address, customer_name, email, address_type)
+	return new_addr.name if new_addr else None
+
+
 def create_address(address: "ShipStationAddress", customer: str, email: str, address_type: str):
 	addr: "Address" = frappe.new_doc("Address")
 	addr.append("links", {"link_doctype": "Customer", "link_name": customer})

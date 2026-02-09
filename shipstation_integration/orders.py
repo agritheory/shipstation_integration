@@ -8,7 +8,11 @@ from frappe.utils import flt, getdate
 from frappe.utils.safe_exec import is_job_queued
 from httpx import HTTPError
 
-from shipstation_integration.customer import create_customer, get_billing_address
+from shipstation_integration.customer import (
+	create_customer,
+	get_billing_address,
+	get_or_create_address,
+)
 from shipstation_integration.items import create_item
 
 if TYPE_CHECKING:
@@ -121,6 +125,19 @@ def create_erpnext_order(
 	customer = (
 		frappe.get_cached_doc("Customer", store.customer) if store.customer else create_customer(order)
 	)
+
+	shipping_address = (
+		get_or_create_address(order.ship_to, customer.name, order.customer_email, "Shipping")
+		if getattr(order, "ship_to", None)
+		else None
+	) or customer.customer_primary_address
+
+	billing_address = (
+		get_or_create_address(order.bill_to, customer.name, order.customer_email, "Billing")
+		if getattr(order, "bill_to", None)
+		else None
+	) or get_billing_address(customer.name)
+
 	so: "SalesOrder" = frappe.new_doc("Sales Order")
 	so.update(
 		{
@@ -135,8 +152,8 @@ def create_erpnext_order(
 			"company": store.company,
 			"transaction_date": getdate(order.order_date),
 			"delivery_date": getdate(order.ship_date),
-			"shipping_address_name": customer.customer_primary_address,
-			"customer_primary_address": get_billing_address(customer.name),
+			"shipping_address_name": shipping_address,
+			"customer_primary_address": billing_address,
 			"integration_doctype": "Shipstation Settings",
 			"integration_doc": store.parent,
 			"has_pii": True,
