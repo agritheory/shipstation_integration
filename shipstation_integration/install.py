@@ -63,3 +63,10 @@ def add_custom_queue():
 
 def after_install():
 	add_custom_queue()
+
+
+def before_tests():
+	"""Setup test data before running tests."""
+	from shipstation_integration.tests.setup import before_test
+
+	before_test()

@@ -112,7 +112,7 @@ scheduler_events = {
 # Testing
 # -------
 
-# before_tests = "shipstation_integration.install.before_tests"
+before_tests = "shipstation_integration.install.before_tests"
 
 # Overriding Methods
 # ------------------------------
