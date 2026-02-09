@@ -90,36 +90,26 @@ def get_or_create_address(
 		else None
 	)
 
-	filters = {
-		"customer_name": customer_name,
-		"address_line1": address.street1,
-		"city": address.city or "",
-		"pincode": address.postal_code or "",
-	}
+	addr_doctype = frappe.qb.DocType("Address")
+	link = frappe.qb.DocType("Dynamic Link")
 
-	conditions = [
-		"`tabDynamic Link`.link_doctype = 'Customer'",
-		"`tabDynamic Link`.link_name = %(customer_name)s",
-		"`tabAddress`.address_line1 = %(address_line1)s",
-		"`tabAddress`.city = %(city)s",
-		"`tabAddress`.pincode = %(pincode)s",
-	]
+	query = (
+		frappe.qb.from_(link)
+		.join(addr_doctype)
+		.on(addr_doctype.name == link.parent)
+		.select(addr_doctype.name)
+		.where(link.link_doctype == "Customer")
+		.where(link.link_name == customer_name)
+		.where(addr_doctype.address_line1 == address.street1)
+		.where(addr_doctype.city == (address.city or ""))
+		.where(addr_doctype.pincode == (address.postal_code or ""))
+		.limit(1)
+	)
 
 	if country:
-		conditions.append("`tabAddress`.country = %(country)s")
-		filters["country"] = country
+		query = query.where(addr_doctype.country == country)
 
-	existing = frappe.db.sql(
-		f"""
-			SELECT `tabAddress`.name
-			FROM `tabDynamic Link`
-			JOIN `tabAddress` ON `tabAddress`.name = `tabDynamic Link`.parent
-			WHERE {' AND '.join(conditions)}
-			LIMIT 1
-		""",
-		filters,
-		as_dict=True,
-	)
+	existing = query.run(as_dict=True)
 
 	if existing:
 		return existing[0].name
