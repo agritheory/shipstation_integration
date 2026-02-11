@@ -32,7 +32,11 @@ app_include_js = ["shipstation_integration.bundle.js"]
 
 doctype_js = {
 	"Delivery Note": "public/js/delivery_note.js",
+	"Packing Slip": "public/js/packing_slip.js",
 	"Sales Order": "public/js/sales_order.js",
+	"Supplier": "public/js/supplier.js",
+	"Customer": "public/js/customer.js",
+	"Shipment Parcel Template": "public/js/shipment_parcel_template.js",
 }
 
 doctype_list_js = {
@@ -110,8 +114,6 @@ scheduler_events = {
 # Testing
 # -------
 
-# before_tests = "shipstation_integration.install.before_tests"
-
 # Overriding Methods
 # ------------------------------
 #
@@ -128,4 +130,5 @@ scheduler_events = {
 
 override_doctype_class = {
 	"Sales Order": "shipstation_integration.shipstation_integration.overrides.sales_order.ShipStationSalesOrder",
+	"Shipment Parcel Template": "shipstation_integration.shipstation_integration.overrides.shipment_parcel_template.ShipstationShipmentParcelTemplate",
 }
