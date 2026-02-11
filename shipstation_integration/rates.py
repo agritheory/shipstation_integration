@@ -15,7 +15,8 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 from shipengine.errors import ShipEngineError
-from shipstation.utils import get_error_message, get_shipstation_settings
+
+from shipstation_integration.utils import get_error_message, get_shipstation_settings
 
 if TYPE_CHECKING:
 	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (

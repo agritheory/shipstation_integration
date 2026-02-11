@@ -495,6 +495,19 @@ function show_carrier_selection_dialog(frm, carriers) {
 		title: __('Select Carrier and Service'),
 		fields: [
 			{
+				fieldtype: 'Select',
+				fieldname: 'shipping_account',
+				label: __('Shipping Account Number'),
+				options: [],
+				onchange: () => {
+					const acc = dialog.shipping_account_map?.[dialog.get_value('shipping_account')]
+					if (acc) {
+						dialog.set_value('carrier_id', acc.carrier)
+						load_services_for_dialog(dialog, acc.carrier)
+					}
+				},
+			},
+			{
 				fieldtype: 'Autocomplete',
 				fieldname: 'carrier_id',
 				label: __('Carrier'),
@@ -537,6 +550,39 @@ function show_carrier_selection_dialog(frm, carriers) {
 	})
 
 	dialog.show()
+	load_shipping_accounts(frm, dialog)
+}
+
+function load_shipping_accounts(frm, dialog) {
+	if (!frm.doc.delivery_note) return
+
+	frappe.call({
+		method: 'shipstation_integration.carriers.get_shipping_accounts',
+		args: {
+			delivery_note: frm.doc.delivery_note,
+		},
+		callback(r) {
+			const accounts = r.message || []
+
+			if (!accounts.length) {
+				// hide field
+				dialog.set_df_property('shipping_account', 'hidden', 1)
+				return
+			}
+
+			// show field
+			dialog.set_df_property('shipping_account', 'hidden', 0)
+
+			const options = accounts.map(a => a.shipping_account_number)
+			dialog.set_df_property('shipping_account', 'options', options)
+
+			// map for carrier auto fill
+			dialog.shipping_account_map = {}
+			accounts.forEach(a => {
+				dialog.shipping_account_map[a.shipping_account_number] = a
+			})
+		},
+	})
 }
 
 /**

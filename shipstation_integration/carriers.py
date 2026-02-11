@@ -16,7 +16,8 @@ import frappe
 import httpx
 from frappe import _
 from shipengine.errors import ShipEngineError
-from shipstation.utils import get_error_message, get_shipstation_settings
+
+from shipstation_integration.utils import get_error_message, get_shipstation_settings
 
 if TYPE_CHECKING:
 	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
@@ -843,3 +844,26 @@ def _format_service(service: dict) -> dict:
 		"international": service.get("international", False),
 		"is_multi_package_supported": service.get("is_multi_package_supported", False),
 	}
+
+
+@frappe.whitelist()
+def get_shipping_accounts(delivery_note):
+	dn = frappe.get_doc("Delivery Note", delivery_note)
+
+	accounts = []
+
+	if dn.customer:
+		doc = frappe.get_doc("Customer", dn.customer)
+		for row in doc.shipping_accounts:  # child table fieldname
+			accounts.append(
+				{"shipping_account_number": row.shipping_account_number, "carrier": row.carrier}
+			)
+
+	elif dn.supplier:
+		doc = frappe.get_doc("Supplier", dn.supplier)
+		for row in doc.shipping_accounts:
+			accounts.append(
+				{"shipping_account_number": row.shipping_account_number, "carrier": row.carrier}
+			)
+
+	return accounts
