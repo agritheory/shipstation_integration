@@ -16,7 +16,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Carrier",
-   "options": "Carrier",
+   "options": "Supplier",
    "reqd": 1
   },
   {
@@ -37,7 +37,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-02-09 02:26:52.288268",
+ "modified": "2026-02-11 06:24:17.629440",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Shipping Account",
