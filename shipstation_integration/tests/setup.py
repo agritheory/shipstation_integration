@@ -3,6 +3,7 @@ from pathlib import Path
 import frappe
 from erpnext.selling.doctype.sales_order.sales_order import make_delivery_note
 from erpnext.setup.utils import set_defaults_for_tests
+from erpnext.stock.doctype.delivery_note.delivery_note import make_packing_slip
 from frappe.desk.page.setup_wizard.setup_wizard import setup_complete
 from frappe.utils import getdate
 
@@ -62,6 +63,8 @@ def create_test_data():
 	create_price_list()
 	create_item_groups()
 	create_warehouses(settings)
+	create_transporters()
+	create_parcel_templates()
 	create_items(settings)
 	create_customers(settings)
 	create_addresses(settings)
@@ -113,6 +116,40 @@ def create_warehouses(settings):
 	wh.parent_warehouse = root_wh
 	wh.company = settings.company
 	wh.save()
+
+
+def create_transporters():
+	"""Create transporter suppliers for FedEx, UPS, and USPS."""
+	carriers = ["FedEx", "UPS", "USPS"]
+	default_supplier_group = frappe.get_value("Supplier Group", {"is_group": 0}, "name")
+
+	for carrier_name in carriers:
+		if frappe.db.exists("Supplier", {"supplier_name": carrier_name, "is_transporter": 1}):
+			continue
+
+		supplier = frappe.new_doc("Supplier")
+		supplier.supplier_name = carrier_name
+		supplier.supplier_group = default_supplier_group
+		supplier.is_transporter = 1
+		supplier.save()
+
+
+def create_parcel_templates():
+	"""Create a standard parcel template for testing."""
+	# 12x9x6 inches = 30.48 x 22.86 x 15.24 cm, 3 lbs = 1.36 kg
+	template_name = "Small Box"
+	if frappe.db.exists("Shipment Parcel Template", template_name):
+		return
+
+	template = frappe.new_doc("Shipment Parcel Template")
+	template.parcel_template_name = template_name
+	template.length = 30.48  # cm (12 inches)
+	template.width = 22.86  # cm (9 inches)
+	template.height = 15.24  # cm (6 inches)
+	template.weight = 1.36  # kg (3 lbs)
+	template.package_code = "small_box"
+	template.skip_shipstation_sync = 1  # Skip sync for testing
+	template.save()
 
 
 def create_items(settings):
@@ -249,43 +286,20 @@ def create_packing_slip(settings):
 	if frappe.db.exists("Packing Slip", {"delivery_note": dn.name}):
 		return
 
-	# Create USPS transporter Supplier if it doesn't exist
-	if not frappe.db.exists("Supplier", {"supplier_name": "USPS", "is_transporter": 1}):
-		supplier = frappe.get_doc(
-			{
-				"doctype": "Supplier",
-				"supplier_name": "USPS",
-				"supplier_group": frappe.get_value("Supplier Group", {"is_group": 0}, "name"),
-				"is_transporter": 1,
-			}
-		)
-		supplier.insert(ignore_permissions=True)
+	# Create Packing Slip using the ERPNext builtin
+	ps = make_packing_slip(dn.name)
 
-	# Get address names
-	company_address = frappe.get_value(
-		"Address", {"address_line1": "67C Sweeny Street", "city": "Chelsea"}, "name"
-	)
-	customer_address = frappe.get_value(
-		"Address", {"address_line1": "123 Ocean Avenue", "city": "Portland"}, "name"
-	)
+	# Get address names by title
+	customer_name = CUSTOMERS[0]
+	company_address_title = f"{settings.company} - Chelsea"
+	customer_address_title = f"{customer_name} - Portland"
 
-	# Create Packing Slip
-	ps = frappe.new_doc("Packing Slip")
-	ps.delivery_note = dn.name
-	ps.from_case_no = 1
-	ps.to_case_no = 1
+	company_address = frappe.get_value("Address", {"address_title": company_address_title}, "name")
+	customer_address = frappe.get_value("Address", {"address_title": customer_address_title}, "name")
 
-	# Add items from the Delivery Note
-	for item in dn.items:
-		ps.append(
-			"items",
-			{
-				"item_code": item.item_code,
-				"item_name": item.item_name,
-				"qty": item.qty,
-				"uom": item.uom,
-			},
-		)
+	# Verify addresses exist
+	if not company_address or not customer_address:
+		frappe.throw(f"Addresses not found. Company: {company_address}, Customer: {customer_address}")
 
 	# Set shipping fields
 	ps.shipping_address_name = customer_address

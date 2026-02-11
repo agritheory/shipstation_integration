@@ -4,6 +4,8 @@ import subprocess
 import frappe
 from frappe.installer import update_site_config
 
+from shipstation_integration.patches.add_user_uom_fields import execute as add_user_uom_fields
+
 
 def get_user_confirmation():
 	while True:
@@ -63,10 +65,4 @@ def add_custom_queue():
 
 def after_install():
 	add_custom_queue()
-
-
-def before_tests():
-	"""Setup test data before running tests."""
-	from shipstation_integration.tests.setup import before_test
-
-	before_test()
+	add_user_uom_fields()
