@@ -33,6 +33,8 @@ app_include_js = ["shipstation_integration.bundle.js"]
 doctype_js = {
 	"Delivery Note": "public/js/delivery_note.js",
 	"Sales Order": "public/js/sales_order.js",
+	"Supplier": "public/js/supplier.js",
+	"Customer": "public/js/customer.js",
 }
 
 doctype_list_js = {
