@@ -10,8 +10,16 @@ dynamic = ["version"]
 dependencies = [
     "setuptools<81",
     "shipstation-client @ git+https://github.com/AgriTheory/shipstation-client.git@master#egg=shipstation-client",
+    "shipengine>=1.0.0",
     "test_utils @ git+https://github.com/AgriTheory/test_utils.git@main#egg=test_utils",
 ]
+
+[tool.bench.dev-dependencies]
+pytest = "~=8.2.2"
+pytest-cov = "~=5.0.0"
+pytest-order = "~=1.2.1"
+mypy = "~=1.15.0"
+
 
 [build-system]
 requires = ['flit_core>=3.2,<4']

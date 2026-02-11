@@ -30,7 +30,12 @@ sed -i 's/redis_socketio:/# redis_socketio:/g' Procfile
 
 bench get-app erpnext --branch version-15 --resolve-deps
 bench get-app shipstation_integration "${GITHUB_WORKSPACE}"
+
 bench setup requirements --dev
+
+# Install setuptools explicitly to ensure pkg_resources is available
+pip install setuptools
+
 bench use test_site
 bench --site test_site reinstall --yes --admin-password admin
 
