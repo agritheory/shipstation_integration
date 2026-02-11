@@ -18,7 +18,6 @@ from frappe import _
 from frappe.utils import flt
 from frappe.utils.file_manager import save_file
 from shipengine.errors import ShipEngineError
-from shipstation.utils import get_error_message, get_shipstation_settings
 
 from shipstation_integration.rates import (
 	DIMENSION_UOM_MAP,
@@ -26,6 +25,7 @@ from shipstation_integration.rates import (
 	get_package_from_packing_slip,
 	get_state_code,
 )
+from shipstation_integration.utils import get_error_message, get_shipstation_settings
 
 if TYPE_CHECKING:
 	from frappe.core.doctype.file.file import File

@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING, Optional
 
 import frappe
 from frappe import _
-from shipstation.utils import get_shipstation_settings
+
+from shipstation_integration.utils import get_shipstation_settings
 
 if TYPE_CHECKING:
 	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
