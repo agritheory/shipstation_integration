@@ -17,13 +17,11 @@ import frappe
 import httpx
 from erpnext.stock.doctype.shipment.shipment import Shipment
 from frappe import _
+from frappe.utils import add_days
 from frappe.utils.file_manager import save_file
 
-from shipstation_integration.carriers import (
-	_get_error_message,
-	_get_settings,
-	get_or_create_transporter,
-)
+from shipstation_integration.carriers import get_or_create_transporter
+from shipstation_integration.utils import get_error_message, get_shipstation_settings
 
 
 @frappe.whitelist()
@@ -41,7 +39,7 @@ def list_ltl_carriers(
 	Returns:
 	List of carrier dicts with carrier_id, carrier_code, name, supplier, etc.
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	carriers = settings.list_ltl_carriers()
 	result = []
 	for c in carriers:
@@ -69,7 +67,7 @@ def get_ltl_carrier(carrier_id: str, settings_name: str | None = None) -> dict:
 	Returns:
 	LTL carrier details dict
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	base_url, headers = settings.get_base_url_and_headers()
 
 	try:
@@ -94,7 +92,7 @@ def get_ltl_carrier(carrier_id: str, settings_name: str | None = None) -> dict:
 		)
 
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error getting carrier", message=error_msg)
 		frappe.throw(_("Failed to get carrier: {0}").format(error_msg))
 
@@ -136,7 +134,7 @@ def list_ltl_carrier_documents(
 	encoded bill of lading document), and format (always PDF for pickup responses, the format the
 	image will be in once decoded)
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	base_url, headers = settings.get_base_url_and_headers()
 
 	try:
@@ -162,7 +160,7 @@ def list_ltl_carrier_documents(
 		)
 
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error listing LTL carrier documents", message=error_msg)
 		frappe.throw(_("Failed to list LTL carrier documents: {0}").format(error_msg))
 
@@ -180,7 +178,7 @@ def list_ltl_carrier_options(carrier_id: str, settings_name: str | None = None) 
 	Returns:
 	List of LTL carrier options dicts with attributes, code, features, and name for each option
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	base_url, headers = settings.get_base_url_and_headers()
 
 	try:
@@ -206,7 +204,7 @@ def list_ltl_carrier_options(carrier_id: str, settings_name: str | None = None) 
 		)
 
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error listing LTL carrier options", message=error_msg)
 		frappe.throw(_("Failed to list LTL carrier options: {0}").format(error_msg))
 
@@ -226,7 +224,7 @@ def list_ltl_carrier_package_types(
 	Returns:
 	List of LTL carrier package dicts with code, features, and name for each package
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	base_url, headers = settings.get_base_url_and_headers()
 
 	try:
@@ -252,7 +250,7 @@ def list_ltl_carrier_package_types(
 		)
 
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error listing LTL carrier package/container types", message=error_msg)
 		frappe.throw(_("Failed to list LTL carrier package/container types: {0}").format(error_msg))
 
@@ -268,7 +266,7 @@ def get_all_ltl_carrier_package_types(settings_name: str | None = None) -> dict[
 	Returns:
 	Dict mapping carrier_id to list of package types
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 
 	# Get carrier IDs from stored LTL carrier data
 	carrier_data = []
@@ -311,7 +309,7 @@ def list_ltl_carrier_services(carrier_id: str, settings_name: str | None = None)
 	Returns:
 	List of LTL carrier service dicts with code, features, and name for each option
 	"""
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	base_url, headers = settings.get_base_url_and_headers()
 
 	try:
@@ -337,7 +335,7 @@ def list_ltl_carrier_services(carrier_id: str, settings_name: str | None = None)
 		)
 
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error listing LTL carrier options", message=error_msg)
 		frappe.throw(_("Failed to list LTL carrier options: {0}").format(error_msg))
 
@@ -357,7 +355,7 @@ def list_ltl_carrier_services(carrier_id: str, settings_name: str | None = None)
 # 	Returns:
 # 	Dict with sync results including carriers, packages, and templates counts
 # 	"""
-# 	settings = _get_settings(settings_name)
+# 	settings = get_shipstation_settings(settings_name)
 # 	api_key = settings.get_password("shipstation_api_key")
 
 # 	# First fetch all carriers
@@ -539,7 +537,7 @@ def get_carrier_id_for_supplier(
 	if not supplier_name:
 		return None
 
-	settings = _get_settings(settings_name)
+	settings = get_shipstation_settings(settings_name)
 	id_pattern = re.compile(
 		"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 	)
@@ -706,7 +704,8 @@ def request_ltl_quote(carrier_id: str, doc: Shipment, settings_name: str | None 
 	Returns:
 	ShipEngine quote dict, includes quote_id, charges list of dicts, and shipment info
 	"""
-	settings = _get_settings(settings_name)
+	doc = frappe._dict(json.loads(doc)) if isinstance(doc, str) else doc
+	settings = get_shipstation_settings(settings_name)
 	base_url, headers = settings.get_base_url_and_headers()
 
 	try:
@@ -721,6 +720,7 @@ def request_ltl_quote(carrier_id: str, doc: Shipment, settings_name: str | None 
 			)
 			data = response.json()
 			response.raise_for_status()
+			data["delivery_date"] = str(add_days(doc.pickup_date, data.get("estimated_delivery_days", 1)))
 			return data
 
 	except httpx.HTTPStatusError as e:
@@ -736,7 +736,7 @@ def request_ltl_quote(carrier_id: str, doc: Shipment, settings_name: str | None 
 		)
 
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error getting LTL quote", message=error_msg)
 		frappe.throw(_("Failed to get LTL quote: {0}").format(error_msg))
 
@@ -756,14 +756,15 @@ def request_ltl_spot_quote(
 	Returns:
 	List of ShipEngine spot quote dicts
 	"""
-	settings = _get_settings(settings_name)
+	doc = frappe._dict(json.loads(doc)) if isinstance(doc, str) else doc
+	settings = get_shipstation_settings(settings_name)
 	base_url, headers = settings.get_base_url_and_headers()
 
 	try:
 		with httpx.Client() as client:
 			post_data = {
 				"carrier_id": carrier_id,
-				"shipment": get_shipment_object_from_doc(doc=doc, is_spot_quote=True),
+				"shipment": get_shipment_object_from_doc(doc=doc),
 				"shipment_measurements": get_shipment_measurements_object_from_doc(doc=doc),
 			}
 			response = client.post(
@@ -771,6 +772,7 @@ def request_ltl_spot_quote(
 			)
 			data = response.json()
 			response.raise_for_status()
+			data["delivery_date"] = str(add_days(doc.pickup_date, data.get("estimated_delivery_days", 1)))
 			return data.get("quotes", [])
 
 	except httpx.HTTPStatusError as e:
@@ -786,7 +788,7 @@ def request_ltl_spot_quote(
 		)
 
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error getting LTL spot quote", message=error_msg)
 		frappe.throw(_("Failed to get LTL spot quote: {0}").format(error_msg))
 
@@ -806,7 +808,8 @@ def schedule_ltl_pickup(carrier_id: str, doc: Shipment, settings_name: str | Non
 	(Base64-encoded BOL, which decodes to PDF format), pickup_id, and shipment_id among other
 	information
 	"""
-	settings = _get_settings(settings_name)
+	doc = frappe._dict(json.loads(doc)) if isinstance(doc, str) else doc
+	settings = get_shipstation_settings(settings_name)
 	base_url, headers = settings.get_base_url_and_headers()
 
 	try:
@@ -814,18 +817,15 @@ def schedule_ltl_pickup(carrier_id: str, doc: Shipment, settings_name: str | Non
 			post_data = {
 				"carrier_id": carrier_id,
 				"carrier": {  # optional
-					"instructions": "",  # TODO: get from doc, if given
+					"instructions": doc.get("carrier_instructions", ""),
 					"test": False,  # whether or not this is a test call
 				},
-				"options": [],  # TODO: optional, get from doc [multiselect?]
-				"reference_identifiers": [  # TODO: optional, get from doc
-					{
-						"type": "",  # may be "bill_of_lading", "pro", "quote", "purchase_order", or "other"
-						"value": "",  # string of value provided by carrier
-					}
-				],
+				"options": [],  # TODO: optional, get from doc/dialog [multiselect?]
 				"shipment": get_shipment_object_from_doc(doc=doc, for_pickup_no_quote=True),
 			}
+			if doc.get("quote_id"):
+				# type may be "bill_of_lading", "pro", "quote", "purchase_order", or "other"
+				post_data.update({"reference_identifiers": [{"type": "quote", "value": doc.get("quote_id")}]})
 			response = client.post(
 				f"{base_url}/v-beta/ltl/pickups/{carrier_id}", headers=headers, data=json.dumps(post_data)
 			)
@@ -846,7 +846,7 @@ def schedule_ltl_pickup(carrier_id: str, doc: Shipment, settings_name: str | Non
 		)
 
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error scheduling LTL pickup", message=error_msg)
 		frappe.throw(_("Failed to schedule LTL pickup: {0}").format(error_msg))
 
@@ -869,28 +869,34 @@ def schedule_ltl_pickup_with_quote_id(
 	(Base64-encoded BOL, which decodes to PDF format), pickup_id, and shipment_id among other
 	information
 	"""
-	settings = _get_settings(settings_name)
+	doc = frappe._dict(json.loads(doc)) if isinstance(doc, str) else doc
+	settings = get_shipstation_settings(settings_name)
 	base_url, headers = settings.get_base_url_and_headers()
 
 	try:
 		with httpx.Client() as client:
 			post_data = {
 				"quote_id": quote_id,
-				"pickup_date": "",  # TODO: get from doc, YYYY-MM-DD format
+				"pickup_date": str(doc.get("pickup_date")),  # YYYY-MM-DD format
 				"pickup_window": get_shipment_pickup_window_from_doc(doc=doc),
-				"delivery_date": "",  # TODO: get from doc? YYYY-MM-DD format
+				"delivery_date": str(doc.get("delivery_date")),  # YYYY-MM-DD format
 				"carrier": {  # optional
-					"instructions": "",  # TODO: get from doc, if given
+					"instructions": doc.get("carrier_instructions", ""),
 					"test": False,  # whether or not this is a test call
 				},
-				"options": [],  # TODO: get from doc [multiselect?]
+				# "options": [],  # optional / were included in the quote
 			}
 			response = client.post(
 				f"{base_url}/v-beta/ltl/quotes/{quote_id}/pickup", headers=headers, data=json.dumps(post_data)
 			)
 			data = response.json()
 			response.raise_for_status()
-			return data  # TODO: decode BOL and save/attach?
+			docs = data.get("documents", [])
+			for d in docs:
+				if d.get("type") == "bill_of_lading":
+					bol = base64.decode(d.get("image"))
+					save_file(f"{doc.name}-BOL.pdf", bol, "Shipment", doc.name)
+			return data
 
 	except httpx.HTTPStatusError as e:
 		err_type, err_msg = settings.get_api_response_error_info(data)
@@ -905,33 +911,35 @@ def schedule_ltl_pickup_with_quote_id(
 		)
 
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error scheduling LTL pickup with quote ID", message=error_msg)
 		frappe.throw(_("Failed to schedule LTL pickup with quote ID: {0}").format(error_msg))
 
 
 @frappe.whitelist()
 def get_bol_with_pickup_id(
-	pickup_id: str, carrier_instructions: str | None = None, settings_name: str | None = None
+	pickup_id: str, doc: Shipment, settings_name: str | None = None
 ) -> dict:
 	"""
-	Gets the Bill of Lading (BOL) for a scheduled pickup using the ShipEngine pickup ID.
+	Gets the Bill of Lading (BOL) for a scheduled pickup using the ShipEngine pickup ID and
+	attaches it to the Shipment doc.
 
 	Args:
-	pickuo_id: The ShipEngine pickup ID returned after scheduling a pickup
-	carrier_instructions: additional instructions for the carrier
+	pickup_id: The ShipEngine pickup ID returned after scheduling a pickup
+	doc: a Shipment document in ERPNext
 	settings_name: Optional Shipstation Settings document name
 
 	Returns:
 	ShipEngine dict with type (value will be "bill_of_lading"), image (value is the base64-encoded
 	BOL document), and format (value will be "pdf") for the shipment
 	"""
-	settings = _get_settings(settings_name)
+	doc = frappe._dict(json.loads(doc)) if isinstance(doc, str) else doc
+	settings = get_shipstation_settings(settings_name)
 	base_url, headers = settings.get_base_url_and_headers()
 
 	try:
 		with httpx.Client() as client:
-			post_data = {"carrier_instructions": carrier_instructions or ""}
+			post_data = {"carrier_instructions": doc.get("carrier_instructions", "")}
 			response = client.post(
 				f"{base_url}/v-beta/ltl/pickups/{pickup_id}/bill_of_lading",
 				headers=headers,
@@ -939,7 +947,12 @@ def get_bol_with_pickup_id(
 			)
 			data = response.json()
 			response.raise_for_status()
-			return data  # TODO: decode document and save/attach?
+			docs = data.get("documents", [])
+			for d in docs:
+				if d.get("type") == "bill_of_lading":
+					bol = base64.decode(d.get("image"))
+					save_file(f"{doc.name}-BOL.pdf", bol, "Shipment", doc.name)
+			return data
 
 	except httpx.HTTPStatusError as e:
 		err_type, err_msg = settings.get_api_response_error_info(data)
@@ -954,33 +967,33 @@ def get_bol_with_pickup_id(
 		)
 
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error getting BOL using pickup ID", message=error_msg)
 		frappe.throw(_("Failed to get BOL using pickup ID: {0}").format(error_msg))
 
 
 @frappe.whitelist()
-def get_bol_with_quote_id(
-	quote_id: str, carrier_instructions: str | None = None, settings_name: str | None = None
-) -> dict:
+def get_bol_with_quote_id(quote_id: str, doc: Shipment, settings_name: str | None = None) -> dict:
 	"""
-	Gets the Bill of Lading (BOL) for a scheduled pickup using the ShipEngine quote/spot quote ID.
+	Gets the Bill of Lading (BOL) for a scheduled pickup using the ShipEngine quote/spot quote ID
+	and attaches it to the Shipment doc.
 
 	Args:
 	quote_id: The ShipEngine quote ID or spot quote ID for a shipment
-	carrier_instructions: additional instructions for the carrier
+	doc: a Shipment document in ERPNext
 	settings_name: Optional Shipstation Settings document name
 
 	Returns:
 	ShipEngine dict with type (value will be "bill_of_lading"), image (value is the base64-encoded
 	BOL document), and format (value will be "pdf") for the shipment
 	"""
-	settings = _get_settings(settings_name)
+	doc = frappe._dict(json.loads(doc)) if isinstance(doc, str) else doc
+	settings = get_shipstation_settings(settings_name)
 	base_url, headers = settings.get_base_url_and_headers()
 
 	try:
 		with httpx.Client() as client:
-			post_data = {"carrier_instructions": carrier_instructions or ""}
+			post_data = {"carrier_instructions": doc.get("carrier_instructions", "")}
 			response = client.post(
 				f"{base_url}/v-beta/ltl/quote/{quote_id}/bill_of_lading",
 				headers=headers,
@@ -988,7 +1001,12 @@ def get_bol_with_quote_id(
 			)
 			data = response.json()
 			response.raise_for_status()
-			return data  # TODO: decode document and save/attach?
+			docs = data.get("documents", [])
+			for d in docs:
+				if d.get("type") == "bill_of_lading":
+					bol = base64.decode(d.get("image"))
+					save_file(f"{doc.name}-BOL.pdf", bol, "Shipment", doc.name)
+			return data
 
 	except httpx.HTTPStatusError as e:
 		err_type, err_msg = settings.get_api_response_error_info(data)
@@ -1003,7 +1021,7 @@ def get_bol_with_quote_id(
 		)
 
 	except Exception as e:
-		error_msg = _get_error_message(e)
+		error_msg = get_error_message(e)
 		frappe.log_error(title="Error getting BOL using quote ID", message=error_msg)
 		frappe.throw(_("Failed to get BOL using quote ID: {0}").format(error_msg))
 
@@ -1029,76 +1047,52 @@ def get_shipment_object_from_doc(doc: Shipment, for_pickup_no_quote: bool = Fals
 	Returns:
 	shipment object dict that may be used to get a quote, spot quote or schedule a pickup
 	"""
-	# TODO: pull all required data from Shipment
-	packages = [  # need an object for each package in shipment
-		{
-			"code": "",  # ShipEngine package type code
-			"freight_class": 0,  # NMFC freight class for the freight (50-500)
-			"density": {"value": 0, "unit": "lb/ft3"},  # only unit currently supported
-			"nmfc_code": "",  # NMFC commodity code / item number
-			"description": "",  # description of what's in container
-			"dimensions": {
-				"width": 0,
-				"height": 0,
-				"length": 0,
-				"unit": "",
-			},  # unit is "inches" or "centimeters"
-			"weight": {"value": 0, "unit": ""},  # unit is "grams", "kilograms", "ounces", or "pounds"
-			"quantity": 0,  # number of packages of this type
-			"stackable": True,  # Boolean whether can be safely stacked or not
-			"hazardous_materials": False,  # Boolean whether package contains hazardous materials or not
-		}
-	]
+	doc = frappe._dict(json.loads(doc)) if isinstance(doc, str) else doc
 
-	options = [
-		{"code": "", "attributes": {}},  # attributes is optional, depends on the option
-	]
+	packages = []
+	for row in doc.shipment_parcel:
+		packages.append(  # need an object for each package in shipment
+			{
+				"code": "",  # TODO ShipEngine package type code
+				"freight_class": 0,  # TODO NMFC freight class for the freight (50-500)
+				"density": {"value": 0, "unit": "lb/ft3"},  # TODO only unit currently supported
+				"nmfc_code": "",  # TODO NMFC commodity code / item number
+				"description": doc.get("description_of_content", ""),  # description of what's in container
+				"dimensions": {
+					"width": row.width,
+					"height": row.height,
+					"length": row.length,
+					"unit": "inches",  # TODO: label is inches, Parcel Template in cms
+				},  # unit is "inches" or "centimeters"
+				"weight": {
+					"value": row.weight,
+					"unit": "pounds",
+				},  # TODO (label says pounds) unit is "grams", "kilograms", "ounces", or "pounds"
+				"quantity": row.count,  # number of packages of this type
+				"stackable": False,  # TODO Boolean whether can be safely stacked or not
+				"hazardous_materials": False,  # TODO Boolean whether package contains hazardous materials or not
+			}
+		)
 
-	ship_from = {
-		"account": "",  # optional, include if have account number with carrier for quote
-		"address": {
-			"company_name": "",
-			"address_line1": "",
-			"address_line2": "",
-			"address_line3": "",
-			"city_locality": "",
-			"state_province": "",
-			"postal_code": "",
-			"country_code": "",  # The two letter ISO 3166-1 alpha-2 country code
-			"residential": False,  # defaults to False
-		},
-		"contact": {
-			"name": "",
-			"phone_number": "",
-			"email": "",
-		},
-	}
+	# Any accessorial services, like inside pickup ({"code": "ipu", "attributes": {}})
+	options = []  # TODO - how to collect - multiselect? Some options require additional attributes
+	# Format: {"code": "", "attributes": {}},  # attributes is optional, depends on the option
 
-	ship_to = {
-		"account": None,
-		"address": {
-			"company_name": "",
-			"address_line1": "",
-			"address_line2": "",
-			"address_line3": "",
-			"city_locality": "",
-			"state_province": "",
-			"postal_code": "",
-			"country_code": "",
-			"residential": False,  # defaults to False
-		},
-		"contact": {
-			"name": "",
-			"phone_number": "",
-			"email": "",
-		},
+	# TODO: can add an "account" key to either ship_from or ship_to if available
+	ship_from = get_address_and_contact_info(doc=doc, ship_from=True)
+	ship_to = get_address_and_contact_info(doc=doc, ship_from=False)
+
+	payment_terms_map = {  # TODO: conform to selections in Shipment docfield
+		"Prepaid": "prepaid",
+		"Collect": "collect",
+		"Third Party": "third_party",
 	}
 
 	bill_to = {
-		"type": "",  # may be "consignee", "shipper", or "third_party"
-		"payment_terms": "",  # may be "collect", "prepaid", or "third_party"
-		"account": "",  # account number to bill for pickup
-		"address": {
+		"type": "",  # TODO may be "consignee", "shipper", or "third_party"
+		"payment_terms": "",  # TODO: tie to doc field; may be "collect", "prepaid", or "third_party"
+		"account": "",  # TODO: get from Customer? account number to bill for pickup
+		"address": {  # TODO: hardcode? Billing may be different than pickup address
 			"company_name": "",
 			"address_line1": "",
 			"address_line2": "",
@@ -1117,19 +1111,15 @@ def get_shipment_object_from_doc(doc: Shipment, for_pickup_no_quote: bool = Fals
 	}
 
 	requested_by = {
-		"company_name": "",
-		"contact": {
-			"name": "",
-			"phone_number": "",
-			"email": "",
-		},
+		"company_name": bill_to["address"]["company_name"],
+		"contact": bill_to["contact"],
 	}
 
 	shipment_object = {
 		"service_code": doc.get("carrier_service", "stnd"),
-		"pickup_date": "",  # string in YYYY-MM-DD format
-		"packages": packages,  # array of package objects
-		"options": options,  # any accessorial services
+		"pickup_date": str(doc.pickup_date),  # string in YYYY-MM-DD format
+		"packages": packages,
+		"options": options,
 		"ship_from": ship_from,
 		"ship_to": ship_to,
 		"bill_to": bill_to,
@@ -1137,8 +1127,16 @@ def get_shipment_object_from_doc(doc: Shipment, for_pickup_no_quote: bool = Fals
 	}
 
 	if for_pickup_no_quote:
+		if not doc.delivery_date:
+			frappe.throw(
+				msg=_("Delivery Date required to schedule a pickup without a quote."),
+				title=_("Missing Delivery Date"),
+			)
 		shipment_object.update(
-			{"delivery_date": "", "pickup_window": get_shipment_pickup_window_from_doc(doc=doc)}
+			{
+				"delivery_date": doc.delivery_date,
+				"pickup_window": get_shipment_pickup_window_from_doc(doc=doc),
+			}
 		)
 
 	return shipment_object
@@ -1146,7 +1144,10 @@ def get_shipment_object_from_doc(doc: Shipment, for_pickup_no_quote: bool = Fals
 
 def get_shipment_measurements_object_from_doc(doc: Shipment) -> dict:
 	"""
-	Collects necessary data from a Shipment document in ERPNext to populate a shipment object
+	Collects necessary data from a Shipment document in ERPNext to populate a shipment object.
+
+	Acceptable length units are: "inches" or "centimeters"
+	Acceptable weight units are: "grams", "kilograms", "ounces", or "pounds"
 
 	Args:
 	doc: a Shipment document in ERPNext from which to retrieve the shipment info
@@ -1154,12 +1155,31 @@ def get_shipment_measurements_object_from_doc(doc: Shipment) -> dict:
 	Returns:
 	shipment object dict that may be used in a get quote or get spot quote request
 	"""
-	# TODO: pull all required data from Shipment
+	doc = frappe._dict(json.loads(doc)) if isinstance(doc, str) else doc
+	if not doc.get("shipment_parcel"):
+		frappe.throw(
+			msg=_("Shipment Parcel information needed for length, width, height, and weight data."),
+			title=_("Missing Shipment Parcel Information"),
+		)
+	elif len(doc.get("shipment_parcel")) == 1:
+		# TODO: how to handle when row count is >1? Row weight in lbs, doc total_weight in kgs?
+		row = doc.get("shipment_parcel")[0]
+		length_unit = "inches"  # TODO: doc has "inches" in label but Parcel Templates in cms
+		l_val = row.length
+		w_val = row.width
+		h_val = row.height
+	else:
+		# TODO: need way to calculate total dimensions for multiple parcels
+		length_unit = ""
+		l_val = 0
+		w_val = 0
+		h_val = 0
+
 	return {
-		"total_linear_length": {"value": 0, "unit": ""},  # unit is "inches" or "centimeters"
-		"total_width": {"value": 0, "unit": ""},  # unit is "inches" or "centimeters"
-		"total_height": {"value": 0, "unit": ""},  # unit is "inches" or "centimeters"
-		"total_weight": {"value": 0, "unit": ""},  # unit is "grams", "kilograms", "ounces", or "pounds"
+		"total_linear_length": {"value": l_val, "unit": length_unit},
+		"total_width": {"value": w_val, "unit": length_unit},
+		"total_height": {"value": h_val, "unit": length_unit},
+		"total_weight": {"value": doc.total_weight, "unit": "kilograms"},
 	}
 
 
@@ -1173,9 +1193,69 @@ def get_shipment_pickup_window_from_doc(doc: Shipment) -> dict:
 	Returns:
 	pickup window object dict that may be used in a scheduled pickup request
 	"""
-	# TODO: pull all required data from Shipment
-	return {  # all fields required, must be in 24 Hour Format: HH:MM:SS, HH:MM:SSZ, HH:MM:SS+/-HH:MM
-		"start_at": "",  # earliest time freight will be ready
-		"end_at": "",  # latest desired pickup time
-		"closing_at": "",  # time the pickup facility closes for business
+	doc = frappe._dict(json.loads(doc)) if isinstance(doc, str) else doc
+
+	# 24 Hour Format: HH:MM:SS, HH:MM:SSZ, HH:MM:SS+/-HH:MM. Split removes microseconds
+	return {
+		"start_at": str(doc.pickup_from).split(".")[0],  # Required, earliest time freight will be ready
+		"end_at": str(doc.pickup_to).split(".")[0],  # Required, latest desired pickup time
+		"closing_at": str(doc.pickup_to).split(".")[
+			0
+		],  # Required, when pickup facility closes for business
+	}
+
+
+def get_address_and_contact_info(doc: Shipment, ship_from: bool = True) -> dict:
+	"""
+	Returns an object with "address" and "contact" keys containing the necessary payload data for
+	a Shipping Object.
+
+	Args:
+	doc: a Shipment document in ERPNext from which to retrieve the pickup info
+	ship_from: if True, uses the pickup data in Shipment, if False uses the delivery data
+
+	Returns:
+	A dict with the address and contact info in the structure required for Shipstation payloads.
+	"""
+	party_type_field = "pickup_from_type" if ship_from else "delivery_to_type"
+	party_type = doc.get(party_type_field)
+	party_name_field_map = {
+		"Company": "pickup_company" if ship_from else "delivery_company",
+		"Customer": "pickup_customer" if ship_from else "delivery_customer",
+		"Supplier": "pickup_supplier" if ship_from else "delivery_supplier",
+	}
+	party_name_field = party_name_field_map[party_type]
+	address_name_field = "pickup_address_name" if ship_from else "delivery_address_name"
+
+	if ship_from and party_type == "Company":
+		contact_field = "pickup_contact_person"
+		contact_dt = "User"
+		email_field = "email"
+	else:
+		contact_field = "pickup_contact_name" if ship_from else "delivery_contact_name"
+		contact_dt = "Contact"
+		email_field = "email_id"
+
+	address = frappe.get_doc("Address", doc.get(address_name_field))
+	contact = frappe.get_doc(contact_dt, doc.get(contact_field))
+
+	return {
+		"address": {
+			"company_name": doc.get(party_name_field),
+			"address_line1": address.address_line1,
+			"address_line2": address.address_line2,
+			# "address_line3": None,
+			"city_locality": address.city,
+			"state_province": address.state,
+			"postal_code": address.pincode,
+			"country_code": frappe.get_value(
+				"Country", address.country, "code"
+			),  # ISO 3166-1 alpha-2 country code
+			"residential": False,  # TODO - how to know? defaults to False
+		},
+		"contact": {
+			"name": contact.full_name,
+			"phone_number": contact.phone,
+			"email": contact.get(email_field),
+		},
 	}
