@@ -62,7 +62,7 @@ def get_or_create_transporter(carrier_name: str) -> str | None:
 	# Try a case-insensitive search
 	existing = frappe.get_all(
 		"Supplier",
-		filters={"LOWER(supplier_name)": "LOWER(__PH0__)", "is_transporter": "1"},
+		filters={"supplier_name": normalized_name.lower(), "is_transporter": 1},
 		fields=["name"],
 		limit=1,
 	)
