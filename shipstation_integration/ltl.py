@@ -20,8 +20,22 @@ from frappe import _
 from frappe.utils import add_days
 from frappe.utils.file_manager import save_file
 
+from shipstation_integration.base_ltl import BaseLTL
 from shipstation_integration.carriers import get_or_create_transporter
 from shipstation_integration.utils import get_error_message, get_shipstation_settings
+
+
+def get_ltl_class():
+	hook = frappe.get_hooks("override_shipstation")
+	if hook and hook.get("ltl"):
+		method_string = hook.get("ltl")[-1]
+		frappe.get_attr(method_string)()
+	else:
+		return ShipstationLTL()
+
+
+class ShipstationLTL(BaseLTL):
+	pass
 
 
 @frappe.whitelist()
@@ -338,154 +352,6 @@ def list_ltl_carrier_services(carrier_id: str, settings_name: str | None = None)
 		error_msg = get_error_message(e)
 		frappe.log_error(title="Error listing LTL carrier options", message=error_msg)
 		frappe.throw(_("Failed to list LTL carrier options: {0}").format(error_msg))
-
-
-# @frappe.whitelist()
-# def sync_ltl_carrier_package_types(settings_name: str | None = None) -> dict:
-# 	"""
-# 	Sync carrier package types from ShipEngine API and update the settings document.
-
-# 	This fetches detailed package information for all carriers, updates
-# 	the shipstation_api_ltl_carrier_data field with the enhanced package data,
-# 	and creates/updates Shipment Parcel Template records for packages with dimensions.
-
-# 	Args:
-# 	settings_name: Optional Shipstation Settings document name
-
-# 	Returns:
-# 	Dict with sync results including carriers, packages, and templates counts
-# 	"""
-# 	settings = get_shipstation_settings(settings_name)
-# 	api_key = settings.get_password("shipstation_api_key")
-
-# 	# First fetch all carriers
-# 	client = settings.shipstation_api_client()
-# 	response = client.list_carriers()
-# 	carriers = response.get("carriers", []) if isinstance(response, dict) else response
-
-# 	carrier_list = []
-# 	total_packages = 0
-# 	templates_created = 0
-# 	templates_updated = 0
-# 	transporters_created = 0
-
-# 	for carrier in carriers:
-# 		if isinstance(carrier, dict):
-# 			carrier_id = carrier.get("carrier_id")
-# 			carrier_code = carrier.get("carrier_code")
-# 			account_number = carrier.get("account_number")
-# 			name = carrier.get("friendly_name") or carrier.get("nickname")
-# 			services = carrier.get("services", [])
-# 		else:
-# 			carrier_id = getattr(carrier, "carrier_id", None)
-# 			carrier_code = getattr(carrier, "carrier_code", None)
-# 			account_number = getattr(carrier, "account_number", None)
-# 			name = getattr(carrier, "friendly_name", None) or getattr(carrier, "nickname", None)
-# 			services = getattr(carrier, "services", [])
-
-# 		# Create or find Supplier/transporter for this carrier
-# 		supplier_name = None
-# 		if name:
-# 			existing_before = frappe.db.exists("Supplier", {"supplier_name": name, "is_transporter": 1})
-# 			supplier_name = get_or_create_transporter(name)
-# 			if supplier_name and not existing_before:
-# 				transporters_created += 1
-
-# 		carrier_data = {
-# 			"carrier_id": carrier_id,
-# 			"carrier_code": carrier_code,
-# 			"account_number": account_number,
-# 			"name": name,
-# 			"supplier": supplier_name,
-# 			"services": [],
-# 			"packages": [],
-# 		}
-
-# 		# Process services
-# 		for s in services or []:
-# 			if isinstance(s, dict):
-# 				carrier_data["services"].append(
-# 					{
-# 						"service_code": s.get("service_code"),
-# 						"name": s.get("name"),
-# 						"domestic": s.get("domestic"),
-# 						"international": s.get("international"),
-# 					}
-# 				)
-# 			else:
-# 				carrier_data["services"].append(
-# 					{
-# 						"service_code": getattr(s, "service_code", None),
-# 						"name": getattr(s, "name", None),
-# 						"domestic": getattr(s, "domestic", None),
-# 						"international": getattr(s, "international", None),
-# 					}
-# 				)
-
-# 		# Fetch detailed package types for this carrier
-# 		try:
-# 			with httpx.Client() as http_client:
-# 				pkg_response = http_client.get(
-# 					f"{SHIPENGINE_API_URL}/carriers/{carrier_id}/packages",
-# 					headers={"API-Key": api_key},
-# 				)
-# 				if pkg_response.status_code == 200:
-# 					pkg_data = pkg_response.json()
-# 					packages = pkg_data.get("packages", [])
-# 					for p in packages:
-# 						formatted_pkg = _format_package_type(p)
-# 						carrier_data["packages"].append(formatted_pkg)
-
-# 						# Create/update Shipment Parcel Template for packages with dimensions
-# 						created, updated = _sync_parcel_template(formatted_pkg, carrier_code, name, supplier_name)
-# 						templates_created += created
-# 						templates_updated += updated
-
-# 					total_packages += len(packages)
-# 		except Exception as e:
-# 			frappe.log_error(
-# 				title=f"Error fetching packages for carrier {carrier_id}",
-# 				message=str(e),
-# 			)
-
-# 		carrier_list.append(carrier_data)
-
-# 	# Update settings with enhanced carrier data
-# 	settings.shipstation_api_carrier_data = json.dumps(carrier_list)
-# 	settings.save()
-
-# 	result = {
-# 		"carriers_synced": len(carrier_list),
-# 		"total_packages": total_packages,
-# 		"templates_created": templates_created,
-# 		"templates_updated": templates_updated,
-# 		"transporters_created": transporters_created,
-# 		"carriers": [
-# 			{
-# 				"carrier_id": c["carrier_id"],
-# 				"name": c["name"],
-# 				"supplier": c.get("supplier"),
-# 				"packages_count": len(c["packages"]),
-# 			}
-# 			for c in carrier_list
-# 		],
-# 	}
-
-# 	frappe.msgprint(
-# 		_(
-# 			"Successfully synced {0} carriers with {1} package types. "
-# 			"Created {2} Shipment Parcel Templates, updated {3}. "
-# 			"Created {4} new transporter Suppliers."
-# 		).format(
-# 			result["carriers_synced"],
-# 			result["total_packages"],
-# 			result["templates_created"],
-# 			result["templates_updated"],
-# 			result["transporters_created"],
-# 		)
-# 	)
-
-# 	return result
 
 
 @frappe.whitelist()
@@ -1259,3 +1125,151 @@ def get_address_and_contact_info(doc: Shipment, ship_from: bool = True) -> dict:
 			"email": contact.get(email_field),
 		},
 	}
+
+
+# @frappe.whitelist()
+# def sync_ltl_carrier_package_types(settings_name: str | None = None) -> dict:
+# 	"""
+# 	Sync carrier package types from ShipEngine API and update the settings document.
+
+# 	This fetches detailed package information for all carriers, updates
+# 	the shipstation_api_ltl_carrier_data field with the enhanced package data,
+# 	and creates/updates Shipment Parcel Template records for packages with dimensions.
+
+# 	Args:
+# 	settings_name: Optional Shipstation Settings document name
+
+# 	Returns:
+# 	Dict with sync results including carriers, packages, and templates counts
+# 	"""
+# 	settings = get_shipstation_settings(settings_name)
+# 	api_key = settings.get_password("shipstation_api_key")
+
+# 	# First fetch all carriers
+# 	client = settings.shipstation_api_client()
+# 	response = client.list_carriers()
+# 	carriers = response.get("carriers", []) if isinstance(response, dict) else response
+
+# 	carrier_list = []
+# 	total_packages = 0
+# 	templates_created = 0
+# 	templates_updated = 0
+# 	transporters_created = 0
+
+# 	for carrier in carriers:
+# 		if isinstance(carrier, dict):
+# 			carrier_id = carrier.get("carrier_id")
+# 			carrier_code = carrier.get("carrier_code")
+# 			account_number = carrier.get("account_number")
+# 			name = carrier.get("friendly_name") or carrier.get("nickname")
+# 			services = carrier.get("services", [])
+# 		else:
+# 			carrier_id = getattr(carrier, "carrier_id", None)
+# 			carrier_code = getattr(carrier, "carrier_code", None)
+# 			account_number = getattr(carrier, "account_number", None)
+# 			name = getattr(carrier, "friendly_name", None) or getattr(carrier, "nickname", None)
+# 			services = getattr(carrier, "services", [])
+
+# 		# Create or find Supplier/transporter for this carrier
+# 		supplier_name = None
+# 		if name:
+# 			existing_before = frappe.db.exists("Supplier", {"supplier_name": name, "is_transporter": 1})
+# 			supplier_name = get_or_create_transporter(name)
+# 			if supplier_name and not existing_before:
+# 				transporters_created += 1
+
+# 		carrier_data = {
+# 			"carrier_id": carrier_id,
+# 			"carrier_code": carrier_code,
+# 			"account_number": account_number,
+# 			"name": name,
+# 			"supplier": supplier_name,
+# 			"services": [],
+# 			"packages": [],
+# 		}
+
+# 		# Process services
+# 		for s in services or []:
+# 			if isinstance(s, dict):
+# 				carrier_data["services"].append(
+# 					{
+# 						"service_code": s.get("service_code"),
+# 						"name": s.get("name"),
+# 						"domestic": s.get("domestic"),
+# 						"international": s.get("international"),
+# 					}
+# 				)
+# 			else:
+# 				carrier_data["services"].append(
+# 					{
+# 						"service_code": getattr(s, "service_code", None),
+# 						"name": getattr(s, "name", None),
+# 						"domestic": getattr(s, "domestic", None),
+# 						"international": getattr(s, "international", None),
+# 					}
+# 				)
+
+# 		# Fetch detailed package types for this carrier
+# 		try:
+# 			with httpx.Client() as http_client:
+# 				pkg_response = http_client.get(
+# 					f"{SHIPENGINE_API_URL}/carriers/{carrier_id}/packages",
+# 					headers={"API-Key": api_key},
+# 				)
+# 				if pkg_response.status_code == 200:
+# 					pkg_data = pkg_response.json()
+# 					packages = pkg_data.get("packages", [])
+# 					for p in packages:
+# 						formatted_pkg = _format_package_type(p)
+# 						carrier_data["packages"].append(formatted_pkg)
+
+# 						# Create/update Shipment Parcel Template for packages with dimensions
+# 						created, updated = _sync_parcel_template(formatted_pkg, carrier_code, name, supplier_name)
+# 						templates_created += created
+# 						templates_updated += updated
+
+# 					total_packages += len(packages)
+# 		except Exception as e:
+# 			frappe.log_error(
+# 				title=f"Error fetching packages for carrier {carrier_id}",
+# 				message=str(e),
+# 			)
+
+# 		carrier_list.append(carrier_data)
+
+# 	# Update settings with enhanced carrier data
+# 	settings.shipstation_api_carrier_data = json.dumps(carrier_list)
+# 	settings.save()
+
+# 	result = {
+# 		"carriers_synced": len(carrier_list),
+# 		"total_packages": total_packages,
+# 		"templates_created": templates_created,
+# 		"templates_updated": templates_updated,
+# 		"transporters_created": transporters_created,
+# 		"carriers": [
+# 			{
+# 				"carrier_id": c["carrier_id"],
+# 				"name": c["name"],
+# 				"supplier": c.get("supplier"),
+# 				"packages_count": len(c["packages"]),
+# 			}
+# 			for c in carrier_list
+# 		],
+# 	}
+
+# 	frappe.msgprint(
+# 		_(
+# 			"Successfully synced {0} carriers with {1} package types. "
+# 			"Created {2} Shipment Parcel Templates, updated {3}. "
+# 			"Created {4} new transporter Suppliers."
+# 		).format(
+# 			result["carriers_synced"],
+# 			result["total_packages"],
+# 			result["templates_created"],
+# 			result["templates_updated"],
+# 			result["transporters_created"],
+# 		)
+# 	)
+
+# 	return result
