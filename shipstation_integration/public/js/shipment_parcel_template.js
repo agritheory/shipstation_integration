@@ -1,3 +1,6 @@
+// Copyright (c) 2026, AgriTheory and contributors
+// For license information, please see license.txt
+
 frappe.ui.form.on('Shipment Parcel Template', {
 	refresh(frm) {
 		set_labels(frm)

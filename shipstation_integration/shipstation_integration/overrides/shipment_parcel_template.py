@@ -1,3 +1,6 @@
+# Copyright (c) 2026, AgriTheory and contributors
+# For license information, please see license.txt
+
 import frappe
 import httpx
 from erpnext.stock.doctype.shipment_parcel_template.shipment_parcel_template import (

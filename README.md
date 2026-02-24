@@ -1,3 +1,6 @@
+<!-- Copyright (c) 2026, AgriTheory and contributors
+For license information, please see license.txt-->
+
 <div align="center" markdown="1">
 
 <a href="https://github.com/AgriTheory/shipstation_integration">
