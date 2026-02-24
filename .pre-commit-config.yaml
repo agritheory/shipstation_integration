@@ -53,7 +53,7 @@ repos:
         files: '\.(js|ts|py|md)$'
         args: ['--app', 'shipstation_integration']
       - id: bylines
-        exclude: 'README.md|CHANGELOG.md'
+        exclude: 'README.md|CHANGELOG.md|CONTRIBUTING.md'
       - id: clean_customized_doctypes
         args: ['--app', 'shipstation_integration']
       - id: validate_customizations

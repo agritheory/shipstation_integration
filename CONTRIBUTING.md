@@ -3,11 +3,6 @@ For license information, please see license.txt-->
 
 # Contribution Guide
 
-<div class="byline">
-  Ishwarya and Rohan 2026-01-13
-</div>
-
-
 In this guide you will get an overview of the contribution workflow from opening an issue, creating a PR, reviewing, and merging the PR.
 
 ## Commit your update
