@@ -1,3 +1,6 @@
+# Copyright (c) 2026, AgriTheory and contributors
+# For license information, please see license.txt
+
 import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -42,7 +45,7 @@ def list_orders(
 
 	for sss in settings:
 		sss_doc: "ShipstationSettings" = frappe.get_doc("Shipstation Settings", sss.name)
-		if not sss_doc.enabled:
+		if not sss_doc.enabled or not sss_doc.enable_legacy_api:
 			continue
 
 		client = sss_doc.client()
@@ -321,3 +324,26 @@ def get_item_notes(item: "ShipStationOrderItem"):
 				notes = option.value
 				break
 	return notes
+
+
+def create_order_from_webhook(order: dict, store: str, settings: str):
+	store = frappe.get_doc("Shipstation Store", store)
+	settings = frappe.get_doc("Shipstation Settings", settings)
+	order = ShipStationOrder().json(order)
+
+	if not store.enable_orders:
+		return
+
+	if not validate_order(settings, order, store):
+		return
+
+	should_create_order = True
+
+	process_order_hook = frappe.get_hooks("process_shipstation_order")
+	if process_order_hook:
+		should_create_order = frappe.get_attr(process_order_hook[0])(order, store)
+
+	if not should_create_order:
+		return
+
+	create_erpnext_order(order, store, settings)

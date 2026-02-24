@@ -1,8 +1,13 @@
-frappe.listview_settings['Sales Order'] = {
-	onload: listview => {
-		listview.__proto__.get_tags_html = get_tags_html
-	},
+// Copyright (c) 2026, AgriTheory and contributors
+// For license information, please see license.txt
+
+let old_onload = frappe.listview_settings['Sales Order'].onload
+var new_onload = function (cur_list) {
+	old_onload(cur_list)
+	cur_list.__proto__.get_tags_html = get_tags_html
 }
+
+frappe.listview_settings['Sales Order'].onload = new_onload
 
 const get_tag_color = tag => {
 	const tag_entry = frappe.boot.tags.find(t => t.name === tag)

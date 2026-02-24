@@ -1,0 +1,38 @@
+{
+  "captured_responses": [
+    {
+      "test_case": "successful_package_creation",
+      "timestamp": "2026-02-08 10:21:30.590434",
+      "response": {
+        "status_code": 200,
+        "url": "https://api.shipstation.com/v2/packages",
+        "request_payload": {
+          "package_code": "custom_test_box_001",
+          "name": "Test Box",
+          "dimensions": {
+            "unit": "centimeter",
+            "length": 30,
+            "width": 20,
+            "height": 15
+          }
+        },
+        "headers": {
+          "API-Key": "REDACTED",
+          "Content-Type": "application/json"
+        },
+        "response_body": {
+          "package_id": "se-149423",
+          "package_code": "custom_test_box_001",
+          "name": "Test Box",
+          "dimensions": {
+            "unit": "centimeter",
+            "length": 30.0,
+            "width": 20.0,
+            "height": 15.0
+          },
+          "description": null
+        }
+      }
+    }
+  ]
+}

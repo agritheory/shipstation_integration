@@ -1,3 +1,6 @@
+# Copyright (c) 2026, AgriTheory and contributors
+# For license information, please see license.txt
+
 import datetime
 from typing import TYPE_CHECKING, Optional
 
@@ -47,7 +50,7 @@ def list_shipments(
 
 	for sss in settings:
 		sss_doc: "ShipstationSettings" = frappe.get_doc("Shipstation Settings", sss.name)
-		if not sss_doc.enabled:
+		if not sss_doc.enabled or not sss_doc.enable_legacy_api:
 			continue
 
 		client = sss_doc.client()
@@ -273,3 +276,30 @@ def create_shipment(
 	frappe.db.commit()
 
 	return shipment_doc
+
+
+def create_shipment_from_webhook(shipment: dict, store: str, settings: str):
+	store = frappe.get_doc("Shipstation Store", store)
+	settings = frappe.get_doc("Shipstation Settings", settings)
+	shipment = ShipStationOrder().json(shipment)
+
+	if not store.enable_shipments or not any(
+		[
+			store.create_sales_invoice,
+			store.create_delivery_note,
+			store.create_shipment,
+		]
+	):
+		return
+
+	if settings.since_date and getdate(shipment.create_date) < settings.since_date:
+		return
+
+	if frappe.db.exists(
+		"Delivery Note",
+		{"docstatus": 1, "shipstation_order_id": shipment.order_id},
+	):
+		if shipment.voided:
+			cancel_voided_shipments(shipment, settings)
+	else:
+		create_erpnext_shipment(shipment, store, settings)
