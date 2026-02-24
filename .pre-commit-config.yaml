@@ -7,7 +7,6 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
-        files: 'shipstation_integration.*'
         exclude: '.*json$|.*txt$|.*csv|.*md|.*svg'
       - id: check-yaml
       - id: no-commit-to-branch
@@ -53,7 +52,7 @@ repos:
         files: '\.(js|ts|py|md)$'
         args: ['--app', 'shipstation_integration']
       - id: bylines
-        exclude: 'README.md|CHANGELOG.md|CONTRIBUTING.md'
+        exclude: 'README.md|CHANGELOG.md'
       - id: clean_customized_doctypes
         args: ['--app', 'shipstation_integration']
       - id: validate_customizations
