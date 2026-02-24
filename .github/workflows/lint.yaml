@@ -30,7 +30,7 @@ jobs:
         run: pip install mypy
 
       - name: Install mypy types
-        run: mypy ./inventory_tools/. --install-types --non-interactive
+        run: mypy ./shipstation_integration/. --install-types --non-interactive
 
       - name: Run mypy
         uses: sasanquaneuf/mypy-github-action@releases/v1
@@ -149,7 +149,7 @@ jobs:
         run: git clone --depth 1 https://gist.github.com/f1bf2c11f78331b2417189c385022c28.git validate_json
 
       - name: Validate JSON
-        run: python3 validate_json/validate_json.py ./inventory_tools/inventory_tools/
+        run: python3 validate_json/validate_json.py ./shipstation_integration/shipstation_integration/
 
       - name: Compile
         run: python3 -m compileall -q ./
