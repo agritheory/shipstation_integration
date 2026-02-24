@@ -1,43 +1,47 @@
 {
-  "custom_fields": [],
-  "doctype": "Shipment Parcel",
-  "property_setters": [
-    {
-      "doc_type": "Shipment Parcel",
-      "doctype_or_field": "DocField",
-      "field_name": "weight",
-      "is_system_generated": 0,
-      "property": "label",
-      "property_type": "Text",
-      "value": "Weight (Pounds)"
-    },
-    {
-      "doc_type": "Shipment Parcel",
-      "doctype_or_field": "DocField",
-      "field_name": "height",
-      "is_system_generated": 0,
-      "property": "label",
-      "property_type": "Text",
-      "value": "Height (Inch)"
-    },
-    {
-      "doc_type": "Shipment Parcel",
-      "doctype_or_field": "DocField",
-      "field_name": "width",
-      "is_system_generated": 0,
-      "property": "label",
-      "property_type": "Text",
-      "value": "Width (Inch)"
-    },
-    {
-      "doc_type": "Shipment Parcel",
-      "doctype_or_field": "DocField",
-      "field_name": "length",
-      "is_system_generated": 0,
-      "property": "label",
-      "property_type": "Text",
-      "value": "Length (Inch)"
-    }
-  ],
-  "sync_on_migrate": 1
+	"custom_fields": [],
+	"doctype": "Shipment Parcel",
+	"property_setters": [
+		{
+			"doc_type": "Shipment Parcel",
+			"doctype_or_field": "DocField",
+			"field_name": "weight",
+			"is_system_generated": 0,
+			"property": "label",
+			"property_type": "Text",
+			"value": "Weight (Pounds)",
+			"module": "Shipstation Integration"
+		},
+		{
+			"doc_type": "Shipment Parcel",
+			"doctype_or_field": "DocField",
+			"field_name": "height",
+			"is_system_generated": 0,
+			"property": "label",
+			"property_type": "Text",
+			"value": "Height (Inch)",
+			"module": "Shipstation Integration"
+		},
+		{
+			"doc_type": "Shipment Parcel",
+			"doctype_or_field": "DocField",
+			"field_name": "width",
+			"is_system_generated": 0,
+			"property": "label",
+			"property_type": "Text",
+			"value": "Width (Inch)",
+			"module": "Shipstation Integration"
+		},
+		{
+			"doc_type": "Shipment Parcel",
+			"doctype_or_field": "DocField",
+			"field_name": "length",
+			"is_system_generated": 0,
+			"property": "label",
+			"property_type": "Text",
+			"value": "Length (Inch)",
+			"module": "Shipstation Integration"
+		}
+	],
+	"sync_on_migrate": 1
 }

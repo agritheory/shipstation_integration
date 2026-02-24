@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # Contribution Guide
 
 <div class="byline">
-  IshwaryaM1030 2026-01-13
+  Ishwarya and Rohan 2026-01-13
 </div>
 
 

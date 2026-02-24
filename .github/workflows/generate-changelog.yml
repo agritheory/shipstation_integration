@@ -1,10 +1,6 @@
 name: Generate Changelog
 
 on:
-  workflow_run:
-    workflows: [Run Linters]
-    types:
-      - completed
   pull_request:
     types: [opened, reopened, synchronize]
   issue_comment:

@@ -11,17 +11,24 @@ repos:
         exclude: '.*json$|.*txt$|.*csv|.*md|.*svg'
       - id: check-yaml
       - id: no-commit-to-branch
-        args: ['--branch', 'develop']
+        args: ['--branch', 'version-15', '--branch', 'version-16']
       - id: check-merge-conflict
-        args: [--assume-in-merge]
       - id: check-ast
       - id: check-json
       - id: check-toml
-      - id: check-yaml
       - id: debug-statements
 
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        args: ["--ignore-words-list", "notin,ND"]
+        exclude: 'yarn.lock|poetry.lock|\.llm/'
+        additional_dependencies:
+          - tomli
+
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.21.0
+    rev: v3.19.1
     hooks:
       - id: pyupgrade
         args: ['--py310-plus']
@@ -31,12 +38,38 @@ repos:
     hooks:
       - id: black
 
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.2.0
+    hooks:
+      - id: flake8
+        additional_dependencies: ['flake8-bugbear']
+
+  - repo: https://github.com/agritheory/test_utils
+    rev: v1.18.0
+    hooks:
+      - id: update_pre_commit_config
+      - id: validate_frappe_project
+      - id: validate_copyright
+        files: '\.(js|ts|py|md)$'
+        args: ['--app', 'shipstation_integration']
+      - id: bylines
+        exclude: 'README.md|CHANGELOG.md'
+      - id: clean_customized_doctypes
+        args: ['--app', 'shipstation_integration']
+      - id: validate_customizations
+        args: ['--app', 'shipstation_integration']
+      - id: validate_patches
+        args: ['--app', 'shipstation_integration']
+      - id: track_overrides
+        args: ['--directory', '.', '--app', 'shipstation_integration', '--base-branch', 'version-15']
+      - id: check_code_duplication
+        args: ['--max-clones', '60', '--max-percentage', '5.0']
+
   - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v4.0.0-alpha.8
+    rev: v3.1.0
     hooks:
       - id: prettier
         types_or: [javascript, vue, scss]
-        # Ignore any files that might contain jinja / bundles
         exclude: |
           (?x)^(
             .*node_modules.*|
@@ -44,35 +77,6 @@ repos:
             shipstation_integration/public/js/lib/.*|
             shipstation_integration/templates/includes/.*
           )$
-
-  - repo: https://github.com/PyCQA/isort
-    rev: 7.0.0
-    hooks:
-      - id: isort
-
-  - repo: https://github.com/PyCQA/flake8
-    rev: 7.3.0
-    hooks:
-      - id: flake8
-        additional_dependencies: ['flake8-bugbear']
-  
-  - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
-    hooks:
-      - id: codespell
-        additional_dependencies:
-          - tomli
-
-  - repo: https://github.com/agritheory/test_utils
-    rev: v1.7.1
-    hooks:
-      - id: validate_customizations
-      - id: validate_copyright
-        files: '\.(js|ts|py|md)$'
-        args: ['--app', 'shipstation_integration']
-      - id: clean_customized_doctypes
-        args: ['--app', 'shipstation_integration']
-      - id: bylines
 
 ci:
   autoupdate_schedule: weekly
