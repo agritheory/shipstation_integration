@@ -232,25 +232,79 @@ function setup_shipping_actions(frm) {
 		callback: function (r) {
 			if (!r.message || !r.message.enable_shipstation_api) return
 
-			// Add label generation button if tracking not already present
-			if (!has_tracking_number(frm)) {
-				// Check if we have carrier info to create label directly
-				const has_carrier = frm.doc.carrier || get_carrier_from_parcel_dimensions(frm)
-				const has_service = frm.doc.carrier_service
+			const has_carrier = frm.doc.carrier || get_carrier_from_parcel_dimensions(frm)
+			const has_service = frm.doc.carrier_service
 
-				if (has_carrier && has_service) {
-					// Can create label directly
-					frm.add_custom_button(__('Create Label'), () => create_label_direct(frm), __('Shipping'))
-				} else {
-					// Need to select carrier/service first
-					frm.add_custom_button(__('Create Label'), () => create_shipping_label(frm), __('Shipping'))
-				}
-
-				// Rate shopping as secondary option
-				frm.add_custom_button(__('Compare Rates'), () => get_shipping_rates(frm), __('Shipping'))
+			if (has_carrier && has_service) {
+				frm.add_custom_button(
+					__('Create Label'),
+					() => confirm_then_create_label(frm, () => create_label_direct(frm)),
+					__('Shipping')
+				)
+			} else {
+				frm.add_custom_button(
+					__('Create Label'),
+					() => confirm_then_create_label(frm, () => create_shipping_label(frm)),
+					__('Shipping')
+				)
 			}
+
+			frm.add_custom_button(
+				__('Compare Rates'),
+				() => confirm_then_create_label(frm, () => get_shipping_rates(frm)),
+				__('Shipping')
+			)
 		},
 	})
+}
+
+/**
+ * If a label already exists on this Packing Slip, show a confirmation dialog
+ * with the existing tracking info before proceeding. Otherwise run proceed_fn immediately.
+ */
+function confirm_then_create_label(frm, proceed_fn) {
+	const existing = get_existing_label_info(frm)
+	if (!existing) {
+		proceed_fn()
+		return
+	}
+
+	let msg = __('A label has already been purchased for this Packing Slip.')
+	msg += `<br><br><strong>${__('Tracking Number')}:</strong> `
+	if (existing.tracking_url) {
+		msg += `<a href="${existing.tracking_url}" target="_blank">${existing.tracking_number}</a>`
+	} else {
+		msg += existing.tracking_number
+	}
+	if (existing.carrier) {
+		msg += `<br><strong>${__('Carrier')}:</strong> ${existing.carrier}`
+	}
+	if (existing.label_url) {
+		msg += `<br><a href="${existing.label_url}" target="_blank">${__('View Existing Label')}</a>`
+	}
+	msg += `<br><br>${__(
+		'Purchasing a new label will charge your account again. The old label should be voided separately.'
+	)}`
+
+	frappe.confirm(msg, proceed_fn, null, __('Re-purchase Label?'))
+}
+
+/**
+ * Return tracking info from the first Parcel Dimensions row that has a tracking number, or null.
+ */
+function get_existing_label_info(frm) {
+	const rows = frm.doc.parcel_dimensions || []
+	for (const row of rows) {
+		if (row.tracking_number) {
+			return {
+				tracking_number: row.tracking_number,
+				tracking_url: row.tracking_url || '',
+				label_url: row.label_url || '',
+				carrier: row.carrier || '',
+			}
+		}
+	}
+	return null
 }
 
 function get_carrier_from_parcel_dimensions(frm) {
@@ -258,13 +312,6 @@ function get_carrier_from_parcel_dimensions(frm) {
 		return frm.doc.parcel_dimensions[0].carrier
 	}
 	return null
-}
-
-function has_tracking_number(frm) {
-	if (!frm.doc.parcel_dimensions || frm.doc.parcel_dimensions.length === 0) {
-		return false
-	}
-	return frm.doc.parcel_dimensions.some(row => row.tracking_number)
 }
 
 function get_shipping_rates(frm) {
@@ -292,8 +339,8 @@ function get_shipping_rates(frm) {
 		freeze: true,
 		freeze_message: __('Fetching shipping rates...'),
 		callback: function (r) {
-			if (r.message && r.message.rates) {
-				show_rates_dialog(frm, r.message.rates)
+			if (r.message && r.message.length) {
+				show_rates_dialog(frm, r.message)
 			} else {
 				frappe.msgprint(__('No rates returned. Please check carrier configuration.'))
 			}
@@ -362,7 +409,8 @@ function build_rates_html(rates) {
 }
 
 /**
- * Create shipping label with selected rate (carrier_id + service_code already known)
+ * Create shipping label with selected rate (carrier_id + service_code already known).
+ * force=true bypasses the backend duplicate guard (user already confirmed in the dialog).
  */
 function create_label_with_rate(frm, carrier_id, service_code) {
 	frappe.call({
@@ -371,6 +419,7 @@ function create_label_with_rate(frm, carrier_id, service_code) {
 			packing_slip: frm.doc.name,
 			carrier_id: carrier_id,
 			service_code: service_code,
+			force: get_existing_label_info(frm) ? true : false,
 		},
 		freeze: true,
 		freeze_message: __('Creating shipping label...'),

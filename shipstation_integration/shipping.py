@@ -67,9 +67,9 @@ def create_shipping_label(doc: str, values: str):
 				use_v2 = True
 
 	if use_v2:
-		_create_shipping_label_v2(doc_dict, values_dict, user=frappe.session.user)
+		create_shipping_label_v2(doc_dict, values_dict, user=frappe.session.user)
 	else:
-		_create_shipping_label(doc, values, user=frappe.session.user)
+		create_shipping_label_v1(doc, values, user=frappe.session.user)
 
 
 def create_shipping_label_folder():
@@ -79,7 +79,7 @@ def create_shipping_label_folder():
 		folder.save()
 
 
-def _create_shipping_label_v2(doc: frappe._dict, values: frappe._dict, user: str = ""):
+def create_shipping_label_v2(doc: frappe._dict, values: frappe._dict, user: str = ""):
 	"""Create shipping label using ShipStation API v2 with rate_id or direct shipment."""
 	from shipstation_integration.labels import create_label_for_delivery_note
 
@@ -111,7 +111,7 @@ def _create_shipping_label_v2(doc: frappe._dict, values: frappe._dict, user: str
 		frappe.throw(_("Failed to create shipping label: {0}").format(str(e)))
 
 
-def _create_shipping_label(doc: str, values: str, user: str = ""):
+def create_shipping_label_v1(doc: str, values: str, user: str = ""):
 	if isinstance(doc, str):
 		doc: frappe._dict = frappe._dict(json.loads(doc))
 		values: frappe._dict = frappe._dict(json.loads(values))
@@ -267,7 +267,7 @@ def make_shipstation_order(doc: frappe._dict):
 def get_carrier_services(settings: str):
 	if settings:
 		shipstation_settings: "ShipstationSettings" = frappe.get_doc("Shipstation Settings", settings)
-		return shipstation_settings._carrier_data()
+		return shipstation_settings.carrier_data()
 
 
 @frappe.whitelist()
@@ -276,7 +276,7 @@ def get_api_carrier_services(settings: str):
 	if settings:
 		shipstation_settings: "ShipstationSettings" = frappe.get_doc("Shipstation Settings", settings)
 		if shipstation_settings.enable_shipstation_api:
-			return shipstation_settings._api_carrier_data()
+			return shipstation_settings.api_carrier_data()
 	return []
 
 
