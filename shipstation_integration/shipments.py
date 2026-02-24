@@ -1,3 +1,6 @@
+# Copyright (c) 2026, AgriTheory and contributors
+# For license information, please see license.txt
+
 import datetime
 from typing import TYPE_CHECKING, Optional
 
@@ -47,7 +50,7 @@ def list_shipments(
 
 	for sss in settings:
 		sss_doc: "ShipstationSettings" = frappe.get_doc("Shipstation Settings", sss.name)
-		if not sss_doc.enabled:
+		if not sss_doc.enabled or not sss_doc.enable_legacy_api:
 			continue
 
 		client = sss_doc.client()

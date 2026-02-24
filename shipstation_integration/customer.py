@@ -1,3 +1,6 @@
+# Copyright (c) 2026, AgriTheory and contributors
+# For license information, please see license.txt
+
 from typing import TYPE_CHECKING
 
 import frappe
@@ -227,16 +230,19 @@ def overwrite_validate_phone_number(data, throw=False):
 
 
 def get_billing_address(customer_name: str):
-	billing_address = frappe.db.sql(
-		"""
-			SELECT `tabAddress`.name
-			FROM `tabDynamic Link`, `tabAddress`
-			WHERE `tabDynamic Link`.link_doctype = 'Customer'
-			AND `tabDynamic Link`.link_name = %(customer_name)s
-			AND `tabAddress`.address_type = 'Billing'
-			LIMIT 1
-		""",
-		{"customer_name": customer_name},
-		as_dict=True,
+	dynamic_link = frappe.qb.DocType("Dynamic Link")
+	address = frappe.qb.DocType("Address")
+
+	billing_address = (
+		frappe.qb.from_(dynamic_link)
+		.from_(address)
+		.select(address.name)
+		.where(
+			(dynamic_link.link_doctype == "Customer")
+			& (dynamic_link.link_name == "customer_name")
+			& (address.address_type == "Billing")
+		)
+		.limit(1)
+		.run(as_dict=True)
 	)
 	return billing_address[0].get("name") if billing_address else None
