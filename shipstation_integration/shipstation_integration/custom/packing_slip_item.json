@@ -27,7 +27,6 @@
       "is_virtual": 0,
       "label": "Inventory Dimension",
       "length": 0,
-      "module": "Shipstation Integration",
       "name": "Packing Slip Item-inventory_dimension",
       "no_copy": 0,
       "non_negative": 0,
@@ -41,7 +40,8 @@
       "show_dashboard": 0,
       "sort_options": 0,
       "translatable": 0,
-      "unique": 0
+      "unique": 0,
+      "module": "Shipstation Integration"
     }
   ],
   "doctype": "Packing Slip Item",

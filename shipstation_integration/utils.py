@@ -1,7 +1,93 @@
 # Copyright (c) 2026, AgriTheory and contributors
 # For license information, please see license.txt
 
+from typing import TYPE_CHECKING, Optional
+
 import frappe
+from frappe import _
+from shipengine.errors import ShipEngineError
+
+if TYPE_CHECKING:
+	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
+		ShipstationSettings,
+	)
+
+# UOM conversion factors to centimeters (for dimension matching)
+DIMENSION_TO_CM = {
+	"Centimeter": 1.0,
+	"Inch": 2.54,
+	"Meter": 100.0,
+	"Millimeter": 0.1,
+}
+
+
+@frappe.whitelist()
+def get_shipstation_settings(settings_name: str | None = None) -> "ShipstationSettings":
+	"""Get Shipstation Settings document."""
+	if settings_name:
+		return frappe.get_doc("Shipstation Settings", settings_name)
+
+	settings_list = frappe.get_all(
+		"Shipstation Settings",
+		filters={"enabled": 1, "enable_shipstation_api": 1},
+		limit=1,
+	)
+
+	if not settings_list:
+		frappe.throw(_("No Shipstation Settings found with ShipStation API v2 enabled"))
+
+	return frappe.get_doc("Shipstation Settings", settings_list[0].name)
+
+
+@frappe.whitelist()
+def find_matching_parcel_template(
+	length: float,
+	width: float,
+	height: float,
+	dimension_uom: str,
+	tolerance: float = 0.1,
+) -> str | None:
+	"""
+	Find a Shipment Parcel Template that matches the given dimensions.
+
+	Shipment Parcel Template stores dimensions in cm, so we convert the input dimensions
+	to cm for comparison.
+
+	Args:
+	        length: Length in the given UOM
+	        width: Width in the given UOM
+	        height: Height in the given UOM
+	        dimension_uom: UOM of the input dimensions
+	        tolerance: Tolerance for matching (in cm)
+
+	Returns:
+	        Name of the matching Shipment Parcel Template, or None if no match
+	"""
+	if not all([length, width, height, dimension_uom]):
+		return None
+
+	# Convert input dimensions to cm
+	conversion_factor = DIMENSION_TO_CM.get(dimension_uom, 1.0)
+	length_cm = float(length) * conversion_factor
+	width_cm = float(width) * conversion_factor
+	height_cm = float(height) * conversion_factor
+
+	# Get all parcel templates
+	templates = frappe.get_all(
+		"Shipment Parcel Template",
+		fields=["name", "length", "width", "height"],
+	)
+
+	for template in templates:
+		# Check if dimensions match within tolerance
+		if (
+			abs(template.length - length_cm) <= tolerance
+			and abs(template.width - width_cm) <= tolerance
+			and abs(template.height - height_cm) <= tolerance
+		):
+			return template.name
+
+	return None
 
 
 def get_marketplace(id=None, name=None, region=None, domain=None):
@@ -23,6 +109,22 @@ def get_marketplace(id=None, name=None, region=None, domain=None):
 				return frappe._dict(data)
 
 	return frappe._dict()
+
+
+def get_error_message(e: Exception) -> str:
+	"""Extract error message from ShipEngineError or other exceptions."""
+	if ShipEngineError and isinstance(e, ShipEngineError):
+		if hasattr(e, "message") and e.message:
+			error_details = [e.message]
+			if hasattr(e, "error_code") and e.error_code:
+				error_details.append(f"Code: {e.error_code}")
+			if hasattr(e, "error_type") and e.error_type:
+				error_details.append(f"Type: {e.error_type}")
+			return " | ".join(error_details)
+		if hasattr(e, "to_dict"):
+			error_dict = e.to_dict()
+			return error_dict.get("message", str(error_dict))
+	return str(e) or repr(e)
 
 
 MARKETPLACES = {

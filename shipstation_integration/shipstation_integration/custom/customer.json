@@ -70,7 +70,6 @@
       "is_virtual": 0,
       "label": "Preferred Carrier",
       "length": 0,
-      "module": "Shipstation Integration",
       "name": "Customer-preferred_carrier",
       "no_copy": 0,
       "non_negative": 0,
@@ -85,7 +84,8 @@
       "show_dashboard": 0,
       "sort_options": 0,
       "translatable": 0,
-      "unique": 0
+      "unique": 0,
+      "module": "Shipstation Integration"
     },
     {
       "allow_in_quick_entry": 0,
