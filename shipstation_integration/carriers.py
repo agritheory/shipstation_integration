@@ -60,14 +60,11 @@ def get_or_create_transporter(carrier_name: str) -> str | None:
 		return existing
 
 	# Try a case-insensitive search
-	existing = frappe.db.sql(
-		"""
-		SELECT name FROM `tabSupplier`
-		WHERE LOWER(supplier_name) = LOWER(%s) AND is_transporter = 1
-		LIMIT 1
-		""",
-		(normalized_name,),
-		as_dict=True,
+	existing = frappe.get_all(
+		"Supplier",
+		filters={"supplier_name": normalized_name.lower(), "is_transporter": 1},
+		fields=["name"],
+		limit=1,
 	)
 	if existing:
 		return existing[0].name
