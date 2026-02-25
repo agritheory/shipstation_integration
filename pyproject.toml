@@ -28,6 +28,7 @@ pytest-order = "~=1.2.1"
 
 [tool.codespell]
 skip = "CHANGELOG.md"
+ignore-words-list = "ND"
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
