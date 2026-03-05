@@ -172,22 +172,22 @@ def get_rates(
 
 	# Build the shipment object
 	shipment_data = {
-		"ship_from": _format_address(ship_from),
-		"ship_to": _format_address(ship_to),
-		"packages": [_format_package(p) for p in packages],
+		"ship_from": format_address(ship_from),
+		"ship_to": format_address(ship_to),
+		"packages": [format_package(p) for p in packages],
 	}
 
 	# ShipEngine API expects a rate_options + shipment structure
 	rate_request = {
 		"shipment": shipment_data,
 		"rate_options": {
-			"carrier_ids": _get_carrier_ids(settings),
+			"carrier_ids": get_carrier_ids(settings),
 		},
 	}
 
 	try:
 		rates_response = client.get_rates_from_shipment(rate_request)
-		result = _format_rates_response(rates_response)
+		result = format_rates_response(rates_response)
 		if not result:
 			# Log the full response for debugging if no rates found
 			frappe.logger("shipstation").info(
@@ -244,7 +244,7 @@ def estimate_rates(
 
 	try:
 		rates = client.estimate_rates(estimate_request)
-		return _format_rates_response(rates)
+		return format_rates_response(rates)
 	except Exception as e:
 		error_msg = get_error_message(e)
 		frappe.log_error(title="Error estimating shipping rates", message=error_msg)
@@ -268,7 +268,7 @@ def get_rate_by_id(rate_id: str, settings_name: str | None = None) -> dict:
 
 	try:
 		rate = client.get_rate_by_id(rate_id)
-		return _format_single_rate(rate)
+		return format_single_rate(rate)
 	except Exception as e:
 		error_msg = get_error_message(e)
 		frappe.log_error(title="Error fetching rate", message=error_msg)
@@ -403,6 +403,65 @@ def get_package_from_packing_slip(packing_slip) -> dict | None:
 	return None
 
 
+@frappe.whitelist()
+def get_rates_for_delivery_note(delivery_note: str) -> list[dict]:
+	"""
+	Get shipping rates for a Delivery Note.
+
+	Addresses are read from the Delivery Note's shipping_address_name and
+	dispatch_address_name fields. Package weight is calculated from item weights.
+
+	Args:
+	        delivery_note: Delivery Note document name
+
+	Returns:
+	        List of available shipping rates
+	"""
+	dn = frappe.get_doc("Delivery Note", delivery_note)
+
+	if not dn.shipping_address_name:
+		frappe.throw(_("Delivery Note must have a shipping address"))
+
+	if not dn.dispatch_address_name:
+		frappe.throw(_("Delivery Note must have a dispatch (ship from) address"))
+
+	ship_to_address = frappe.get_doc("Address", dn.shipping_address_name)
+	ship_from_address = frappe.get_doc("Address", dn.dispatch_address_name)
+
+	ship_from_country = frappe.db.get_value("Country", ship_from_address.country, "code") or "US"
+	ship_to_country = frappe.db.get_value("Country", ship_to_address.country, "code") or "US"
+
+	ship_from = {
+		"name": dn.company,
+		"street1": ship_from_address.address_line1,
+		"street2": ship_from_address.address_line2 or "",
+		"city": ship_from_address.city,
+		"state": get_state_code(ship_from_address.state, ship_from_country),
+		"postal_code": ship_from_address.pincode,
+		"country": ship_from_country,
+		"phone": ship_from_address.phone or "0000000000",
+	}
+
+	ship_to = {
+		"name": dn.customer_name or dn.customer,
+		"street1": ship_to_address.address_line1,
+		"street2": ship_to_address.address_line2 or "",
+		"city": ship_to_address.city,
+		"state": get_state_code(ship_to_address.state, ship_to_country),
+		"postal_code": ship_to_address.pincode,
+		"country": ship_to_country,
+		"phone": ship_to_address.phone or "0000000000",
+	}
+
+	package = get_fallback_package(dn)
+
+	return get_rates(
+		ship_from=ship_from,
+		ship_to=ship_to,
+		packages=[package],
+	)
+
+
 def get_fallback_package(dn) -> dict:
 	"""
 	Create a fallback package using calculated weight from Delivery Note items.
@@ -433,7 +492,7 @@ def get_fallback_package(dn) -> dict:
 	}
 
 
-def _get_carrier_ids(settings: "ShipstationSettings") -> list[str]:
+def get_carrier_ids(settings: "ShipstationSettings") -> list[str]:
 	"""Get list of carrier IDs from settings."""
 	carrier_ids = []
 	if settings.shipstation_api_carrier_data:
@@ -442,7 +501,7 @@ def _get_carrier_ids(settings: "ShipstationSettings") -> list[str]:
 	return carrier_ids
 
 
-def _format_address(address: dict) -> dict:
+def format_address(address: dict) -> dict:
 	"""Format address for ShipStation API v2."""
 	return {
 		"name": address.get("name", ""),
@@ -456,7 +515,7 @@ def _format_address(address: dict) -> dict:
 	}
 
 
-def _format_package(package: dict) -> dict:
+def format_package(package: dict) -> dict:
 	"""Format package for ShipStation API v2."""
 	formatted = {
 		"weight": {
@@ -476,7 +535,7 @@ def _format_package(package: dict) -> dict:
 	return formatted
 
 
-def _format_rates_response(rates_response) -> list[dict]:
+def format_rates_response(rates_response) -> list[dict]:
 	"""Format rates response for frontend consumption."""
 	rates = []
 
@@ -505,7 +564,7 @@ def _format_rates_response(rates_response) -> list[dict]:
 		rate_list = []
 
 	for rate in rate_list:
-		rates.append(_format_single_rate(rate))
+		rates.append(format_single_rate(rate))
 
 	# Sort by shipping amount
 	rates.sort(key=lambda x: x.get("shipping_amount", {}).get("amount", 999999))
@@ -513,7 +572,7 @@ def _format_rates_response(rates_response) -> list[dict]:
 	return rates
 
 
-def _format_single_rate(rate) -> dict:
+def format_single_rate(rate) -> dict:
 	"""Format a single rate for frontend consumption."""
 	if isinstance(rate, dict):
 		return {

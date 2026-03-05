@@ -399,6 +399,12 @@ function setup_shipping_actions(frm) {
 
 				frm.add_custom_button(__('Compare Rates'), () => get_shipping_rates(frm), __('Shipping'))
 			}
+
+			frm.add_custom_button(
+				__('Compare Rates'),
+				() => confirm_then_create_label(frm, () => get_shipping_rates(frm)),
+				__('Shipping')
+			)
 		},
 	})
 }
@@ -426,8 +432,8 @@ function get_shipping_rates(frm) {
 		freeze: true,
 		freeze_message: __('Fetching shipping rates...'),
 		callback: function (r) {
-			if (r.message && r.message.rates) {
-				show_rates_dialog(frm, r.message.rates)
+			if (r.message && r.message.length) {
+				show_rates_dialog(frm, r.message)
 			} else {
 				frappe.msgprint(__('No rates returned. Please check carrier configuration.'))
 			}

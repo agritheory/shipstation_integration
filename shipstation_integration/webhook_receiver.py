@@ -80,7 +80,7 @@ def shipstation_webhook():
 		for shipment in response.json().get("shipments", []):
 			ss_shipment = ShipStationOrder().json(shipment)
 
-			if sss_doc.since_date and getdate(shipment.create_date) < sss_doc.since_date:
+			if sss_doc.since_date and getdate(ss_shipment.create_date) < sss_doc.since_date:
 				continue
 
 			if (
@@ -136,11 +136,11 @@ def shipstation_api_webhook():
 
 	# Route to appropriate handler
 	handlers = {
-		"batch": _handle_batch_complete,
-		"track": _handle_tracking_update,
-		"carrier_connected": _handle_carrier_connected,
-		"label_created": _handle_label_created,
-		"sales_order_status_change": _handle_order_status_change,
+		"batch": handle_batch_complete,
+		"track": handle_tracking_update,
+		"carrier_connected": handle_carrier_connected,
+		"label_created": handle_label_created,
+		"sales_order_status_change": handle_order_status_change,
 	}
 
 	handler = handlers.get(event_type)
@@ -157,7 +157,7 @@ def shipstation_api_webhook():
 	return {"status": "ignored", "message": f"Unknown event type: {event_type}"}
 
 
-def _handle_batch_complete(data: dict) -> dict:
+def handle_batch_complete(data: dict) -> dict:
 	"""Handle batch label processing completion."""
 	batch_id = data.get("data", {}).get("batch_id") or data.get("batch_id")
 
@@ -172,7 +172,7 @@ def _handle_batch_complete(data: dict) -> dict:
 	return {"status": "success", "message": f"Batch {batch_id} acknowledged"}
 
 
-def _handle_tracking_update(data: dict) -> dict:
+def handle_tracking_update(data: dict) -> dict:
 	"""Handle tracking status updates."""
 	tracking_data = data.get("data", {})
 	tracking_number = tracking_data.get("tracking_number")
@@ -217,7 +217,7 @@ def _handle_tracking_update(data: dict) -> dict:
 	}
 
 
-def _handle_carrier_connected(data: dict) -> dict:
+def handle_carrier_connected(data: dict) -> dict:
 	"""Handle new carrier connection notification."""
 	carrier_data = data.get("data", {})
 	carrier_name = carrier_data.get("friendly_name") or carrier_data.get("carrier_code")
@@ -227,7 +227,7 @@ def _handle_carrier_connected(data: dict) -> dict:
 	return {"status": "success", "message": f"Carrier {carrier_name} connection noted"}
 
 
-def _handle_label_created(data: dict) -> dict:
+def handle_label_created(data: dict) -> dict:
 	"""Handle label creation notification."""
 	label_data = data.get("data", {})
 	label_id = label_data.get("label_id")
@@ -259,7 +259,7 @@ def _handle_label_created(data: dict) -> dict:
 	return {"status": "success", "message": f"Label {label_id} noted"}
 
 
-def _handle_order_status_change(data: dict) -> dict:
+def handle_order_status_change(data: dict) -> dict:
 	"""Handle order status change notification."""
 	order_data = data.get("data", {})
 	order_id = order_data.get("order_id")
