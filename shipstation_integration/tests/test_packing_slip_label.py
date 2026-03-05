@@ -43,7 +43,23 @@ def packing_slip():
 	original_dispatch = ps.dispatch_address_name
 	original_carrier = ps.carrier
 	original_service = ps.carrier_service
-	original_parcel_dimensions = [row.as_dict() for row in ps.parcel_dimensions]
+	original_item_parcels = [
+		{
+			"name": row.name,
+			"parcel_number": row.parcel_number,
+			"parcel_length": row.parcel_length,
+			"parcel_width": row.parcel_width,
+			"parcel_height": row.parcel_height,
+			"dimension_uom": row.dimension_uom,
+			"parcel_weight": row.parcel_weight,
+			"parcel_weight_uom": row.parcel_weight_uom,
+			"tracking_number": row.tracking_number,
+			"tracking_url": row.tracking_url,
+			"label_url": row.label_url,
+			"ucc128": row.ucc128,
+		}
+		for row in ps.items
+	]
 
 	yield ps
 
@@ -52,9 +68,10 @@ def packing_slip():
 	ps.dispatch_address_name = original_dispatch
 	ps.carrier = original_carrier
 	ps.carrier_service = original_service
-	ps.parcel_dimensions = []
-	for row_data in original_parcel_dimensions:
-		ps.append("parcel_dimensions", row_data)
+	for saved, row in zip(original_item_parcels, ps.items):
+		for field, value in saved.items():
+			if field != "name":
+				setattr(row, field, value)
 	ps.save()
 
 
@@ -169,7 +186,7 @@ def test_create_label_with_rate_id(packing_slip, label_response, mock_settings_w
 
 
 def test_tracking_url_built_for_usps(packing_slip, label_response, mock_settings_with_client):
-	"""Test that tracking URL is built correctly for USPS."""
+	"""Test that tracking URL is written to items and is correct for USPS."""
 	mock_client = mock_settings_with_client.shipstation_api_client.return_value
 	mock_client.create_label_from_shipment.return_value = label_response
 	with patch("shipstation_integration.labels.download_and_attach_label") as mock_download:
@@ -178,10 +195,10 @@ def test_tracking_url_built_for_usps(packing_slip, label_response, mock_settings
 			packing_slip.name, carrier_id="se-123", service_code="usps_priority_mail"
 		)
 		packing_slip.reload()
-		parcel = packing_slip.parcel_dimensions[0]
-		assert parcel.tracking_url
-		assert "usps" in parcel.tracking_url.lower()
-		assert "9400111899223100001234" in parcel.tracking_url
+		item = packing_slip.items[0]
+		assert item.tracking_url
+		assert "usps" in item.tracking_url.lower()
+		assert "9400111899223100001234" in item.tracking_url
 
 
 def test_get_rates_for_packing_slip(packing_slip, mock_settings_with_client):
@@ -210,9 +227,10 @@ def test_get_rates_for_packing_slip(packing_slip, mock_settings_with_client):
 	assert rates[0]["carrier_code"] == "usps"
 
 
-def test_get_rates_missing_parcel_dimensions(packing_slip):
-	"""Test that rates require parcel dimensions."""
-	packing_slip.parcel_dimensions = []
+def test_get_rates_missing_parcel_number(packing_slip):
+	"""Test that rates require items with a parcel number set."""
+	for row in packing_slip.items:
+		row.parcel_number = 0
 	packing_slip.save()
 	with pytest.raises(frappe.ValidationError):
 		get_rates_for_packing_slip(packing_slip.name)

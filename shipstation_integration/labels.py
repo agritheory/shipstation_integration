@@ -359,8 +359,12 @@ def update_packing_slip_tracking(ps, label_response: dict) -> None:
 	label_url = label_response.get("label_download")
 	carrier_code = label_response.get("carrier_code", "").upper()
 
+<<<<<<< HEAD
 	# Build tracking URL based on carrier
 	tracking_url = build_tracking_url(tracking_number, carrier_code)
+=======
+	tracking_url = _build_tracking_url(tracking_number, carrier_code)
+>>>>>>> 8561afc (wip: pack workflow in packing slip)
 
 	tracking_data = {
 		"tracking_number": tracking_number,
