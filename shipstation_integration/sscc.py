@@ -108,19 +108,16 @@ def _get_sscc_settings() -> "ShipstationSettings":
 
 @frappe.whitelist()
 def generate_packing_slip_sscc(packing_slip: str) -> dict:
-	"""Generate UCC-128 / SSCC-18 codes for each unique parcel in a Packing Slip.
+	"""Generate UCC-128 / SSCC-18 codes for all Parcel Dimensions rows that lack one.
 
-	Items are grouped by ``parcel_number``. One SSCC is generated per unique
-	parcel and written to all items in that parcel. Parcels that already have a
-	``ucc128`` on any of their items are skipped. Items without a
-	``parcel_number`` are ignored entirely.
+	Skips rows that already have a ``ucc128`` value or have no ``item_code`` set.
+	Saves the Packing Slip and returns a summary dict.
 
 	Args:
 	    packing_slip: Name of the Packing Slip document.
 
 	Returns:
-	    dict with ``generated`` (count of new SSCCs) and ``skipped`` (count of
-	    parcels already having an SSCC).
+	    dict with ``generated`` (count of new SSCCs) and ``skipped`` (count already present).
 	"""
 	settings = _get_sscc_settings()
 	prefix = settings.gs1_company_prefix
@@ -131,19 +128,14 @@ def generate_packing_slip_sscc(packing_slip: str) -> dict:
 	generated = 0
 	skipped = 0
 
-	# Group items by parcel_number; items with no parcel_number are ignored.
-	parcels: dict[int, list] = {}
-	for row in doc.items:
-		if row.parcel_number:
-			parcels.setdefault(row.parcel_number, []).append(row)
-
-	for _parcel_num, rows in parcels.items():
-		if any(r.ucc128 for r in rows):
+	for row in doc.parcel_dimensions:
+		if row.ucc128:
 			skipped += 1
 			continue
-		code = generate_sscc(prefix, abbr)
-		for r in rows:
-			r.ucc128 = code
+		if not row.item_code:
+			skipped += 1
+			continue
+		row.ucc128 = generate_sscc(prefix, abbr)
 		generated += 1
 
 	if generated:

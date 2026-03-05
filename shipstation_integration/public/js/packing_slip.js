@@ -1,8 +1,6 @@
 // Copyright (c) 2024, AgriTheory and contributors
 // For license information, please see license.txt
 
-const PARCEL_COLORS = ['#2AC48A', '#5E64FF', '#FF8A00', '#A553E0', '#3478F6', '#D62B31']
-
 /**
  * Check if a value is empty or MySQL NULL placeholder
  * MySQL exports NULL as \N which may have been imported as literal text
@@ -21,100 +19,9 @@ function clean_value(value) {
 	return value
 }
 
-// ---------------------------------------------------------------------------
-// Parcel packing UX
-// ---------------------------------------------------------------------------
-
-function get_parcel_color(parcel_number) {
-	if (!parcel_number) return null
-	return PARCEL_COLORS[(parcel_number - 1) % PARCEL_COLORS.length]
-}
-
-function render_parcel_indicators(frm) {
-	const grid = frm.fields_dict.items.grid
-
-	// Rename the "No." column header to "Parcel"
-	$(grid.header_row.wrapper).find('.row-index span').text(__('Parcel'))
-
-	const items = frm.doc.items || []
-	items.forEach((item, i) => {
-		const grid_row = grid.grid_rows[i]
-		if (!grid_row) return
-		const $row_index = $(grid_row.wrapper).find('.row-index')
-		const $span = $row_index.find('span')
-		$row_index.find('.parcel-indicator').remove()
-
-		if (item.parcel_number) {
-			const color = get_parcel_color(item.parcel_number)
-			$span.hide()
-			$(
-				`<span class="parcel-indicator" style="display:inline-block;background:${color};color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:600;line-height:1.6;vertical-align:middle;">${item.parcel_number}</span>`
-			).appendTo($row_index)
-		} else {
-			$span.hide()
-		}
-	})
-}
-
-function setup_parcel_buttons(frm) {
-	const $bulk_actions = $(frm.fields_dict.items.grid.wrapper).find('.grid-bulk-actions')
-	if (!$bulk_actions.length || $bulk_actions.find('.grid-pack-rows').length) return
-
-	$bulk_actions.prepend(
-		$('<button type="button" class="grid-unpack-rows btn btn-xs btn-warning">')
-			.text(__('Unpack'))
-			.on('click', () => unpack_selected_rows(frm))
-	)
-	$bulk_actions.prepend(
-		$('<button type="button" class="grid-pack-rows btn btn-xs btn-success" style="margin-right:4px;">')
-			.text(__('Pack'))
-			.on('click', () => pack_selected_rows(frm))
-	)
-}
-
-function pack_selected_rows(frm) {
-	const selected = frm.fields_dict.items.grid.get_selected_children()
-	if (!selected.length) {
-		frappe.msgprint(__('Please select at least one row to pack.'))
-		return false
-	}
-
-	const used = (frm.doc.items || []).map(r => r.parcel_number).filter(Boolean)
-	const next = used.length ? Math.max(...used) + 1 : 1
-
-	const promises = selected.map(row => frappe.model.set_value(row.doctype, row.name, 'parcel_number', next))
-
-	Promise.all(promises).then(() => {
-		render_parcel_indicators(frm)
-		frm.dirty()
-	})
-
-	return false
-}
-
-function unpack_selected_rows(frm) {
-	const selected = frm.fields_dict.items.grid.get_selected_children()
-	if (!selected.length) {
-		frappe.msgprint(__('Please select at least one row to unpack.'))
-		return false
-	}
-
-	const promises = selected.map(row => frappe.model.set_value(row.doctype, row.name, 'parcel_number', 0))
-
-	Promise.all(promises).then(() => {
-		render_parcel_indicators(frm)
-		frm.dirty()
-	})
-
-	return false
-}
-
-// ---------------------------------------------------------------------------
-// Frappe form events
-// ---------------------------------------------------------------------------
-
 frappe.ui.form.on('Packing Slip', {
 	setup: function (frm) {
+		// Set query for shipping address - filter by customer linked via Delivery Note
 		frm.set_query('shipping_address_name', function () {
 			if (frm.doc.delivery_note) {
 				return {
@@ -128,6 +35,7 @@ frappe.ui.form.on('Packing Slip', {
 			return {}
 		})
 
+		// Set query for dispatch address - filter by company
 		frm.set_query('dispatch_address_name', function () {
 			return {
 				filters: {
@@ -136,7 +44,8 @@ frappe.ui.form.on('Packing Slip', {
 			}
 		})
 
-		frm.set_query('carrier', 'items', function () {
+		// Set query for carrier in Parcel Dimensions - only transporters
+		frm.set_query('carrier', function () {
 			return {
 				filters: {
 					is_transporter: 1,
@@ -144,32 +53,38 @@ frappe.ui.form.on('Packing Slip', {
 			}
 		})
 
-		frm.set_query('parcel_template', 'items', function (doc, cdt, cdn) {
+		// Set query for parcel_template in Parcel Dimensions - respect carrier if selected
+		frm.set_query('parcel_template', 'parcel_dimensions', function (doc, cdt, cdn) {
 			const row = locals[cdt][cdn]
-			if (row.carrier) {
-				return { filters: { carrier: row.carrier } }
+			if (frm.doc.carrier) {
+				return {
+					filters: {
+						carrier: frm.doc.carrier,
+					},
+				}
 			}
 			return {}
 		})
 	},
 
 	refresh: function (frm) {
+		// Load carrier services if carrier is already set (ensures service_code_map is populated)
 		if (frm.doc.carrier && !frm.service_code_map) {
 			load_carrier_services(frm, frm.doc.carrier)
 		}
 
 		setup_shipping_actions(frm)
 		setup_sscc_button(frm)
-		setup_parcel_buttons(frm)
-		render_parcel_indicators(frm)
-		populate_all_parcel_details(frm)
+		set_uom_labels(frm)
 	},
 
 	delivery_note: function (frm) {
 		if (!frm.doc.delivery_note) return
+
 		if (frm.__delivery_note_loaded) return
 		frm.__delivery_note_loaded = true
 
+		// Fetch customer, addresses, and weight info from Delivery Note
 		frappe.call({
 			method: 'frappe.client.get',
 			args: {
@@ -179,19 +94,24 @@ frappe.ui.form.on('Packing Slip', {
 			callback: function (r) {
 				if (r.message) {
 					const dn = r.message
+
+					// Store customer for address query
 					frm.doc.__onload = frm.doc.__onload || {}
 					frm.doc.__onload.customer = dn.customer
 
+					// Set shipping address (destination) from DN if not already set
 					const dn_shipping_addr = clean_value(dn.shipping_address_name)
 					if (is_empty_or_null(frm.doc.shipping_address_name) && dn_shipping_addr) {
 						frm.set_value('shipping_address_name', dn_shipping_addr)
 					}
 
+					// Set dispatch address (source/company) from DN if not already set
 					const dn_company_addr = clean_value(dn.company_address)
 					if (is_empty_or_null(frm.doc.dispatch_address_name) && dn_company_addr) {
 						frm.set_value('dispatch_address_name', dn_company_addr)
 					}
 
+					// Calculate and set weight from DN items
 					fetch_weight_from_delivery_note(frm, dn)
 				}
 			},
@@ -203,9 +123,13 @@ frappe.ui.form.on('Packing Slip', {
 		if (addr) {
 			frappe.call({
 				method: 'frappe.contacts.doctype.address.address.get_address_display',
-				args: { address_dict: addr },
+				args: {
+					address_dict: addr,
+				},
 				callback: function (r) {
-					if (r.message) frm.set_value('shipping_address', r.message)
+					if (r.message) {
+						frm.set_value('shipping_address', r.message)
+					}
 				},
 			})
 		} else {
@@ -218,9 +142,13 @@ frappe.ui.form.on('Packing Slip', {
 		if (addr) {
 			frappe.call({
 				method: 'frappe.contacts.doctype.address.address.get_address_display',
-				args: { address_dict: addr },
+				args: {
+					address_dict: addr,
+				},
 				callback: function (r) {
-					if (r.message) frm.set_value('dispatch_address', r.message)
+					if (r.message) {
+						frm.set_value('dispatch_address', r.message)
+					}
 				},
 			})
 		} else {
@@ -229,119 +157,42 @@ frappe.ui.form.on('Packing Slip', {
 	},
 
 	carrier: function (frm) {
+		// When carrier changes, load available services with friendly names
 		if (frm.doc.carrier) {
 			load_carrier_services(frm, frm.doc.carrier)
 		} else {
+			// Reset to Data field if no carrier
 			frm.set_df_property('carrier_service', 'fieldtype', 'Data')
 			frm.set_df_property('carrier_service', 'options', null)
 			frm.service_code_map = null
 			frm.refresh_field('carrier_service')
 		}
 	},
-
-	items_add: function (frm) {
-		render_parcel_indicators(frm)
-	},
-
-	items_remove: function (frm) {
-		render_parcel_indicators(frm)
-	},
-
-	items_move: function (frm) {
-		frappe.msgprint(__('Moving rows may require re-packing existing parcels.'), __('Warning'))
-		render_parcel_indicators(frm)
-	},
 })
 
-frappe.ui.form.on('Packing Slip Item', {
-	parcel_number: function (frm) {
-		render_parcel_indicators(frm)
-	},
-
-	parcel_template: function (frm, cdt, cdn) {
-		const row = locals[cdt][cdn]
-		if (!row.parcel_template) return
-
-		frappe.db.get_doc('Shipment Parcel Template', row.parcel_template).then(template => {
-			if (!template) return
-
-			const template_dim_uom = template.dimension_uom || 'Centimeter'
-			const template_weight_uom = template.weight_uom || 'Kilogram'
-
-			const slip_weight = frm.doc.gross_weight_pkg
-			const weight_val = slip_weight || template.weight || 0
-			const weight_uom_val = slip_weight ? frm.doc.gross_weight_uom || template_weight_uom : template_weight_uom
-
-			frappe.model.set_value(cdt, cdn, {
-				carrier: template.carrier || '',
-				parcel_length: template.length,
-				parcel_width: template.width,
-				parcel_height: template.height,
-				dimension_uom: template_dim_uom,
-				parcel_weight: weight_val,
-				parcel_weight_uom: weight_uom_val,
-			})
-			frm.refresh_field('items')
-
-			if (template.carrier && !frm.doc.carrier) {
-				frm.set_value('carrier', template.carrier)
-			}
-
-			update_parcel_details(frm, cdt, cdn)
-		})
-	},
-
-	carrier: function (frm, cdt, cdn) {
-		const row = locals[cdt][cdn]
-		if (row.carrier && !frm.doc.carrier) {
-			frm.set_value('carrier', row.carrier)
-		}
-	},
-
-	parcel_length: function (frm, cdt, cdn) {
-		check_template_match(frm, cdt, cdn)
-		update_parcel_details(frm, cdt, cdn)
-	},
-
-	parcel_width: function (frm, cdt, cdn) {
-		check_template_match(frm, cdt, cdn)
-		update_parcel_details(frm, cdt, cdn)
-	},
-
-	parcel_height: function (frm, cdt, cdn) {
-		check_template_match(frm, cdt, cdn)
-		update_parcel_details(frm, cdt, cdn)
-	},
-
-	dimension_uom: function (frm, cdt, cdn) {
-		update_parcel_details(frm, cdt, cdn)
-	},
-
-	parcel_weight: function (frm, cdt, cdn) {
-		update_parcel_details(frm, cdt, cdn)
-	},
-
-	parcel_weight_uom: function (frm, cdt, cdn) {
-		update_parcel_details(frm, cdt, cdn)
-	},
-})
-
-// ---------------------------------------------------------------------------
-// Helper functions
-// ---------------------------------------------------------------------------
-
+/**
+ * Load carrier services and populate service_code_map
+ * This is called both when carrier changes and on refresh if carrier is already set
+ */
 function load_carrier_services(frm, supplier_name) {
 	frappe.call({
 		method: 'shipstation_integration.carriers.get_services_for_supplier',
-		args: { supplier_name },
+		args: {
+			supplier_name: supplier_name,
+		},
 		callback: function (r) {
 			if (r.message && r.message.length > 0) {
+				// Build options with friendly names
 				const options = [''].concat(r.message.map(s => s.name || s.service_code))
+
+				// Store mapping for lookup when creating label
+				// Maps friendly name -> service_code
 				frm.service_code_map = {}
 				r.message.forEach(s => {
 					const label = s.name || s.service_code
 					frm.service_code_map[label] = s.service_code
 				})
+
 				frm.set_df_property('carrier_service', 'options', options.join('\n'))
 				frm.set_df_property('carrier_service', 'fieldtype', 'Select')
 				frm.refresh_field('carrier_service')
@@ -352,31 +203,26 @@ function load_carrier_services(frm, supplier_name) {
 
 function fetch_weight_from_delivery_note(frm, dn) {
 	let net_weight = 0
+
+	// Calculate total weight from DN items
 	;(dn.items || []).forEach(item => {
 		net_weight += flt(item.total_weight) || flt(item.net_weight) * flt(item.qty) || 0
 	})
+
+	// Set weight UOM from first item if available
 	const weight_uom = dn.items?.[0]?.weight_uom || 'Pound'
+
 	frm.set_value('net_weight_pkg', flt(net_weight, 2))
 	frm.set_value('net_weight_uom', weight_uom)
+
 	if (!frm.doc.gross_weight_pkg) {
 		frm.set_value('gross_weight_pkg', flt(net_weight, 2))
 		frm.set_value('gross_weight_uom', weight_uom)
 	}
 }
 
-function has_tracking_number(frm) {
-	return (frm.doc.items || []).some(row => row.tracking_number)
-}
-
-function get_carrier_from_items(frm) {
-	const items = frm.doc.items || []
-	for (const row of items) {
-		if (row.carrier) return row.carrier
-	}
-	return null
-}
-
 function setup_shipping_actions(frm) {
+	// Only add shipping buttons if ShipStation integration is enabled
 	frappe.call({
 		method: 'frappe.client.get_value',
 		args: {
@@ -387,17 +233,21 @@ function setup_shipping_actions(frm) {
 		callback: function (r) {
 			if (!r.message || !r.message.enable_shipstation_api) return
 
-			if (!has_tracking_number(frm)) {
-				const has_carrier = frm.doc.carrier || get_carrier_from_items(frm)
-				const has_service = frm.doc.carrier_service
+			const has_carrier = frm.doc.carrier || get_carrier_from_parcel_dimensions(frm)
+			const has_service = frm.doc.carrier_service
 
-				if (has_carrier && has_service) {
-					frm.add_custom_button(__('Create Label'), () => create_label_direct(frm), __('Shipping'))
-				} else {
-					frm.add_custom_button(__('Create Label'), () => create_shipping_label(frm), __('Shipping'))
-				}
-
-				frm.add_custom_button(__('Compare Rates'), () => get_shipping_rates(frm), __('Shipping'))
+			if (has_carrier && has_service) {
+				frm.add_custom_button(
+					__('Create Label'),
+					() => confirm_then_create_label(frm, () => create_label_direct(frm)),
+					__('Shipping')
+				)
+			} else {
+				frm.add_custom_button(
+					__('Create Label'),
+					() => confirm_then_create_label(frm, () => create_shipping_label(frm)),
+					__('Shipping')
+				)
 			}
 
 			frm.add_custom_button(
@@ -407,6 +257,62 @@ function setup_shipping_actions(frm) {
 			)
 		},
 	})
+}
+
+/**
+ * If a label already exists on this Packing Slip, show a confirmation dialog
+ * with the existing tracking info before proceeding. Otherwise run proceed_fn immediately.
+ */
+function confirm_then_create_label(frm, proceed_fn) {
+	const existing = get_existing_label_info(frm)
+	if (!existing) {
+		proceed_fn()
+		return
+	}
+
+	let msg = __('A label has already been purchased for this Packing Slip.')
+	msg += `<br><br><strong>${__('Tracking Number')}:</strong> `
+	if (existing.tracking_url) {
+		msg += `<a href="${existing.tracking_url}" target="_blank">${existing.tracking_number}</a>`
+	} else {
+		msg += existing.tracking_number
+	}
+	if (existing.carrier) {
+		msg += `<br><strong>${__('Carrier')}:</strong> ${existing.carrier}`
+	}
+	if (existing.label_url) {
+		msg += `<br><a href="${existing.label_url}" target="_blank">${__('View Existing Label')}</a>`
+	}
+	msg += `<br><br>${__(
+		'Purchasing a new label will charge your account again. The old label should be voided separately.'
+	)}`
+
+	frappe.confirm(msg, proceed_fn, null, __('Re-purchase Label?'))
+}
+
+/**
+ * Return tracking info from the first Parcel Dimensions row that has a tracking number, or null.
+ */
+function get_existing_label_info(frm) {
+	const rows = frm.doc.parcel_dimensions || []
+	for (const row of rows) {
+		if (row.tracking_number) {
+			return {
+				tracking_number: row.tracking_number,
+				tracking_url: row.tracking_url || '',
+				label_url: row.label_url || '',
+				carrier: row.carrier || '',
+			}
+		}
+	}
+	return null
+}
+
+function get_carrier_from_parcel_dimensions(frm) {
+	if (frm.doc.parcel_dimensions && frm.doc.parcel_dimensions.length > 0) {
+		return frm.doc.parcel_dimensions[0].carrier
+	}
+	return null
 }
 
 function get_shipping_rates(frm) {
@@ -420,15 +326,17 @@ function get_shipping_rates(frm) {
 		return
 	}
 
-	const has_parcel_dims = (frm.doc.items || []).some(r => r.parcel_number)
-	if (!has_parcel_dims) {
-		frappe.msgprint(__('Please assign items to parcels (set Parcel #) before comparing rates.'))
+	if (!frm.doc.parcel_dimensions || frm.doc.parcel_dimensions.length === 0) {
+		frappe.msgprint(__('Please add parcel dimensions first.'))
 		return
 	}
 
+	// Call the rate shopping API for this Packing Slip
 	frappe.call({
 		method: 'shipstation_integration.rates.get_rates_for_packing_slip',
-		args: { packing_slip: frm.doc.name },
+		args: {
+			packing_slip: frm.doc.name,
+		},
 		freeze: true,
 		freeze_message: __('Fetching shipping rates...'),
 		callback: function (r) {
@@ -444,6 +352,9 @@ function get_shipping_rates(frm) {
 	})
 }
 
+/**
+ * Show dialog with available shipping rates
+ */
 function show_rates_dialog(frm, rates) {
 	const rate_options = rates.map(r => ({
 		value: JSON.stringify({ carrier_id: r.carrier_id, service_code: r.service_code }),
@@ -477,10 +388,14 @@ function show_rates_dialog(frm, rates) {
 	dialog.show()
 }
 
+/**
+ * Build HTML table for rates display
+ */
 function build_rates_html(rates) {
 	let html = '<table class="table table-bordered table-sm">'
 	html += '<thead><tr><th>Carrier</th><th>Service</th><th>Est. Days</th><th>Cost</th></tr></thead>'
 	html += '<tbody>'
+
 	rates.forEach(rate => {
 		html += `<tr>
 			<td>${rate.carrier_name || rate.carrier_id}</td>
@@ -489,22 +404,30 @@ function build_rates_html(rates) {
 			<td>$${rate.shipping_amount?.amount || rate.total_amount || '-'}</td>
 		</tr>`
 	})
+
 	html += '</tbody></table>'
 	return html
 }
 
+/**
+ * Create shipping label with selected rate (carrier_id + service_code already known).
+ * force=true bypasses the backend duplicate guard (user already confirmed in the dialog).
+ */
 function create_label_with_rate(frm, carrier_id, service_code) {
 	frappe.call({
 		method: 'shipstation_integration.labels.create_label_for_packing_slip',
 		args: {
 			packing_slip: frm.doc.name,
-			carrier_id,
-			service_code,
+			carrier_id: carrier_id,
+			service_code: service_code,
+			force: get_existing_label_info(frm) ? true : false,
 		},
 		freeze: true,
 		freeze_message: __('Creating shipping label...'),
 		callback: function (r) {
-			if (r.message) show_label_success(frm, r.message)
+			if (r.message) {
+				show_label_success(frm, r.message)
+			}
 		},
 		error: function (err) {
 			frappe.msgprint(__('Error creating label: {0}', [err.message || 'Unknown error']))
@@ -512,29 +435,44 @@ function create_label_with_rate(frm, carrier_id, service_code) {
 	})
 }
 
+/**
+ * Create label directly using carrier/service from the Packing Slip form
+ */
 function create_label_direct(frm) {
-	const carrier_supplier = frm.doc.carrier || get_carrier_from_items(frm)
+	const carrier_supplier = frm.doc.carrier || get_carrier_from_parcel_dimensions(frm)
 	const service_display = frm.doc.carrier_service
 
 	if (!carrier_supplier) {
 		frappe.msgprint(__('Please select a carrier first.'))
 		return
 	}
+
 	if (!service_display) {
 		frappe.msgprint(__('Please select a carrier service first.'))
 		return
 	}
 
+	// Convert service display name to service_code if we have a mapping
 	let service_code = service_display
+
+	// Try to look up the actual service code from the friendly name
 	if (frm.service_code_map && frm.service_code_map[service_display]) {
 		service_code = frm.service_code_map[service_display]
-	} else if (service_display.includes(' ') || /[A-Z]/.test(service_display.charAt(0))) {
-		console.warn('Service code map not found, service_display may be friendly name:', service_display)
+	} else {
+		// If no map, the value might already be a service_code (e.g., "ups_ground")
+		// or we need to load services first - warn user if it looks like a friendly name
+		if (service_display.includes(' ') || /[A-Z]/.test(service_display.charAt(0))) {
+			// Looks like a friendly name, not a service code - reload services
+			console.warn('Service code map not found, service_display may be friendly name:', service_display)
+		}
 	}
 
+	// Look up ShipEngine carrier_id from Supplier name
 	frappe.call({
 		method: 'shipstation_integration.carriers.get_carrier_id_for_supplier',
-		args: { supplier_name: carrier_supplier },
+		args: {
+			supplier_name: carrier_supplier,
+		},
 		callback: function (r) {
 			if (r.message) {
 				create_label_with_rate(frm, r.message, service_code)
@@ -550,6 +488,9 @@ function create_label_direct(frm) {
 	})
 }
 
+/**
+ * Show success message after label creation
+ */
 function show_label_success(frm, result) {
 	let msg = __('Label created successfully!')
 	if (result.tracking_number) {
@@ -558,10 +499,17 @@ function show_label_success(frm, result) {
 	if (result.label_download) {
 		msg += '<br><a href="' + result.label_download + '" target="_blank">' + __('Download Label') + '</a>'
 	}
-	frappe.msgprint({ title: __('Shipping Label Created'), indicator: 'green', message: msg })
+	frappe.msgprint({
+		title: __('Shipping Label Created'),
+		indicator: 'green',
+		message: msg,
+	})
 	frm.reload_doc()
 }
 
+/**
+ * Create shipping label (without rate selection - shows carrier dialog)
+ */
 function create_shipping_label(frm) {
 	frappe.call({
 		method: 'shipstation_integration.carriers.list_carriers',
@@ -570,16 +518,28 @@ function create_shipping_label(frm) {
 				frappe.msgprint(__('No carriers configured. Please set up carriers in Shipstation Settings.'))
 				return
 			}
+
 			show_carrier_selection_dialog(frm, r.message)
 		},
 	})
 }
 
+/**
+ * Show dialog for carrier/service selection with user-friendly names
+ */
 function show_carrier_selection_dialog(frm, carriers) {
+	// Build carrier options with friendly names
+	// Format: "carrier_id\nCarrier Name" for select display
 	const carrier_options = carriers.map(c => ({
 		value: c.carrier_id,
 		label: c.name || c.friendly_name || c.carrier_code || c.carrier_id,
 	}))
+
+	// Store carriers for service lookup
+	const carriers_map = {}
+	carriers.forEach(c => {
+		carriers_map[c.carrier_id] = c
+	})
 
 	const dialog = new frappe.ui.Dialog({
 		title: __('Select Carrier and Service'),
@@ -606,7 +566,9 @@ function show_carrier_selection_dialog(frm, carriers) {
 				onchange: function () {
 					const carrier_label = dialog.get_value('carrier_id')
 					const carrier = carrier_options.find(c => c.label === carrier_label)
-					if (carrier) load_services_for_dialog(dialog, carrier.value)
+					if (carrier) {
+						load_services_for_dialog(dialog, carrier.value)
+					}
 				},
 			},
 			{
@@ -621,12 +583,17 @@ function show_carrier_selection_dialog(frm, carriers) {
 		primary_action: function () {
 			const carrier_label = dialog.get_value('carrier_id')
 			const service_label = dialog.get_value('service_code')
+
+			// Find carrier_id from label
 			const carrier = carrier_options.find(c => c.label === carrier_label)
 			if (!carrier) {
 				frappe.msgprint(__('Please select a valid carrier.'))
 				return
 			}
+
+			// Find service_code from label (stored in dialog data)
 			const service_code = dialog.service_code_map?.[service_label] || service_label
+
 			dialog.hide()
 			create_label_with_rate(frm, carrier.value, service_code)
 		},
@@ -641,16 +608,25 @@ function load_shipping_accounts(frm, dialog) {
 
 	frappe.call({
 		method: 'shipstation_integration.carriers.get_shipping_accounts',
-		args: { delivery_note: frm.doc.delivery_note },
+		args: {
+			delivery_note: frm.doc.delivery_note,
+		},
 		callback(r) {
 			const accounts = r.message || []
+
 			if (!accounts.length) {
+				// hide field
 				dialog.set_df_property('shipping_account', 'hidden', 1)
 				return
 			}
+
+			// show field
 			dialog.set_df_property('shipping_account', 'hidden', 0)
+
 			const options = accounts.map(a => a.shipping_account_number)
 			dialog.set_df_property('shipping_account', 'options', options)
+
+			// map for carrier auto fill
 			dialog.shipping_account_map = {}
 			accounts.forEach(a => {
 				dialog.shipping_account_map[a.shipping_account_number] = a
@@ -659,18 +635,26 @@ function load_shipping_accounts(frm, dialog) {
 	})
 }
 
+/**
+ * Load services for the carrier selection dialog
+ */
 function load_services_for_dialog(dialog, carrier_id) {
 	frappe.call({
 		method: 'shipstation_integration.carriers.list_carrier_services',
-		args: { carrier_id },
+		args: { carrier_id: carrier_id },
 		callback: function (r) {
 			if (r.message && r.message.length > 0) {
+				// Build service options with friendly names
 				const service_options = r.message.map(s => s.name || s.service_code)
+
+				// Store mapping of label -> service_code for lookup
 				dialog.service_code_map = {}
 				r.message.forEach(s => {
 					const label = s.name || s.service_code
 					dialog.service_code_map[label] = s.service_code
 				})
+
+				// For Autocomplete fields, use set_data() to update options
 				const service_field = dialog.fields_dict.service_code
 				if (service_field && service_field.set_data) {
 					service_field.set_data(service_options)
@@ -679,7 +663,9 @@ function load_services_for_dialog(dialog, carrier_id) {
 				}
 			} else {
 				const service_field = dialog.fields_dict.service_code
-				if (service_field && service_field.set_data) service_field.set_data([])
+				if (service_field && service_field.set_data) {
+					service_field.set_data([])
+				}
 			}
 		},
 		error: function (err) {
@@ -689,7 +675,7 @@ function load_services_for_dialog(dialog, carrier_id) {
 }
 
 function setup_sscc_button(frm) {
-	if (!(frm.doc.items || []).some(r => r.parcel_number)) return
+	if (!frm.doc.parcel_dimensions || !frm.doc.parcel_dimensions.length) return
 
 	frappe.call({
 		method: 'frappe.client.get_value',
@@ -700,6 +686,7 @@ function setup_sscc_button(frm) {
 		},
 		callback: function (r) {
 			if (!r.message || !r.message.gs1_company_prefix) return
+
 			frm.add_custom_button(__('Generate SSCC'), () => generate_sscc(frm), __('Shipping'))
 		},
 	})
@@ -713,10 +700,15 @@ function generate_sscc(frm) {
 		freeze_message: __('Generating SSCC codes...'),
 		callback: function (r) {
 			if (!r.message) return
+
 			const { generated, skipped } = r.message
 			let msg = ''
-			if (generated) msg += __('Generated {0} SSCC code(s).', [generated])
-			if (skipped) msg += (msg ? ' ' : '') + __('{0} parcel(s) already had an SSCC and were skipped.', [skipped])
+			if (generated) {
+				msg += __('Generated {0} SSCC code(s).', [generated])
+			}
+			if (skipped) {
+				msg += (msg ? ' ' : '') + __('{0} row(s) already had an SSCC and were skipped.', [skipped])
+			}
 			frappe.msgprint({ title: __('SSCC Generation'), indicator: 'green', message: msg || __('No changes made.') })
 			frm.reload_doc()
 		},
@@ -726,71 +718,121 @@ function generate_sscc(frm) {
 	})
 }
 
-const DIM_UOM_ABBR = {
-	Inch: '"',
-	Centimeter: 'cm',
-	Foot: "'",
-	Millimeter: 'mm',
-	Meter: 'm',
+function set_uom_labels(frm) {
+	const uom = frappe.boot.parcel_uom || {}
+
+	const length = uom.dimension_uom || 'Centimeter'
+	const weight = uom.weight_uom || 'Kilogram'
+
+	frm.fields_dict.parcel_dimensions.grid.update_docfield_property('length_display', 'label', `Length (${length})`)
+
+	frm.fields_dict.parcel_dimensions.grid.update_docfield_property('width_display', 'label', `Width (${length})`)
+	frm.fields_dict.parcel_dimensions.grid.update_docfield_property('height_display', 'label', `Height (${length})`)
+
+	frm.fields_dict.parcel_dimensions.grid.update_docfield_property('weight_display', 'label', `Weight (${weight})`)
 }
 
-const WEIGHT_UOM_ABBR = {
-	Pound: 'lbs',
-	Kilogram: 'kg',
-	Ounce: 'oz',
-	Gram: 'g',
+frappe.ui.form.on('Packing Slip', {
+	parcel_dimensions_add: function (frm, cdt, cdn) {
+		frappe.model.set_value(cdt, cdn, {
+			dimension_uom: get_default_dimension_uom(),
+			weight_uom: get_default_weight_uom(),
+		})
+	},
+})
+
+frappe.ui.form.on('Parcel Dimensions', {
+	parcel_template: function (frm, cdt, cdn) {
+		const row = locals[cdt][cdn]
+		if (row.parcel_template) {
+			frappe.db.get_doc('Shipment Parcel Template', row.parcel_template).then(template => {
+				if (template) {
+					// Templates store dimensions in Centimeters (ERPNext standard).
+					// The *_display virtual fields will convert to the user's preferred UOM.
+					const template_dim_uom = template.dimension_uom || 'Centimeter'
+					const template_weight_uom = template.weight_uom || 'Kilogram'
+
+					// Use weight from the packing slip if available (preserving its UOM),
+					// otherwise fall back to the template's weight.
+					const slip_weight = frm.doc.gross_weight_pkg
+					const weight_val = slip_weight || template.weight || 0
+					const weight_uom_val = slip_weight ? frm.doc.gross_weight_uom || template_weight_uom : template_weight_uom
+
+					frappe.model.set_value(cdt, cdn, {
+						carrier: template.carrier || '',
+						length: template.length,
+						width: template.width,
+						height: template.height,
+						dimension_uom: template_dim_uom,
+						weight: weight_val,
+						weight_uom: weight_uom_val,
+					})
+					frm.refresh_field('parcel_dimensions')
+
+					// Also set carrier on parent Packing Slip if not already set
+					if (template.carrier && !frm.doc.carrier) {
+						frm.set_value('carrier', template.carrier)
+					}
+				}
+			})
+		}
+	},
+
+	// When carrier changes on child row, sync to parent
+	carrier: function (frm, cdt, cdn) {
+		const row = locals[cdt][cdn]
+		if (row.carrier && !frm.doc.carrier) {
+			frm.set_value('carrier', row.carrier)
+		}
+	},
+
+	length: function (frm, cdt, cdn) {
+		check_template_match(frm, cdt, cdn)
+	},
+
+	width: function (frm, cdt, cdn) {
+		check_template_match(frm, cdt, cdn)
+	},
+
+	height: function (frm, cdt, cdn) {
+		check_template_match(frm, cdt, cdn)
+	},
+})
+
+function get_default_dimension_uom() {
+	return (frappe.boot.parcel_uom || {}).dimension_uom || 'Inch'
 }
 
-function populate_all_parcel_details(frm) {
-	;(frm.doc.items || []).forEach(row => {
-		update_parcel_details(frm, row.doctype, row.name)
-	})
-}
-
-function update_parcel_details(frm, cdt, cdn) {
-	const row = locals[cdt][cdn]
-	const l = row.parcel_length
-	const w = row.parcel_width
-	const h = row.parcel_height
-	const wt = row.parcel_weight
-
-	if (!l && !w && !h && !wt) {
-		frappe.model.set_value(cdt, cdn, 'parcel_details', '')
-		return
-	}
-
-	const dim_abbr = DIM_UOM_ABBR[row.dimension_uom] || row.dimension_uom || ''
-	const wt_abbr = WEIGHT_UOM_ABBR[row.parcel_weight_uom] || row.parcel_weight_uom || ''
-
-	let parts = []
-	if (l || w || h) {
-		const fmt = v => (v % 1 === 0 ? v : flt(v, 2))
-		parts.push(`${fmt(l || 0)}x${fmt(w || 0)}x${fmt(h || 0)}${dim_abbr}`)
-	}
-	if (wt) {
-		parts.push(`${flt(wt, 2)}${wt_abbr}`)
-	}
-
-	frappe.model.set_value(cdt, cdn, 'parcel_details', parts.join(' '))
+function get_default_weight_uom() {
+	return (frappe.boot.parcel_uom || {}).weight_uom || 'Pound'
 }
 
 function check_template_match(frm, cdt, cdn) {
 	const row = locals[cdt][cdn]
-	if (!row.parcel_length || !row.parcel_width || !row.parcel_height) return
-	if (row.parcel_template) return
 
+	// Skip if no dimensions entered yet
+	if (!row.length || !row.width || !row.height) {
+		return
+	}
+
+	// Skip if template already selected
+	if (row.parcel_template) {
+		return
+	}
+
+	// Try to find a matching template
 	frappe.call({
 		method: 'shipstation_integration.utils.find_matching_parcel_template',
 		args: {
-			length: row.parcel_length,
-			width: row.parcel_width,
-			height: row.parcel_height,
+			length: row.length,
+			width: row.width,
+			height: row.height,
 			dimension_uom: row.dimension_uom,
 		},
 		callback: function (r) {
 			if (r.message) {
 				frappe.model.set_value(cdt, cdn, 'parcel_template', r.message)
-				frm.refresh_field('items')
+				frm.refresh_field('parcel_dimensions')
 			}
 		},
 	})
