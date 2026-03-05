@@ -166,7 +166,7 @@ def create_label_for_packing_slip(
 	Create a shipping label for a Packing Slip using ShipStation API v2.
 
 	Each Packing Slip = 1 physical package = 1 label = 1 tracking number.
-	The label info is stored in the Packing Slip's Parcel Dimensions child table.
+	The label info is written to all Packing Slip Item rows.
 
 	Args:
 	        packing_slip: Packing Slip document name
@@ -222,47 +222,25 @@ def create_label_for_packing_slip(
 
 def _update_packing_slip_tracking(ps, label_response: dict) -> None:
 	"""
-	Update the Packing Slip's Parcel Dimensions with label/tracking info.
+	Update all Packing Slip Item rows with label/tracking info.
 
-	Since 1 Packing Slip = 1 package = 1 label, we update the first
-	Parcel Dimensions row with the tracking information.
+	Since 1 Packing Slip = 1 package = 1 label, all items share the same
+	tracking number, tracking URL, and label URL.
 	"""
 	tracking_number = label_response.get("tracking_number")
 	label_url = label_response.get("label_download")
 	carrier_code = label_response.get("carrier_code", "").upper()
 
-	# Build tracking URL based on carrier
 	tracking_url = _build_tracking_url(tracking_number, carrier_code)
 
-	# Update the first Parcel Dimensions row (or create one if none exist)
-	if ps.parcel_dimensions and len(ps.parcel_dimensions) > 0:
-		row = ps.parcel_dimensions[0]
-		frappe.db.set_value(
-			"Parcel Dimensions",
-			row.name,
-			{
-				"tracking_number": tracking_number,
-				"tracking_url": tracking_url,
-				"label_url": label_url,
-			},
-		)
-	else:
-		# No parcel dimensions - add tracking to a new row
-		ps.append(
-			"parcel_dimensions",
-			{
-				"tracking_number": tracking_number,
-				"tracking_url": tracking_url,
-				"label_url": label_url,
-				"length": 1,
-				"width": 1,
-				"height": 1,
-				"dimension_uom": "Inch",
-				"weight": ps.gross_weight_pkg or 1,
-				"weight_uom": ps.gross_weight_uom or "Pound",
-			},
-		)
-		ps.save(ignore_permissions=True)
+	tracking_data = {
+		"tracking_number": tracking_number,
+		"tracking_url": tracking_url,
+		"label_url": label_url,
+	}
+
+	for item in ps.items:
+		frappe.db.set_value("Packing Slip Item", item.name, tracking_data)
 
 	frappe.db.commit()
 
@@ -356,10 +334,10 @@ def _build_shipment_from_packing_slip(ps, carrier_id: str, service_code: str) ->
 	company_name = dn.company
 	customer_name = dn.customer_name or dn.customer
 
-	# Build package from this Packing Slip
+	# Build package from this Packing Slip's item parcel dimensions
 	package = get_package_from_packing_slip(ps)
 	if not package:
-		frappe.throw(_("Packing Slip must have parcel dimensions configured"))
+		frappe.throw(_("Packing Slip must have items with a Parcel # and parcel dimensions configured"))
 
 	# Get country codes and convert state names to 2-char codes for US
 	ship_to_country = (

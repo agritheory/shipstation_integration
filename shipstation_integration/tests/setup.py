@@ -327,17 +327,14 @@ def create_packing_slip(settings):
 	ps.freight_type = "Small Parcel"
 	ps.carrier_service = "usps_priority_mail"
 
-	# Add parcel dimensions
-	ps.append(
-		"parcel_dimensions",
-		{
-			"length": 12,
-			"width": 9,
-			"height": 6,
-			"dimension_uom": "Inch",
-			"weight": 3,
-			"weight_uom": "Pound",
-		},
-	)
+	# Assign all items to parcel 1 with test dimensions
+	for item_row in ps.items:
+		item_row.parcel_number = 1
+		item_row.parcel_length = 12
+		item_row.parcel_width = 9
+		item_row.parcel_height = 6
+		item_row.dimension_uom = "Inch"
+		item_row.parcel_weight = 3
+		item_row.parcel_weight_uom = "Pound"
 
 	ps.save()
