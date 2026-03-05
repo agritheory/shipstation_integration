@@ -95,13 +95,12 @@ after_install = "shipstation_integration.install.after_install"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Packing Slip": {
+		"before_submit": "shipstation_integration.packing_slip.before_submit",
+		"on_submit": "shipstation_integration.packing_slip.on_submit",
+	}
+}
 
 # Scheduled Tasks
 # ---------------
@@ -132,6 +131,7 @@ scheduler_events = {
 # }
 
 override_doctype_class = {
+	"Packing Slip": "shipstation_integration.shipstation_integration.overrides.packing_slip.ShipstationPackingSlip",
 	"Sales Order": "shipstation_integration.shipstation_integration.overrides.sales_order.ShipStationSalesOrder",
 	"Shipment Parcel Template": "shipstation_integration.shipstation_integration.overrides.shipment_parcel_template.ShipstationShipmentParcelTemplate",
 }

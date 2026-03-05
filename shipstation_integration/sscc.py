@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 SSCC_SERIES_SUFFIX = "SSCC"
 
 
-def _sscc_series_key(company_abbr: str) -> str:
+def sscc_series_key(company_abbr: str) -> str:
 	"""Return the tabSeries key for a given ERPNext company abbreviation.
 
 	Format: ``{abbr}-SSCC`` (e.g. ``CFC-SSCC``), matching the ERPNext convention
@@ -44,14 +44,14 @@ def gs1_check_digit(digits: str) -> int:
 	return (10 - (total % 10)) % 10
 
 
-def _next_sscc_serial(company_abbr: str, digits: int) -> str:
+def next_sscc_serial(company_abbr: str, digits: int) -> str:
 	"""Atomically increment the per-company SSCC counter in tabSeries and return the next value.
 
 	Delegates to ``frappe.model.naming.getseries`` which uses ``frappe.qb`` with
 	``FOR UPDATE`` to prevent collisions when multiple documents are saved concurrently.
 	Shared across all doctypes (Packing Slip today, Shipment in the future).
 	"""
-	return getseries(_sscc_series_key(company_abbr), digits)
+	return getseries(sscc_series_key(company_abbr), digits)
 
 
 def generate_sscc(company_prefix: str, company_abbr: str, extension_digit: int = 0) -> str:
@@ -81,14 +81,14 @@ def generate_sscc(company_prefix: str, company_abbr: str, extension_digit: int =
 		frappe.throw(_("Extension digit must be 0–9"))
 
 	serial_digits = 16 - prefix_len
-	serial = _next_sscc_serial(company_abbr, serial_digits)
+	serial = next_sscc_serial(company_abbr, serial_digits)
 
 	pre_check = str(extension_digit) + company_prefix + serial  # 17 digits
 	check = gs1_check_digit(pre_check)
 	return pre_check + str(check)
 
 
-def _get_sscc_settings() -> "ShipstationSettings":
+def get_sscc_settings() -> "ShipstationSettings":
 	"""Return the first enabled Shipstation Settings doc that has a GS1 prefix configured."""
 	candidates = frappe.get_all(
 		"Shipstation Settings",
@@ -106,47 +106,96 @@ def _get_sscc_settings() -> "ShipstationSettings":
 	return frappe.get_doc("Shipstation Settings", candidates[0].name)
 
 
-@frappe.whitelist()
-def generate_packing_slip_sscc(packing_slip: str) -> dict:
-	"""Generate UCC-128 / SSCC-18 codes for each unique parcel in a Packing Slip.
+def assign_sscc_codes(doc) -> list[str]:
+	"""Assign SSCC-18 codes to all packed parcels that don't have one yet.
 
-	Items are grouped by ``parcel_number``. One SSCC is generated per unique
-	parcel and written to all items in that parcel. Parcels that already have a
-	``ucc128`` on any of their items are skipped. Items without a
-	``parcel_number`` are ignored entirely.
+	Intended for use inside a ``before_submit`` hook.  Operates directly on
+	the in-memory ``doc`` without calling ``doc.save()``; Frappe persists the
+	changes as part of the submit transaction.
 
-	Args:
-	    packing_slip: Name of the Packing Slip document.
+	See also: ``generate_packing_slip_sscc`` — the whitelisted counterpart
+	that writes directly to the database and is called from the UI button.
 
 	Returns:
-	    dict with ``generated`` (count of new SSCCs) and ``skipped`` (count of
-	    parcels already having an SSCC).
+	    List of newly generated SSCC codes (empty if nothing was generated).
 	"""
-	settings = _get_sscc_settings()
+	settings = get_sscc_settings()
 	prefix = settings.gs1_company_prefix
-
-	doc = frappe.get_doc("Packing Slip", packing_slip)
 	company = frappe.db.get_value("Delivery Note", doc.delivery_note, "company")
 	abbr = frappe.db.get_value("Company", company, "abbr")
-	generated = 0
-	skipped = 0
 
-	# Group items by parcel_number; items with no parcel_number are ignored.
 	parcels: dict[int, list] = {}
 	for row in doc.items:
 		if row.parcel_number:
 			parcels.setdefault(row.parcel_number, []).append(row)
 
-	for _parcel_num, rows in parcels.items():
+	new_codes: list[str] = []
+	for rows in parcels.values():
+		if any(r.ucc128 for r in rows):
+			continue
+		code = generate_sscc(prefix, abbr)
+		for r in rows:
+			r.ucc128 = code
+		new_codes.append(code)
+
+	return new_codes
+
+
+@frappe.whitelist()
+def generate_packing_slip_sscc(packing_slip: str) -> dict:
+	"""Generate and persist UCC-128 / SSCC-18 codes for each unique parcel in a Packing Slip.
+
+	Called from the "Generate SSCC" UI button on the Packing Slip form.  Items
+	are grouped by ``parcel_number``; one SSCC is issued per unique parcel and
+	written to every item in that parcel.  Parcels whose items already carry a
+	``ucc128`` value are skipped.  Items without a ``parcel_number`` are ignored.
+
+	The GS1 serial counter in ``tabSeries`` is incremented for every code
+	issued.  Consumed serials are never reused, even if the Packing Slip is
+	later discarded — this is intentional and guarantees uniqueness within a
+	GS1 prefix.
+
+	Generated codes are written to the database immediately via
+	``frappe.db.set_value`` on each ``Packing Slip Item`` row.
+
+	See also: ``assign_sscc_codes`` — the in-memory counterpart used inside
+	the ``before_submit`` hook.
+
+	Args:
+	    packing_slip: Name of the Packing Slip document.
+
+	Returns:
+	    dict with:
+	      ``generated``  – count of newly issued SSCCs
+	      ``skipped``    – count of parcels that already had an SSCC
+	      ``codes``      – list of ``{"name": row_name, "ucc128": code}`` for
+	                       every item row that received a new code
+	"""
+	doc = frappe.get_doc("Packing Slip", packing_slip)
+
+	settings = get_sscc_settings()
+	prefix = settings.gs1_company_prefix
+	company = frappe.db.get_value("Delivery Note", doc.delivery_note, "company")
+	abbr = frappe.db.get_value("Company", company, "abbr")
+
+	parcels: dict[int, list] = {}
+	for row in doc.items:
+		if row.parcel_number:
+			parcels.setdefault(row.parcel_number, []).append(row)
+
+	generated = 0
+	skipped = 0
+	codes: list[dict] = []
+
+	for rows in parcels.values():
 		if any(r.ucc128 for r in rows):
 			skipped += 1
 			continue
 		code = generate_sscc(prefix, abbr)
 		for r in rows:
 			r.ucc128 = code
+			frappe.db.set_value("Packing Slip Item", r.name, "ucc128", code)
+			codes.append({"name": r.name, "ucc128": code})
 		generated += 1
 
-	if generated:
-		doc.save()
-
-	return {"generated": generated, "skipped": skipped}
+	return {"generated": generated, "skipped": skipped, "codes": codes}

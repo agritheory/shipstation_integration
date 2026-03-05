@@ -15,7 +15,7 @@ from shipstation_integration.utils import get_shipstation_settings
 class ShipstationShipmentParcelTemplate(ShipmentParcelTemplate):
 	def get_user_uoms(self):
 		user = frappe.get_cached_doc("User", frappe.session.user)
-		return (user.dimension_uom or "Centimeter", user.weight_uom or "Kilogram")
+		return (user.dimension_uom or "Centimeter", user.weight_uom or "Kg")
 
 	def convert_to_dimension_uom(self, value_cm):
 		dimension_uom, _ = self.get_user_uoms()
@@ -24,7 +24,7 @@ class ShipstationShipmentParcelTemplate(ShipmentParcelTemplate):
 
 	def convert_to_weight_uom(self, value_kg):
 		_, weight_uom = self.get_user_uoms()
-		factor = get_conversion_factor("Kilogram", weight_uom)
+		factor = get_conversion_factor("Kg", weight_uom)
 		return value_kg * factor if value_kg else 0
 
 	@property
@@ -49,8 +49,14 @@ LB_TO_KG = 0.45359237
 KNOWN_CONVERSIONS = {
 	("Inch", "Centimeter"): INCH_TO_CM,
 	("Centimeter", "Inch"): 1 / INCH_TO_CM,
+	("Pound", "Kg"): LB_TO_KG,
+	("Kg", "Pound"): 1 / LB_TO_KG,
+	# Aliases for robustness — "Kilogram" is not an ERPNext UOM but may
+	# appear in legacy data or external integrations.
 	("Pound", "Kilogram"): LB_TO_KG,
 	("Kilogram", "Pound"): 1 / LB_TO_KG,
+	("Kg", "Kilogram"): 1.0,
+	("Kilogram", "Kg"): 1.0,
 }
 
 

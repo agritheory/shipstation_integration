@@ -77,8 +77,12 @@ def test_generate_sscc(db_instance):
 
 @pytest.fixture
 def packing_slip(db_instance):
-	"""Return the test Packing Slip with all SSCC values cleared."""
-	ps = frappe.get_last_doc("Packing Slip")
+	"""Return the draft test Packing Slip with all SSCC values cleared.
+
+	Filtering for docstatus=0 ensures we always get the setup-created draft
+	PS rather than any submitted PS produced by other test modules.
+	"""
+	ps = frappe.get_last_doc("Packing Slip", {"docstatus": 0})
 	ps.reload()
 	for row in ps.items:
 		row.ucc128 = None

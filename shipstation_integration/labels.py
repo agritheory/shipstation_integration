@@ -163,22 +163,23 @@ def create_label_for_packing_slip(
 	carrier_id: str | None = None,
 	service_code: str | None = None,
 	force: bool = False,
-) -> dict:
+) -> list[dict]:
 	"""
-	Create a shipping label for a Packing Slip using ShipStation API v2.
+	Create shipping labels for a Packing Slip using ShipStation API v2.
 
-	Each Packing Slip = 1 physical package = 1 label = 1 tracking number.
-	The label info is written to all Packing Slip Item rows.
+	One label is created per unique parcel_number found in the Packing Slip
+	Item rows. Each label gets its own tracking number which is written back
+	only to the items belonging to that parcel.
 
 	Args:
 	        packing_slip: Packing Slip document name
-	        rate_id: Optional rate ID from previous rate request
+	        rate_id: Optional rate ID from previous rate request (single-parcel only)
 	        carrier_id: Carrier ID (required if rate_id not provided)
 	        service_code: Service code (required if rate_id not provided)
-	        force: If True, allow re-purchasing even if a tracking number already exists
+	        force: If True, allow re-purchasing even if tracking numbers already exist
 
 	Returns:
-	        Label response and attached file info
+	        List of label responses (one per parcel)
 	"""
 	ps = frappe.get_doc("Packing Slip", packing_slip)
 
@@ -198,35 +199,50 @@ def create_label_for_packing_slip(
 			title=_("Label Already Exists"),
 		)
 
-	settings = get_shipstation_settings()
+	parcel_numbers = sorted({item.parcel_number for item in ps.items if item.parcel_number})
+	if not parcel_numbers:
+		frappe.throw(_("No items have been assigned to a parcel. Pack items before purchasing labels."))
 
-	if rate_id:
-		label_response = create_label_from_rate(rate_id=rate_id)
-	else:
-		if not carrier_id or not service_code:
-			frappe.throw(_("Either rate_id or both carrier_id and service_code are required"))
-
-		shipment_data = build_shipment_from_packing_slip(ps, carrier_id, service_code)
-		label_response = create_label(shipment_data=shipment_data)
-
-	if label_response.get("label_download"):
-		file_doc = download_and_attach_label(
-			label_response["label_download"],
-			ps.doctype,
-			ps.name,
-			settings,
+	if rate_id and len(parcel_numbers) > 1:
+		frappe.throw(
+			_(
+				"rate_id can only be used for single-parcel shipments. Use carrier_id and service_code for multi-parcel."
+			)
 		)
-		label_response["attached_file"] = file_doc.name if file_doc else None
 
-	update_packing_slip_tracking(ps, label_response)
+	settings = get_shipstation_settings()
+	label_responses = []
 
-	return label_response
+	for parcel_number in parcel_numbers:
+		if rate_id:
+			label_response = create_label_from_rate(rate_id=rate_id)
+		else:
+			if not carrier_id or not service_code:
+				frappe.throw(_("Either rate_id or both carrier_id and service_code are required"))
+
+			shipment_data = build_shipment_from_packing_slip(ps, carrier_id, service_code, parcel_number)
+			label_response = create_label(shipment_data=shipment_data)
+
+		if label_response.get("label_download"):
+			file_doc = download_and_attach_label(
+				label_response["label_download"],
+				ps.doctype,
+				ps.name,
+				settings,
+			)
+			label_response["attached_file"] = file_doc.name if file_doc else None
+
+		label_response["parcel_number"] = parcel_number
+		update_packing_slip_tracking(ps, label_response, parcel_number)
+		label_responses.append(label_response)
+
+	return label_responses
 
 
 def get_existing_label_info(ps) -> dict | None:
-	"""Return tracking info from the first Parcel Dimensions row that has a tracking number, or None."""
-	for row in ps.parcel_dimensions or []:
-		if row.tracking_number:
+	"""Return tracking info from the first Packing Slip Item row that has a tracking number, or None."""
+	for row in ps.items or []:
+		if row.get("tracking_number"):
 			return {
 				"tracking_number": row.tracking_number,
 				"tracking_url": row.tracking_url or "",
@@ -348,23 +364,17 @@ def update_delivery_note_tracking(dn, label_response: dict) -> None:
 	)
 
 
-def update_packing_slip_tracking(ps, label_response: dict) -> None:
+def update_packing_slip_tracking(ps, label_response: dict, parcel_number: int) -> None:
 	"""
-	Update all Packing Slip Item rows with label/tracking info.
+	Update Packing Slip Item rows belonging to ``parcel_number`` with label/tracking info.
 
-	Since 1 Packing Slip = 1 package = 1 label, all items share the same
-	tracking number, tracking URL, and label URL.
+	Each parcel gets its own tracking number, so only items assigned to the
+	given parcel are updated.
 	"""
 	tracking_number = label_response.get("tracking_number")
 	label_url = label_response.get("label_download")
 	carrier_code = label_response.get("carrier_code", "").upper()
-
-<<<<<<< HEAD
-	# Build tracking URL based on carrier
 	tracking_url = build_tracking_url(tracking_number, carrier_code)
-=======
-	tracking_url = _build_tracking_url(tracking_number, carrier_code)
->>>>>>> 8561afc (wip: pack workflow in packing slip)
 
 	tracking_data = {
 		"tracking_number": tracking_number,
@@ -373,7 +383,8 @@ def update_packing_slip_tracking(ps, label_response: dict) -> None:
 	}
 
 	for item in ps.items:
-		frappe.db.set_value("Packing Slip Item", item.name, tracking_data)
+		if item.parcel_number == parcel_number:
+			frappe.db.set_value("Packing Slip Item", item.name, tracking_data)
 
 
 def build_tracking_url(tracking_number: str, carrier_code: str) -> str:
@@ -449,26 +460,35 @@ def format_label_response(label_response) -> dict:
 	return label_response
 
 
-def build_shipment_from_packing_slip(ps, carrier_id: str, service_code: str) -> dict:
+def build_shipment_from_packing_slip(
+	ps, carrier_id: str, service_code: str, parcel_number: int
+) -> dict:
 	"""
-	Build shipment payload from Packing Slip.
+	Build shipment payload from Packing Slip for a specific parcel.
 
-	Each Packing Slip = 1 physical package.
-	Addresses come from the Packing Slip's address fields.
+	Addresses come from the Packing Slip's address fields. Package dimensions
+	are sourced from items assigned to ``parcel_number``.
 	"""
-	# Get addresses from Packing Slip
 	ship_to_address = frappe.get_doc("Address", ps.shipping_address_name)
 	ship_from_address = frappe.get_doc("Address", ps.dispatch_address_name)
 
-	# Get company/customer names from linked Delivery Note
 	dn = frappe.get_doc("Delivery Note", ps.delivery_note)
 	company_name = dn.company
 	customer_name = dn.customer_name or dn.customer
 
-	# Build package from this Packing Slip's item parcel dimensions
-	package = get_package_from_packing_slip(ps)
+	if carrier_id and not str(carrier_id).startswith("se-"):
+		frappe.throw(
+			_(
+				"Invalid carrier ID format: {0}. Expected a ShipEngine carrier ID (e.g. se-123456). "
+				"Please sync carriers in Shipstation Settings."
+			).format(carrier_id)
+		)
+
+	package = get_package_from_packing_slip(ps, parcel_number)
 	if not package:
-		frappe.throw(_("Packing Slip must have items with a Parcel # and parcel dimensions configured"))
+		frappe.throw(
+			_("Parcel {0} has no items with parcel dimensions configured").format(parcel_number)
+		)
 
 	# Get country codes and convert state names to 2-char codes for US
 	ship_to_country = (

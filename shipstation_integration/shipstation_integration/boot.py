@@ -10,5 +10,5 @@ def boot_session(bootinfo):
 
 	bootinfo.parcel_uom = {
 		"dimension_uom": user.get("dimension_uom") or "Centimeter",
-		"weight_uom": user.get("weight_uom") or "Kilogram",
+		"weight_uom": user.get("weight_uom") or "Kg",
 	}

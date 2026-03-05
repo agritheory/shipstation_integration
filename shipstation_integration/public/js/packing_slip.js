@@ -33,9 +33,12 @@ function get_parcel_color(parcel_number) {
 function render_parcel_indicators(frm) {
 	const grid = frm.fields_dict.items.grid
 
+	update_split_button_state(frm)
+
 	// Rename the "No." column header to "Parcel"
 	$(grid.header_row.wrapper).find('.row-index span').text(__('Parcel'))
 
+	const source_map = frm._source_hu_map || {}
 	const items = frm.doc.items || []
 	items.forEach((item, i) => {
 		const grid_row = grid.grid_rows[i]
@@ -47,12 +50,35 @@ function render_parcel_indicators(frm) {
 		if (item.parcel_number) {
 			const color = get_parcel_color(item.parcel_number)
 			$span.hide()
+
+			const source_hu = source_map[item.name]
+			const title = source_hu
+				? __('Parcel {0} — consuming HU {1}', [item.parcel_number, source_hu])
+				: __('Parcel {0}', [item.parcel_number])
+			const dot = source_hu
+				? ` <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.7);vertical-align:middle;margin-left:2px;" title="${title}"></span>`
+				: ''
+
 			$(
-				`<span class="parcel-indicator" style="display:inline-block;background:${color};color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:600;line-height:1.6;vertical-align:middle;">${item.parcel_number}</span>`
+				`<span class="parcel-indicator" title="${title}" style="display:inline-block;background:${color};color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:600;line-height:1.6;vertical-align:middle;cursor:default;">${item.parcel_number}${dot}</span>`
 			).appendTo($row_index)
 		} else {
 			$span.hide()
 		}
+	})
+}
+
+function fetch_source_handling_units(frm) {
+	if (!frm.doc.name || frm.doc.__islocal) return
+	frappe.call({
+		method: 'shipstation_integration.beam_integration.get_source_handling_units',
+		args: { packing_slip: frm.doc.name },
+		callback: function (r) {
+			if (r.message && Object.keys(r.message).length) {
+				frm._source_hu_map = r.message
+				render_parcel_indicators(frm)
+			}
+		},
 	})
 }
 
@@ -66,10 +92,84 @@ function setup_parcel_buttons(frm) {
 			.on('click', () => unpack_selected_rows(frm))
 	)
 	$bulk_actions.prepend(
+		$(
+			'<button type="button" class="grid-pack-each-row btn btn-xs" style="margin-right:4px;background-color:#3478F6;border-color:#3478F6;color:#fff;">'
+		)
+			.text(__('Pack Each Row'))
+			.on('click', () => pack_each_row(frm))
+	)
+	$bulk_actions.prepend(
 		$('<button type="button" class="grid-pack-rows btn btn-xs btn-success" style="margin-right:4px;">')
 			.text(__('Pack'))
 			.on('click', () => pack_selected_rows(frm))
 	)
+	$bulk_actions.prepend(
+		$(
+			'<button type="button" class="grid-split-rows btn btn-xs" style="margin-right:4px;background-color:var(--pink);border-color:var(--pink);color:#fff;" disabled>'
+		)
+			.text(__('Split'))
+			.on('click', () => split_selected_rows(frm))
+	)
+
+	// Enable/disable Split based on whether any selected row has qty > 1
+	$(frm.fields_dict.items.grid.wrapper).on('change', '.grid-row-check', () => {
+		update_split_button_state(frm)
+	})
+}
+
+function deselect_all_rows(frm) {
+	const grid = frm.fields_dict.items.grid
+	grid.grid_rows.forEach(row => {
+		row.select(false)
+		row.refresh_check()
+	})
+	grid.refresh_remove_rows_button()
+	update_split_button_state(frm)
+}
+
+function update_split_button_state(frm) {
+	const $btn = $(frm.fields_dict.items.grid.wrapper).find('.grid-split-rows')
+	const selected = frm.fields_dict.items.grid.get_selected_children()
+	const can_split = selected.some(r => flt(r.qty) > 1)
+	$btn.prop('disabled', !can_split)
+}
+
+function fetch_delivery_note_defaults(frm) {
+	if (!frm.doc.delivery_note) return
+	if (frm.__delivery_note_loaded) return
+	frm.__delivery_note_loaded = true
+
+	frappe.call({
+		method: 'frappe.client.get',
+		args: { doctype: 'Delivery Note', name: frm.doc.delivery_note },
+		callback: function (r) {
+			if (!r.message) return
+			const dn = r.message
+
+			frm.doc.__onload = frm.doc.__onload || {}
+			frm.doc.__onload.customer = dn.customer
+
+			const dn_shipping_addr = clean_value(dn.shipping_address_name)
+			if (is_empty_or_null(frm.doc.shipping_address_name) && dn_shipping_addr) {
+				frm.set_value('shipping_address_name', dn_shipping_addr)
+			}
+
+			// Prefer dispatch_address_name (ship-from) over company_address (billing)
+			const dn_dispatch_addr = clean_value(dn.dispatch_address_name) || clean_value(dn.company_address)
+			if (is_empty_or_null(frm.doc.dispatch_address_name) && dn_dispatch_addr) {
+				frm.set_value('dispatch_address_name', dn_dispatch_addr)
+			}
+
+			fetch_weight_from_delivery_note(frm, dn)
+		},
+	})
+}
+
+function next_available_parcel(items) {
+	const used = new Set((items || []).map(r => r.parcel_number).filter(n => n > 0))
+	let n = 1
+	while (used.has(n)) n++
+	return n
 }
 
 function pack_selected_rows(frm) {
@@ -79,13 +179,42 @@ function pack_selected_rows(frm) {
 		return false
 	}
 
-	const used = (frm.doc.items || []).map(r => r.parcel_number).filter(Boolean)
-	const next = used.length ? Math.max(...used) + 1 : 1
+	const next = next_available_parcel(frm.doc.items)
 
 	const promises = selected.map(row => frappe.model.set_value(row.doctype, row.name, 'parcel_number', next))
 
 	Promise.all(promises).then(() => {
 		render_parcel_indicators(frm)
+		deselect_all_rows(frm)
+		frm.dirty()
+	})
+
+	return false
+}
+
+function pack_each_row(frm) {
+	const selected = frm.fields_dict.items.grid.get_selected_children()
+	if (!selected.length) {
+		frappe.msgprint(__('Please select at least one row to pack.'))
+		return false
+	}
+
+	// Pre-assign unique parcel numbers synchronously so each call to
+	// next_available_parcel sees the previous in-memory assignment.
+	const assignments = []
+	selected.forEach(row => {
+		const next = next_available_parcel(frm.doc.items)
+		row.parcel_number = next
+		assignments.push({ row, parcel_number: next })
+	})
+
+	const promises = assignments.map(({ row, parcel_number }) =>
+		frappe.model.set_value(row.doctype, row.name, 'parcel_number', parcel_number)
+	)
+
+	Promise.all(promises).then(() => {
+		render_parcel_indicators(frm)
+		deselect_all_rows(frm)
 		frm.dirty()
 	})
 
@@ -103,9 +232,42 @@ function unpack_selected_rows(frm) {
 
 	Promise.all(promises).then(() => {
 		render_parcel_indicators(frm)
+		deselect_all_rows(frm)
 		frm.dirty()
 	})
 
+	return false
+}
+
+function split_selected_rows(frm) {
+	const selected = frm.fields_dict.items.grid.get_selected_children()
+	const splittable = selected.filter(r => flt(r.qty) > 1)
+	if (!splittable.length) return false
+
+	const copyable_fields = new Set(
+		frappe
+			.get_meta(splittable[0].doctype)
+			.fields.filter(f => !f.no_copy)
+			.map(f => f.fieldname)
+	)
+
+	splittable.forEach(row => {
+		frappe.model.set_value(row.doctype, row.name, 'qty', flt(row.qty) - 1)
+
+		const new_row = frappe.model.add_child(frm.doc, row.doctype, 'items')
+		copyable_fields.forEach(fieldname => {
+			new_row[fieldname] = row[fieldname]
+		})
+		// dn_detail is no_copy but must be preserved for split — both rows reference the same DN item
+		new_row.dn_detail = row.dn_detail
+		new_row.qty = 1
+	})
+
+	frm.fields_dict.items.grid.refresh()
+	render_parcel_indicators(frm)
+	populate_all_parcel_details(frm)
+	deselect_all_rows(frm)
+	frm.dirty()
 	return false
 }
 
@@ -136,18 +298,30 @@ frappe.ui.form.on('Packing Slip', {
 			}
 		})
 
-		frm.set_query('carrier', 'items', function () {
-			return {
-				filters: {
-					is_transporter: 1,
-				},
-			}
+		// Header-level carrier: only show transporter suppliers
+		frm.set_query('carrier', function () {
+			return { filters: { is_transporter: 1 } }
 		})
 
+		// Item-row carrier: same filter
+		frm.set_query('carrier', 'items', function () {
+			return { filters: { is_transporter: 1 } }
+		})
+
+		// Header parcel template: narrow to templates for the selected carrier, if any
+		frm.set_query('default_parcel_template', function () {
+			if (frm.doc.carrier) {
+				return { filters: { carrier: frm.doc.carrier } }
+			}
+			return {}
+		})
+
+		// Item-row parcel template: narrow to templates for the selected carrier, if any
 		frm.set_query('parcel_template', 'items', function (doc, cdt, cdn) {
 			const row = locals[cdt][cdn]
-			if (row.carrier) {
-				return { filters: { carrier: row.carrier } }
+			const carrier = row.carrier || frm.doc.carrier
+			if (carrier) {
+				return { filters: { carrier } }
 			}
 			return {}
 		})
@@ -163,39 +337,24 @@ frappe.ui.form.on('Packing Slip', {
 		setup_parcel_buttons(frm)
 		render_parcel_indicators(frm)
 		populate_all_parcel_details(frm)
+		fetch_source_handling_units(frm)
+
+		// On form open, populate missing addresses from the linked DN.
+		// The delivery_note change event only fires when the field changes
+		// interactively, so this covers make_packing_slip and reloads.
+		if (frm.doc.delivery_note) {
+			const missing_shipping = is_empty_or_null(frm.doc.shipping_address_name)
+			const missing_dispatch = is_empty_or_null(frm.doc.dispatch_address_name)
+			if (missing_shipping || missing_dispatch) {
+				fetch_delivery_note_defaults(frm)
+			}
+		}
 	},
 
 	delivery_note: function (frm) {
 		if (!frm.doc.delivery_note) return
-		if (frm.__delivery_note_loaded) return
-		frm.__delivery_note_loaded = true
-
-		frappe.call({
-			method: 'frappe.client.get',
-			args: {
-				doctype: 'Delivery Note',
-				name: frm.doc.delivery_note,
-			},
-			callback: function (r) {
-				if (r.message) {
-					const dn = r.message
-					frm.doc.__onload = frm.doc.__onload || {}
-					frm.doc.__onload.customer = dn.customer
-
-					const dn_shipping_addr = clean_value(dn.shipping_address_name)
-					if (is_empty_or_null(frm.doc.shipping_address_name) && dn_shipping_addr) {
-						frm.set_value('shipping_address_name', dn_shipping_addr)
-					}
-
-					const dn_company_addr = clean_value(dn.company_address)
-					if (is_empty_or_null(frm.doc.dispatch_address_name) && dn_company_addr) {
-						frm.set_value('dispatch_address_name', dn_company_addr)
-					}
-
-					fetch_weight_from_delivery_note(frm, dn)
-				}
-			},
-		})
+		frm.__delivery_note_loaded = false
+		fetch_delivery_note_defaults(frm)
 	},
 
 	shipping_address_name: function (frm) {
@@ -232,11 +391,41 @@ frappe.ui.form.on('Packing Slip', {
 		if (frm.doc.carrier) {
 			load_carrier_services(frm, frm.doc.carrier)
 		} else {
-			frm.set_df_property('carrier_service', 'fieldtype', 'Data')
-			frm.set_df_property('carrier_service', 'options', null)
+			frm.fields_dict['carrier_service'].set_data([])
 			frm.service_code_map = null
-			frm.refresh_field('carrier_service')
 		}
+	},
+
+	default_parcel_template: function (frm) {
+		const template_name = frm.doc.default_parcel_template
+		if (!template_name) return
+
+		frappe.db.get_doc('Shipment Parcel Template', template_name).then(template => {
+			if (!template || !frm.doc.items?.length) return
+
+			// Template stores length/width/height in cm and weight in kg (fixed by the field labels)
+			const updates = frm.doc.items.map(row =>
+				frappe.model.set_value(row.doctype, row.name, {
+					parcel_template: template_name,
+					carrier: template.carrier || row.carrier || '',
+					parcel_length: template.length,
+					parcel_width: template.width,
+					parcel_height: template.height,
+					dimension_uom: 'Centimeter',
+					parcel_weight: template.weight || 0,
+					parcel_weight_uom: 'Kg',
+				})
+			)
+
+			Promise.all(updates).then(() => {
+				if (template.carrier && !frm.doc.carrier) {
+					frm.set_value('carrier', template.carrier)
+				}
+				frm.refresh_field('items')
+				populate_all_parcel_details(frm)
+				frm.dirty()
+			})
+		})
 	},
 
 	items_add: function (frm) {
@@ -265,21 +454,15 @@ frappe.ui.form.on('Packing Slip Item', {
 		frappe.db.get_doc('Shipment Parcel Template', row.parcel_template).then(template => {
 			if (!template) return
 
-			const template_dim_uom = template.dimension_uom || 'Centimeter'
-			const template_weight_uom = template.weight_uom || 'Kilogram'
-
-			const slip_weight = frm.doc.gross_weight_pkg
-			const weight_val = slip_weight || template.weight || 0
-			const weight_uom_val = slip_weight ? frm.doc.gross_weight_uom || template_weight_uom : template_weight_uom
-
+			// Template stores length/width/height in cm and weight in kg (fixed by the field labels)
 			frappe.model.set_value(cdt, cdn, {
 				carrier: template.carrier || '',
 				parcel_length: template.length,
 				parcel_width: template.width,
 				parcel_height: template.height,
-				dimension_uom: template_dim_uom,
-				parcel_weight: weight_val,
-				parcel_weight_uom: weight_uom_val,
+				dimension_uom: 'Centimeter',
+				parcel_weight: template.weight || 0,
+				parcel_weight_uom: 'Kg',
 			})
 			frm.refresh_field('items')
 
@@ -331,21 +514,38 @@ frappe.ui.form.on('Packing Slip Item', {
 // ---------------------------------------------------------------------------
 
 function load_carrier_services(frm, supplier_name) {
+	if (!supplier_name) return
+
+	// Resolve ERPNext supplier → ShipEngine carrier_id, then fetch live services.
 	frappe.call({
-		method: 'shipstation_integration.carriers.get_services_for_supplier',
+		method: 'shipstation_integration.carriers.get_carrier_id_for_supplier',
 		args: { supplier_name },
 		callback: function (r) {
-			if (r.message && r.message.length > 0) {
-				const options = [''].concat(r.message.map(s => s.name || s.service_code))
-				frm.service_code_map = {}
-				r.message.forEach(s => {
-					const label = s.name || s.service_code
-					frm.service_code_map[label] = s.service_code
-				})
-				frm.set_df_property('carrier_service', 'options', options.join('\n'))
-				frm.set_df_property('carrier_service', 'fieldtype', 'Select')
-				frm.refresh_field('carrier_service')
-			}
+			if (!r.message) return
+			const carrier_id = r.message
+
+			frappe.call({
+				method: 'shipstation_integration.carriers.list_carrier_services',
+				args: { carrier_id },
+				callback: function (r2) {
+					const services = r2.message || []
+					if (!services.length) return
+
+					frm.service_code_map = {}
+					const options = [''].concat(
+						services.map(s => {
+							const label = s.name || s.service_code
+							frm.service_code_map[label] = s.service_code
+							return label
+						})
+					)
+
+					// set_data() is the canonical Frappe method on ControlAutocomplete —
+					// it sets awesomplete.list AND caches in this._data so suggestions
+					// persist and re-appear after the field value is cleared.
+					frm.fields_dict['carrier_service'].set_data(options)
+				},
+			})
 		},
 	})
 }
@@ -550,16 +750,29 @@ function create_label_direct(frm) {
 	})
 }
 
-function show_label_success(frm, result) {
-	let msg = __('Label created successfully!')
-	if (result.tracking_number) {
-		msg += '<br><br>' + __('Tracking Number: {0}', [result.tracking_number])
-	}
-	if (result.label_download) {
-		msg += '<br><a href="' + result.label_download + '" target="_blank">' + __('Download Label') + '</a>'
-	}
-	frappe.msgprint({ title: __('Shipping Label Created'), indicator: 'green', message: msg })
-	frm.reload_doc()
+function show_label_success(frm, results) {
+	const list = Array.isArray(results) ? results : [results]
+
+	// Apply tracking data to the live form rows by parcel_number.
+	// The backend already wrote these to DB via db.set_value; updating
+	// in-memory avoids a reload_doc() that would wipe unsaved SSCC codes.
+	list.forEach(result => {
+		const parcel = result.parcel_number ? __('Parcel {0}', [result.parcel_number]) : __('Label')
+		const tracking = result.tracking_number || ''
+		const msg = tracking ? __(`{0} created — {1}`, [parcel, tracking]) : __(`{0} created`, [parcel])
+		frappe.show_alert({ message: msg, indicator: 'green' }, 7)
+
+		if (!result.parcel_number) return
+		;(frm.doc.items || []).forEach(row => {
+			if (row.parcel_number !== result.parcel_number) return
+			frappe.model.set_value(row.doctype, row.name, {
+				tracking_number: result.tracking_number || '',
+				label_url: result.label_download || '',
+			})
+		})
+	})
+
+	frm.refresh_field('items')
 }
 
 function create_shipping_label(frm) {
@@ -596,6 +809,7 @@ function show_carrier_selection_dialog(frm, carriers) {
 						load_services_for_dialog(dialog, acc.carrier)
 					}
 				},
+				default: frm.doc.carrier,
 			},
 			{
 				fieldtype: 'Autocomplete',
@@ -713,12 +927,30 @@ function generate_sscc(frm) {
 		freeze_message: __('Generating SSCC codes...'),
 		callback: function (r) {
 			if (!r.message) return
-			const { generated, skipped } = r.message
-			let msg = ''
-			if (generated) msg += __('Generated {0} SSCC code(s).', [generated])
-			if (skipped) msg += (msg ? ' ' : '') + __('{0} parcel(s) already had an SSCC and were skipped.', [skipped])
-			frappe.msgprint({ title: __('SSCC Generation'), indicator: 'green', message: msg || __('No changes made.') })
-			frm.reload_doc()
+			const { generated, skipped, codes } = r.message
+
+			// Apply codes directly to the live form so unsaved field changes
+			// are not lost.  The server does not save; the user saves normally.
+			if (codes && codes.length) {
+				codes.forEach(({ name, ucc128 }) => {
+					frappe.model.set_value('Packing Slip Item', name, 'ucc128', ucc128)
+				})
+				frm.refresh_field('items')
+				frm.dirty()
+			}
+
+			if (generated) {
+				frappe.show_alert({ message: __('Generated {0} SSCC code(s)', [generated]), indicator: 'green' }, 5)
+			}
+			if (skipped) {
+				frappe.show_alert(
+					{ message: __('{0} parcel(s) already had an SSCC — skipped', [skipped]), indicator: 'orange' },
+					5
+				)
+			}
+			if (!generated && !skipped) {
+				frappe.show_alert({ message: __('No SSCC changes made'), indicator: 'gray' }, 4)
+			}
 		},
 		error: function (err) {
 			frappe.msgprint(__('Error generating SSCC: {0}', [err.message || 'Unknown error']))
@@ -736,7 +968,8 @@ const DIM_UOM_ABBR = {
 
 const WEIGHT_UOM_ABBR = {
 	Pound: 'lbs',
-	Kilogram: 'kg',
+	Kg: 'kg',
+	Kilogram: 'kg', // legacy alias
 	Ounce: 'oz',
 	Gram: 'g',
 }

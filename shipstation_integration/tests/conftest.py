@@ -43,11 +43,6 @@ def db_instance():
 	frappe.connect()
 	frappe.db.commit = MagicMock()
 
-	# Setup test data once per session
-	from shipstation_integration.tests.setup import create_test_data
-
-	create_test_data()
-
 	yield frappe.db
 
 

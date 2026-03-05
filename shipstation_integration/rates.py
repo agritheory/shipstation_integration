@@ -38,7 +38,8 @@ DIMENSION_UOM_MAP = {
 
 WEIGHT_UOM_MAP = {
 	"Pound": "pound",
-	"Kilogram": "kilogram",
+	"Kg": "kilogram",
+	"Kilogram": "kilogram",  # alias — not an ERPNext UOM but kept for robustness
 	"Ounce": "ounce",
 	"Gram": "gram",
 	"pound": "pound",
@@ -346,24 +347,26 @@ def get_rates_for_packing_slip(packing_slip: str) -> list[dict]:
 	)
 
 
-def get_package_from_packing_slip(packing_slip) -> dict | None:
+def get_package_from_packing_slip(packing_slip, parcel_number: int | None = None) -> dict | None:
 	"""
 	Build a package dict from a Packing Slip document.
 
-	Reads parcel dimensions from the first Packing Slip Item row that has a
-	``parcel_number`` assigned. Falls back to the Packing Slip gross weight
-	fields if no item has parcel dimensions.
+	Reads parcel dimensions from the first Packing Slip Item row matching
+	``parcel_number``. If ``parcel_number`` is not provided, uses the first
+	item with any parcel_number assigned. Falls back to the Packing Slip gross
+	weight fields if no item has parcel dimensions.
 
 	Args:
 	        packing_slip: Packing Slip document
+	        parcel_number: Specific parcel number to build the package for.
+	                When None, the first packed item is used (rate-request behaviour).
 
 	Returns:
 	        Package dict for rate request, or None if no valid data
 	"""
-	# Read from the first item with a parcel_number
 	parcel_item = None
 	for item in getattr(packing_slip, "items", []):
-		if item.parcel_number:
+		if item.parcel_number and (parcel_number is None or item.parcel_number == parcel_number):
 			parcel_item = item
 			break
 
