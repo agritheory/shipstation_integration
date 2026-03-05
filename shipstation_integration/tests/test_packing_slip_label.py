@@ -42,6 +42,7 @@ def packing_slip():
 	original_dispatch = ps.dispatch_address_name
 	original_carrier = ps.carrier
 	original_service = ps.carrier_service
+	original_parcel_dimensions = [row.as_dict() for row in ps.parcel_dimensions]
 
 	yield ps
 
@@ -50,6 +51,9 @@ def packing_slip():
 	ps.dispatch_address_name = original_dispatch
 	ps.carrier = original_carrier
 	ps.carrier_service = original_service
+	ps.parcel_dimensions = []
+	for row_data in original_parcel_dimensions:
+		ps.append("parcel_dimensions", row_data)
 	ps.save()
 
 

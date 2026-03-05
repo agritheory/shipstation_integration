@@ -74,6 +74,7 @@ frappe.ui.form.on('Packing Slip', {
 		}
 
 		setup_shipping_actions(frm)
+		setup_sscc_button(frm)
 		set_uom_labels(frm)
 	},
 
@@ -624,6 +625,50 @@ function load_services_for_dialog(dialog, carrier_id) {
 	})
 }
 
+function setup_sscc_button(frm) {
+	if (!frm.doc.parcel_dimensions || !frm.doc.parcel_dimensions.length) return
+
+	frappe.call({
+		method: 'frappe.client.get_value',
+		args: {
+			doctype: 'Shipstation Settings',
+			filters: { enabled: 1 },
+			fieldname: 'gs1_company_prefix',
+		},
+		callback: function (r) {
+			if (!r.message || !r.message.gs1_company_prefix) return
+
+			frm.add_custom_button(__('Generate SSCC'), () => generate_sscc(frm), __('Shipping'))
+		},
+	})
+}
+
+function generate_sscc(frm) {
+	frappe.call({
+		method: 'shipstation_integration.sscc.generate_packing_slip_sscc',
+		args: { packing_slip: frm.doc.name },
+		freeze: true,
+		freeze_message: __('Generating SSCC codes...'),
+		callback: function (r) {
+			if (!r.message) return
+
+			const { generated, skipped } = r.message
+			let msg = ''
+			if (generated) {
+				msg += __('Generated {0} SSCC code(s).', [generated])
+			}
+			if (skipped) {
+				msg += (msg ? ' ' : '') + __('{0} row(s) already had an SSCC and were skipped.', [skipped])
+			}
+			frappe.msgprint({ title: __('SSCC Generation'), indicator: 'green', message: msg || __('No changes made.') })
+			frm.reload_doc()
+		},
+		error: function (err) {
+			frappe.msgprint(__('Error generating SSCC: {0}', [err.message || 'Unknown error']))
+		},
+	})
+}
+
 function set_uom_labels(frm) {
 	const uom = frappe.boot.parcel_uom || {}
 
@@ -638,21 +683,40 @@ function set_uom_labels(frm) {
 	frm.fields_dict.parcel_dimensions.grid.update_docfield_property('weight_display', 'label', `Weight (${weight})`)
 }
 
+frappe.ui.form.on('Packing Slip', {
+	parcel_dimensions_add: function (frm, cdt, cdn) {
+		frappe.model.set_value(cdt, cdn, {
+			dimension_uom: get_default_dimension_uom(),
+			weight_uom: get_default_weight_uom(),
+		})
+	},
+})
+
 frappe.ui.form.on('Parcel Dimensions', {
 	parcel_template: function (frm, cdt, cdn) {
 		const row = locals[cdt][cdn]
 		if (row.parcel_template) {
 			frappe.db.get_doc('Shipment Parcel Template', row.parcel_template).then(template => {
 				if (template) {
-					// Set dimensions on the child row
+					// Templates store dimensions in Centimeters (ERPNext standard).
+					// The *_display virtual fields will convert to the user's preferred UOM.
+					const template_dim_uom = template.dimension_uom || 'Centimeter'
+					const template_weight_uom = template.weight_uom || 'Kilogram'
+
+					// Use weight from the packing slip if available (preserving its UOM),
+					// otherwise fall back to the template's weight.
+					const slip_weight = frm.doc.gross_weight_pkg
+					const weight_val = slip_weight || template.weight || 0
+					const weight_uom_val = slip_weight ? frm.doc.gross_weight_uom || template_weight_uom : template_weight_uom
+
 					frappe.model.set_value(cdt, cdn, {
 						carrier: template.carrier || '',
 						length: template.length,
 						width: template.width,
 						height: template.height,
-						weight: frm.doc.gross_weight_pkg || template.weight || 0,
-						weight_uom: frm.doc.gross_weight_uom || get_weight_uom_from_template(),
-						dimension_uom: get_dimension_uom_from_template(),
+						dimension_uom: template_dim_uom,
+						weight: weight_val,
+						weight_uom: weight_uom_val,
 					})
 					frm.refresh_field('parcel_dimensions')
 
@@ -686,24 +750,12 @@ frappe.ui.form.on('Parcel Dimensions', {
 	},
 })
 
-function get_dimension_uom_from_template() {
-	// Shipment Parcel Template in ERPNext stores dimensions in cm
-	return 'Centimeter'
-}
-
-function get_weight_uom_from_template() {
-	// Default to Kilogram
-	return 'Kilogram'
-}
-
 function get_default_dimension_uom() {
-	// Could be made configurable per user/company in the future
-	return 'Inch'
+	return (frappe.boot.parcel_uom || {}).dimension_uom || 'Inch'
 }
 
 function get_default_weight_uom() {
-	// Could be made configurable per user/company in the future
-	return 'Pound'
+	return (frappe.boot.parcel_uom || {}).weight_uom || 'Pound'
 }
 
 function check_template_match(frm, cdt, cdn) {

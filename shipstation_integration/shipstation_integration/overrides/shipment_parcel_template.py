@@ -44,9 +44,22 @@ class ShipstationShipmentParcelTemplate(ShipmentParcelTemplate):
 		return self.convert_to_weight_uom(self.weight)
 
 
+INCH_TO_CM = 2.54
+LB_TO_KG = 0.45359237
+KNOWN_CONVERSIONS = {
+	("Inch", "Centimeter"): INCH_TO_CM,
+	("Centimeter", "Inch"): 1 / INCH_TO_CM,
+	("Pound", "Kilogram"): LB_TO_KG,
+	("Kilogram", "Pound"): 1 / LB_TO_KG,
+}
+
+
 def get_conversion_factor(from_uom, to_uom):
 	if from_uom == to_uom:
 		return 1
+
+	if (from_uom, to_uom) in KNOWN_CONVERSIONS:
+		return KNOWN_CONVERSIONS[(from_uom, to_uom)]
 
 	conv = frappe.db.get_value(
 		"UOM Conversion Factor", {"to_uom": to_uom, "from_uom": from_uom}, "value"

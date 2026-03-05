@@ -247,7 +247,7 @@
       "name": "Packing Slip-freight_type",
       "no_copy": 0,
       "non_negative": 0,
-      "options": "\nSmall Parcel\nLTL\nFull Truckload\nCustomer Pickup",
+      "options": "\nSmall Parcel",
       "permlevel": 0,
       "print_hide": 0,
       "print_hide_if_no_value": 0,

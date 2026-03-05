@@ -71,9 +71,25 @@ def create_test_data():
 	create_items(settings)
 	create_customers(settings)
 	create_addresses(settings)
+	create_shipstation_settings()
 	create_sales_order(settings)
 	create_delivery_note(settings)
 	create_packing_slip(settings)
+
+
+def create_shipstation_settings():
+	"""Create a Shipstation Settings document with a test GS1 company prefix."""
+	if frappe.db.exists("Shipstation Settings", "Shipstation Settings"):
+		return
+
+	default_item_group = frappe.get_value("Item Group", {"is_group": 0}, "name")
+
+	ss = frappe.new_doc("Shipstation Settings")
+	ss.name = "Shipstation Settings"
+	ss.enabled = 1
+	ss.default_item_group = default_item_group
+	ss.gs1_company_prefix = "0614141"
+	ss.save()
 
 
 def create_customer_group():

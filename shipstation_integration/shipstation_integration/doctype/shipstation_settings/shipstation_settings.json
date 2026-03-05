@@ -30,6 +30,9 @@
 		"sync_carrier_packages",
 		"shipstation_api_carrier_data",
 		"api_carriers_html",
+		"sb_gs1",
+		"gs1_company_prefix",
+		"column_break_gs1",
 		"sb_filters",
 		"since_date",
 		"column_break_lzby",
@@ -149,6 +152,21 @@
 			"fieldname": "enabled",
 			"fieldtype": "Check",
 			"label": "Enabled"
+		},
+		{
+			"fieldname": "sb_gs1",
+			"fieldtype": "Section Break",
+			"label": "GS1 / SSCC"
+		},
+		{
+			"description": "Licensed GS1 Company Prefix (7–10 digits). Required to generate valid SSCC-18 barcodes. Obtain from gs1us.org.",
+			"fieldname": "gs1_company_prefix",
+			"fieldtype": "Data",
+			"label": "GS1 Company Prefix"
+		},
+		{
+			"fieldname": "column_break_gs1",
+			"fieldtype": "Column Break"
 		},
 		{
 			"fieldname": "sb_filters",

@@ -46,25 +46,31 @@ class ParcelDimensions(Document):
 
 		return self._uom_cache
 
-	def convert_to_dimension_uom(self, value_cm):
-
-		if not value_cm:
-
+	def convert_to_dimension_uom(self, value):
+		if not value:
 			return 0
 
 		dimension_uom, _ = self.get_user_uoms()
+		stored_uom = self.dimension_uom or "Centimeter"
 
-		factor = get_conversion_factor("Centimeter", dimension_uom)
+		if stored_uom == dimension_uom:
+			return value
 
-		return value_cm * factor
+		factor = get_conversion_factor(stored_uom, dimension_uom)
+		return value * factor
 
-	def convert_weight(self, value_kg):
-		if not value_kg:
+	def convert_weight(self, value):
+		if not value:
 			return 0
 
 		_, weight_uom = self.get_user_uoms()
-		factor = get_conversion_factor("Kilogram", weight_uom)
-		return value_kg * factor
+		stored_uom = self.weight_uom or "Kilogram"
+
+		if stored_uom == weight_uom:
+			return value
+
+		factor = get_conversion_factor(stored_uom, weight_uom)
+		return value * factor
 
 	@property
 	def length_display(self):
