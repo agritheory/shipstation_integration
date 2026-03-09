@@ -1,6 +1,8 @@
 # Copyright (c) 2026, AgriTheory and contributors
 # For license information, please see license.txt
 
+import json
+
 import frappe
 from frappe import _
 from frappe.model.document import Document
@@ -55,15 +57,20 @@ class ShipmentQuotation(Document):
 		aq_val = None if reset_fields else self.name
 		frappe.set_value(dt, dn, "accepted_quotation", aq_val)
 
-	@frappe.whitelist()
-	def check_if_shipment_pickup_scheduled(self) -> dict:
-		"""
-		Checks if the Shipment in shipment field has a pickup scheduled by checking values set in
-		its pickup_id or awb_number (BOL/tracking/PRO number) fields.
 
-		Returns:
-		dict with "pickup_scheduled" key set to a boolean value
-		"""
-		dt, dn = "Shipment", self.shipment
-		pu_scheduled = frappe.get_value(dt, dn, "pickup_id") or frappe.get_value(dt, dn, "awb_number")
-		return {"pickup_scheduled": bool(pu_scheduled)}
+@frappe.whitelist()
+def check_if_shipment_pickup_scheduled(doc: ShipmentQuotation | str | dict) -> dict:
+	"""
+	Checks if the Shipment in shipment field has a pickup scheduled by checking values set in
+	its pickup_id or awb_number (BOL/tracking/PRO number) fields.
+
+	Args:
+	doc: a Shipment Quotation doc
+
+	Returns:
+	dict with "pickup_scheduled" key set to a boolean value
+	"""
+	doc = frappe._dict(json.loads(doc)) if isinstance(doc, str) else doc
+	dt, dn = "Shipment", doc.shipment
+	pu_scheduled = frappe.get_value(dt, dn, "pickup_id") or frappe.get_value(dt, dn, "awb_number")
+	return {"pickup_scheduled": bool(pu_scheduled)}
