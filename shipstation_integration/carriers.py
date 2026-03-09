@@ -29,18 +29,22 @@ if TYPE_CHECKING:
 SHIPENGINE_API_URL = "https://api.shipengine.com/v1"
 
 
-def get_or_create_transporter(carrier_name: str) -> str | None:
+def get_or_create_transporter(
+	carrier_name: str, ltl_carrier_id: str | None = None, ltl_carrier_scac: str | None = None
+) -> str | None:
 	"""
 	Get or create a Supplier record for a carrier/transporter.
 
-	Matches by name + is_transporter first to allow reasonable deduplication.
-	Creates a new Supplier with is_transporter=1 if not found.
+	Matches by name + is_transporter first to allow reasonable deduplication. If not found,
+	creates a new Supplier with is_transporter=1 and the ltl_carrier_id stored (if given)
 
 	Args:
-	        carrier_name: The carrier name (e.g., "UPS", "USPS", "FedEx")
+	carrier_name: The carrier name (e.g., "UPS", "USPS", "FedEx")
+	ltl_carrier_id: the LTL carrier ID assigned by Shipstation (or alternative API)
+	ltl_carrier_scac: the LTL carrier's SCAC
 
 	Returns:
-	        Supplier name if found/created, None if carrier_name is empty
+	Supplier name if found/created, None if carrier_name is empty
 	"""
 	if not carrier_name:
 		return None
@@ -57,6 +61,9 @@ def get_or_create_transporter(carrier_name: str) -> str | None:
 		"name",
 	)
 	if existing:
+		# Add/update Carrier ID and SCAC if they are provided and not on Supplier record
+		if ltl_carrier_id or ltl_carrier_scac:
+			set_supplier_ltl_id_and_scac(existing, ltl_carrier_id, ltl_carrier_scac)
 		return existing
 
 	# Try a case-insensitive search
@@ -70,6 +77,9 @@ def get_or_create_transporter(carrier_name: str) -> str | None:
 		as_dict=True,
 	)
 	if existing:
+		# Add Carrier ID and SCAC if they are provided and not on Supplier record
+		if ltl_carrier_id or ltl_carrier_scac:
+			set_supplier_ltl_id_and_scac(existing[0].name, ltl_carrier_id, ltl_carrier_scac)
 		return existing[0].name
 
 	# No existing transporter found - create a new one
@@ -85,6 +95,8 @@ def get_or_create_transporter(carrier_name: str) -> str | None:
 				"supplier_name": normalized_name,
 				"supplier_group": default_group,
 				"is_transporter": 1,
+				"ltl_carrier_id": ltl_carrier_id or None,
+				"ltl_carrier_scac": ltl_carrier_scac or None,
 			}
 		)
 		supplier.insert(ignore_permissions=True)
@@ -108,6 +120,19 @@ def get_or_create_transporter(carrier_name: str) -> str | None:
 			message=str(e),
 		)
 		return None
+
+
+def set_supplier_ltl_id_and_scac(
+	supplier_name: str, ltl_carrier_id: str | None = None, ltl_carrier_scac: str | None = None
+) -> None:
+	saved_id, saved_scac = frappe.get_value(
+		"Supplier", supplier_name, ["ltl_carrier_id", "ltl_carrier_scac"]
+	)
+	if ltl_carrier_id and (not saved_id or ltl_carrier_id != saved_id):
+		frappe.set_value("Supplier", supplier_name, "ltl_carrier_id", ltl_carrier_id)
+
+	if ltl_carrier_scac and (not saved_scac or ltl_carrier_scac != saved_scac):
+		frappe.set_value("Supplier", supplier_name, "ltl_carrier_scac", ltl_carrier_scac)
 
 
 # Known package dimensions (in inches) for common carrier packages

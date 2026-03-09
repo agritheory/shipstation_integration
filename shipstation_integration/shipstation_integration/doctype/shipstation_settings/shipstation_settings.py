@@ -4,7 +4,6 @@
 import json
 
 import frappe
-import httpx
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils.nestedset import get_root_of
@@ -14,6 +13,7 @@ from shipstation import ShipStation
 from shipstation.models import ShipStationWebhook
 
 from shipstation_integration.items import create_item
+from shipstation_integration.ltl import ShipstationLTL
 from shipstation_integration.orders import list_orders
 from shipstation_integration.shipments import list_shipments
 from shipstation_integration.tags import list_tags
@@ -104,7 +104,16 @@ class ShipstationSettings(Document):
 		# Use longer timeout for rate requests (default is 5s which is too short)
 		return ShipEngine({"api_key": api_key, "timeout": 30})
 
-	def get_base_url_and_headers(self):
+	def get_ltl_class(self):
+		"""Looks for an overriding LTL class via hooks, otherwise returns Shipstation LTL class"""
+		hook = frappe.get_hooks("override_shipstation")
+		if hook and hook.get("ltl"):
+			method_string = hook.get("ltl")[-1]
+			frappe.get_attr(method_string)()
+		else:
+			return ShipstationLTL()
+
+	def get_base_url_and_headers(self):  # TODO: delete (moved to LTL classes)
 		"""
 		For requests not available through ShipEngine (e.g. LTL), returns base url and headers for
 		traditional GET/POST/PUT/DELETE requests.
@@ -227,49 +236,19 @@ class ShipstationSettings(Document):
 			return []
 		return json.loads(self.shipstation_api_ltl_carrier_data)
 
-	def list_ltl_carriers(self):
-		"""Get LTL carrier data from ShipStation API v-beta."""
-		base_url, headers = self.get_base_url_and_headers()
-
-		try:
-			with httpx.Client() as client:
-				response = client.get(
-					f"{base_url}/v-beta/ltl/carriers",
-					headers=headers,
-				)
-				response.raise_for_status()
-				data = response.json()
-				return data.get("carriers", [])
-
-		except httpx.HTTPStatusError as e:
-			err_type, err_msg = self.get_api_response_error_info(data)
-			frappe.log_error(
-				title="Error getting LTL carriers",
-				message=f"Error Type: {err_type}\nError Message: {err_msg}\nResponse: {e.response.text}",
-			)
-			frappe.throw(
-				_("Failed to get LTL carriers - error type: {0}, message: {1}, error: {2}").format(
-					err_type, err_msg, str(e)
-				)
-			)
-
-		except Exception as e:
-			frappe.log_error(title="Error getting LTL carriers", message=str(e))
-			frappe.throw(_("Failed to get LTL carriers - {0}").format(str(e)))
-
 	@frappe.whitelist()
 	def fetch_ltl_carriers(self):
 		"""Restructures LTL carrier list returned from API for Settings fields."""
-		carriers = self.list_ltl_carriers() or []
-		for carrier in carriers:
-			carrier["carrier_code"] = carrier.get("scac")
-			for p in carrier.get("packages", []):
-				p["package_features"] = ", ".join(p.get("features", []))
-
+		ltl_class = self.get_ltl_class()
+		carriers = ltl_class.list_ltl_carriers(
+			self.name, create_transporters=False
+		)  # TODO: create transporters?
 		self.shipstation_api_ltl_carrier_data = json.dumps(carriers)
 		self.save()
 		frappe.msgprint(
-			_("Successfully fetched {0} LTL carriers from ShipStation.").format(len(carriers))
+			_("Successfully fetched {0} LTL carriers from {1} API.").format(
+				len(carriers), ltl_class.provider
+			)
 		)
 		return carriers
 
@@ -591,7 +570,7 @@ class ShipstationSettings(Document):
 				message=str(e),
 			)
 
-	def get_api_response_error_info(self, response_json):
+	def get_api_response_error_info(self, response_json):  # TODO: move to LTL class
 		"""
 		Extracts error type and message from Shipstation API response JSON.
 

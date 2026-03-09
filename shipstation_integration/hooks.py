@@ -31,12 +31,13 @@ app_include_js = ["shipstation_integration.bundle.js"]
 # include js in doctype views
 
 doctype_js = {
+	"Customer": "public/js/customer.js",
 	"Delivery Note": "public/js/delivery_note.js",
 	"Packing Slip": "public/js/packing_slip.js",
 	"Sales Order": "public/js/sales_order.js",
-	"Supplier": "public/js/supplier.js",
-	"Customer": "public/js/customer.js",
+	"Shipment": "public/js/shipment_custom.js",
 	"Shipment Parcel Template": "public/js/shipment_parcel_template.js",
+	"Supplier": "public/js/supplier.js",
 }
 
 doctype_list_js = {
@@ -130,5 +131,6 @@ scheduler_events = {
 
 override_doctype_class = {
 	"Sales Order": "shipstation_integration.shipstation_integration.overrides.sales_order.ShipStationSalesOrder",
+	"Shipment": "shipstation_integration.shipstation_integration.overrides.shipment.ShipStationShipment",
 	"Shipment Parcel Template": "shipstation_integration.shipstation_integration.overrides.shipment_parcel_template.ShipstationShipmentParcelTemplate",
 }
