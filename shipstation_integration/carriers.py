@@ -67,14 +67,11 @@ def get_or_create_transporter(
 		return existing
 
 	# Try a case-insensitive search
-	existing = frappe.db.sql(
-		"""
-		SELECT name FROM `tabSupplier`
-		WHERE LOWER(supplier_name) = LOWER(%s) AND is_transporter = 1
-		LIMIT 1
-		""",
-		(normalized_name,),
-		as_dict=True,
+	existing = frappe.get_all(
+		"Supplier",
+		filters={"supplier_name": normalized_name.lower(), "is_transporter": 1},
+		fields=["name"],
+		limit=1,
 	)
 	if existing:
 		# Add Carrier ID and SCAC if they are provided and not on Supplier record
@@ -224,7 +221,7 @@ def list_carriers(
 
 		result = []
 		for c in carriers:
-			formatted = _format_carrier(c)
+			formatted = format_carrier(c)
 
 			# Optionally create transporter Supplier
 			if create_transporters and formatted.get("name"):
@@ -262,7 +259,7 @@ def get_carrier(carrier_id: str, settings_name: str | None = None) -> dict:
 				headers={"API-Key": api_key},
 			)
 			response.raise_for_status()
-			return _format_carrier(response.json())
+			return format_carrier(response.json())
 	except httpx.HTTPStatusError as e:
 		frappe.log_error(
 			title="Error getting carrier",
@@ -303,7 +300,7 @@ def list_carrier_package_types(carrier_id: str, settings_name: str | None = None
 			data = response.json()
 			packages = data.get("packages", [])
 
-			return [_format_package_type(p) for p in packages]
+			return [format_package_type(p) for p in packages]
 	except httpx.HTTPStatusError as e:
 		frappe.log_error(
 			title="Error listing carrier package types",
@@ -341,7 +338,7 @@ def list_carrier_services(carrier_id: str, settings_name: str | None = None) -> 
 			data = response.json()
 			services = data.get("services", [])
 
-			return [_format_service(s) for s in services]
+			return [format_service(s) for s in services]
 	except httpx.HTTPStatusError as e:
 		frappe.log_error(
 			title="Error listing carrier services",
@@ -485,11 +482,13 @@ def sync_carrier_package_types(settings_name: str | None = None) -> dict:
 					pkg_data = pkg_response.json()
 					packages = pkg_data.get("packages", [])
 					for p in packages:
-						formatted_pkg = _format_package_type(p)
+						formatted_pkg = format_package_type(p)
 						carrier_data["packages"].append(formatted_pkg)
 
 						# Create/update Shipment Parcel Template for packages with dimensions
-						created, updated = _sync_parcel_template(formatted_pkg, carrier_code, name, supplier_name)
+						created, updated = sync_carrier_parcel_template(
+							formatted_pkg, carrier_code, name, supplier_name
+						)
 						templates_created += created
 						templates_updated += updated
 
@@ -540,7 +539,7 @@ def sync_carrier_package_types(settings_name: str | None = None) -> dict:
 	return result
 
 
-def _sync_parcel_template(
+def sync_carrier_parcel_template(
 	package: dict, carrier_code: str, carrier_name: str, supplier_name: str | None = None
 ) -> tuple[int, int]:
 	"""
@@ -550,7 +549,7 @@ def _sync_parcel_template(
 	placeholder dimensions (1x1x1 cm) which should be updated by the user.
 
 	Args:
-	        package: Package data dict from _format_package_type
+	        package: Package data dict from format_package_type
 	        carrier_code: Carrier code (e.g., "usps", "ups")
 	        carrier_name: Friendly carrier name (e.g., "USPS", "UPS")
 	        supplier_name: Optional Supplier (transporter) name to link to the template
@@ -802,7 +801,7 @@ def get_services_for_supplier(supplier_name: str, settings_name: str | None = No
 		return []
 
 
-def _format_carrier(carrier) -> dict:
+def format_carrier(carrier) -> dict:
 	"""Format carrier data for consistent output."""
 	if isinstance(carrier, dict):
 		return {
@@ -838,7 +837,7 @@ def _format_carrier(carrier) -> dict:
 	}
 
 
-def _format_package_type(package: dict) -> dict:
+def format_package_type(package: dict) -> dict:
 	"""Format package type data for consistent output."""
 	dimensions = package.get("dimensions", {})
 
@@ -858,7 +857,7 @@ def _format_package_type(package: dict) -> dict:
 	}
 
 
-def _format_service(service: dict) -> dict:
+def format_service(service: dict) -> dict:
 	"""Format service data for consistent output."""
 	return {
 		"carrier_id": service.get("carrier_id"),

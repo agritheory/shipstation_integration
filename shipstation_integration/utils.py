@@ -1,3 +1,6 @@
+# Copyright (c) 2026, AgriTheory and contributors
+# For license information, please see license.txt
+
 from typing import TYPE_CHECKING, Optional
 
 import frappe
@@ -106,6 +109,19 @@ def get_marketplace(id=None, name=None, region=None, domain=None):
 				return frappe._dict(data)
 
 	return frappe._dict()
+
+
+def log_shipstation_error(context: str, exception: Exception) -> None:
+	"""
+	Log a Shipstation processing error with a consistent title prefix.
+
+	Titles take the form "Shipstation: {context}" so they can be found in
+	the Error Log via a single filter and surfaced on the Settings form.
+	"""
+	frappe.log_error(
+		title=f"Shipstation: {context}",
+		message=frappe.get_traceback(),
+	)
 
 
 def get_error_message(e: Exception) -> str:

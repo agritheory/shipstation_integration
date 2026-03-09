@@ -41,11 +41,11 @@ class ShipstationSettings(Document):
 
 	def onload(self):
 		if self.carrier_data:
-			self.set_onload("carriers", self._carrier_data())
+			self.set_onload("carriers", self.carrier_data())
 		if self.shipstation_api_carrier_data:
-			self.set_onload("api_carriers", self._api_carrier_data())
+			self.set_onload("api_carriers", self.api_carrier_data())
 		if self.shipstation_api_ltl_carrier_data:
-			self.set_onload("api_ltl_carriers", self._api_ltl_carrier_data())
+			self.set_onload("api_ltl_carriers", self.api_ltl_carrier_data())
 
 	def validate(self):
 		self.validate_label_generation()
@@ -224,13 +224,13 @@ class ShipstationSettings(Document):
 		except Exception as e:
 			frappe.throw(_("Failed to fetch carriers: {0}").format(str(e)))
 
-	def _api_carrier_data(self):
+	def api_carrier_data(self):
 		"""Return parsed API carrier data."""
 		if not self.shipstation_api_carrier_data:
 			return []
 		return json.loads(self.shipstation_api_carrier_data)
 
-	def _api_ltl_carrier_data(self):
+	def api_ltl_carrier_data(self):
 		"""Return parsed API LTL carrier data."""
 		if not self.shipstation_api_ltl_carrier_data:
 			return []
@@ -263,7 +263,7 @@ class ShipstationSettings(Document):
 		"""Get carrier, service, and package codes from API carrier data."""
 		_carrier_id, _service_code, _package_code = None, None, None
 
-		for carrier in self._api_carrier_data():
+		for carrier in self.api_carrier_data():
 			if carrier_name in [carrier.get("name"), carrier.get("carrier_code")]:
 				_carrier_id = carrier.get("carrier_id")
 
@@ -443,15 +443,15 @@ class ShipstationSettings(Document):
 		for product in products:
 			create_item(product, settings=self)
 
-		return f"{len(products.results)} product(s) imported succesfully"
+		return f"{len(products.results)} product(s) imported successfully"
 
-	def _carrier_data(self):
+	def carrier_data(self):
 		if not self.carrier_data:
 			return []
 		return json.loads(self.carrier_data)
 
 	def get_carrier_services(self, carrier):
-		carrier_data = self._carrier_data()
+		carrier_data = self.carrier_data()
 		if not carrier_data:
 			return ""
 		for ss_carrier in carrier_data:
@@ -461,7 +461,7 @@ class ShipstationSettings(Document):
 
 	def get_codes(self, carrier, service, package):
 		_carrier, _service, _package = None, None, "Package"
-		carrier_data = self._carrier_data()
+		carrier_data = self.carrier_data()
 		if not carrier_data:
 			return _carrier, _service, _package
 		for ss_carrier in carrier_data:

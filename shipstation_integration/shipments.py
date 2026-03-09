@@ -1,3 +1,6 @@
+# Copyright (c) 2026, AgriTheory and contributors
+# For license information, please see license.txt
+
 import datetime
 from typing import TYPE_CHECKING, Optional
 
@@ -13,6 +16,8 @@ from erpnext.stock.doctype.delivery_note.delivery_note import make_shipment
 from frappe.utils import getdate
 from frappe.utils.safe_exec import is_job_queued
 from httpx import HTTPError
+
+from shipstation_integration.utils import log_shipstation_error
 
 if TYPE_CHECKING:
 	from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
@@ -107,19 +112,25 @@ def create_erpnext_shipment(
 	if settings.shipstation_user:
 		frappe.set_user(settings.shipstation_user)
 
-	sales_invoice = None
-	if store.create_sales_invoice:
-		sales_invoice = create_sales_invoice(shipment, store)
+	frappe.db.savepoint("create_erpnext_shipment")
+	try:
+		sales_invoice = None
+		if store.create_sales_invoice:
+			sales_invoice = create_sales_invoice(shipment, store)
 
-	delivery_note = None
-	if store.create_delivery_note:
-		delivery_note = create_delivery_note(shipment, sales_invoice)
+		delivery_note = None
+		if store.create_delivery_note:
+			delivery_note = create_delivery_note(shipment, sales_invoice)
 
-	shipment_doc = None
-	if store.create_shipment:
-		shipment_doc = create_shipment(shipment, store, delivery_note)
+		shipment_doc = None
+		if store.create_shipment:
+			shipment_doc = create_shipment(shipment, store, delivery_note)
 
-	return shipment_doc
+		return shipment_doc
+	except Exception as e:
+		frappe.db.rollback(save_point="create_erpnext_shipment")
+		log_shipstation_error(f"order {shipment.order_id}", e)
+		return None
 
 
 def cancel_voided_shipments(shipment: "ShipStationOrder", settings: "ShipstationSettings"):
@@ -198,12 +209,8 @@ def create_delivery_note(
 
 	dn.shipstation_shipment_id = shipment.shipment_id
 
-	for row in dn.items:
-		row.allow_zero_valuation_rate = 1  # if row.rate < 0.001 else 0
-
 	dn.save()
 	dn.submit()
-	frappe.db.commit()
 	return dn
 
 
@@ -270,7 +277,6 @@ def create_shipment(
 
 	shipment_doc.save()
 	shipment_doc.submit()
-	frappe.db.commit()
 
 	return shipment_doc
 
