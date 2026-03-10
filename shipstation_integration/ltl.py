@@ -84,7 +84,7 @@ class ShipstationLTL(BaseLTL):
 	@frappe.whitelist()
 	def list_ltl_carriers(
 		self, settings_name: str | None = None, create_transporters: bool = False
-	) -> list[dict]:
+	) -> list[dict] | None:
 		"""
 		List all LTL carriers connected to the ShipStation account.
 
@@ -245,7 +245,7 @@ class ShipstationLTL(BaseLTL):
 		return options
 
 	def get_carrier_service_levels(
-		self, doc: Shipment | str | dict, settings_name: str | None = None
+		self, doc: Shipment, settings_name: str | None = None
 	) -> list[dict]:
 		"""
 		Returns a UI-friendly dict with label and value keys to populate dropdown options in the
@@ -285,7 +285,7 @@ class ShipstationLTL(BaseLTL):
 		return options
 
 	def get_accessorial_service_fields(
-		self, doc: Shipment | str | dict, settings_name: str | None = None
+		self, doc: Shipment, settings_name: str | None = None
 	) -> dict[list[str]]:
 		"""
 		Returns a dict of field names for supported and unsupported accessorial services - may be
@@ -350,9 +350,7 @@ class ShipstationLTL(BaseLTL):
 		# TODO
 		return ""
 
-	def supports_quote_or_spot_quote(
-		self, doc: Shipment | str | dict, settings_name: str | None = None
-	) -> dict:
+	def supports_quote_or_spot_quote(self, doc: Shipment, settings_name: str | None = None) -> dict:
 		"""
 		Convenience function that returns True/False whether a carrier in a Shipment doc supports
 		requesting quotes and spot quotes.
@@ -380,9 +378,7 @@ class ShipstationLTL(BaseLTL):
 		feats = self.list_ltl_carrier_features(carrier_id, settings_name)
 		return {"supports_quote": "quote" in feats, "supports_spot_quote": "spot_quote" in feats}
 
-	def get_ltl_quotes(
-		self, doc: Shipment | str | dict, settings_name: str | None = None
-	) -> str | None:
+	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""
 		Gets LTL quote(s) in general or for a specific LTL carrier given Shipment data. If found,
 		saves into Shipment Quotation docs and returns a summary message. Otherwise, displays
@@ -433,7 +429,7 @@ class ShipstationLTL(BaseLTL):
 
 	def save_ltl_quotes_as_shipment_quotations_and_display(
 		self,
-		doc: Shipment | str | dict,
+		doc: Shipment,
 		quote_response: list[dict],
 		is_spot_quote: bool = False,
 		intro_text: str = "",
@@ -536,9 +532,7 @@ class ShipstationLTL(BaseLTL):
 		feats = self.list_ltl_carrier_features(carrier_id, settings_name)
 		return {"supports_pickup": "scheduled_pickup" in feats}
 
-	def schedule_ltl_pickup(
-		self, doc: Shipment | str | dict, settings_name: str | None = None
-	) -> str | None:
+	def schedule_ltl_pickup(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""
 		Schedules LTL pickup with quote ID(s) saved in doc. If successful, sets fields in the
 		Shipment Information section (if available in the response):
@@ -627,9 +621,7 @@ class ShipstationLTL(BaseLTL):
 
 		return carrier
 
-	def validate_carrier_and_id(
-		self, doc: Shipment | str | dict, settings_name: str | None = None
-	) -> None:
+	def validate_carrier_and_id(self, doc: Shipment, settings_name: str | None = None) -> None:
 		"""
 		Validates that doc has a preferred carrier set and system can find a carrier ID for them.
 
@@ -796,9 +788,7 @@ class ShipstationLTL(BaseLTL):
 			frappe.log_error(title="Error listing LTL carrier package/container types", message=error_msg)
 			frappe.throw(_("Failed to list LTL carrier package/container types: {0}").format(error_msg))
 
-	def get_all_ltl_carrier_package_types(
-		self, settings_name: str | None = None
-	) -> dict[str, list[dict]]:
+	def get_all_ltl_carrier_package_types(self, settings_name: str | None = None) -> dict:
 		"""
 		Get package types for all configured LTL carriers.
 
@@ -945,17 +935,6 @@ class ShipstationLTL(BaseLTL):
 		Returns:
 		List of ShipEngine spot quote dicts
 		"""
-		if not doc.preferred_carrier:
-			frappe.msgprint("Please set the Preferred Carrier before generating quotes.")
-			return
-		carrier_id = doc.carrier_id or self.get_carrier_id_for_supplier(
-			doc.preferred_carrier, settings_name
-		)
-		if not carrier_id:
-			frappe.throw(
-				f"No {self.provider} carrier ID found for the preferred carrier - try fetching LTL carriers from Shipstation Settings."
-			)
-
 		base_url, headers = self.get_base_url_and_headers(settings_name)
 
 		try:

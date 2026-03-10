@@ -25,10 +25,10 @@ class BaseLTL:
 		    "name": "",
 		    "carrier_id": "",
 		    "carrier_code": "",  # carrier's SCAC
-		        "options": [],  # optional list of accessorial services (only length used)
-		        "services": [],  # optional list of services (only length used)
-		        "packages": [],  # optional list of dicts ("code", "name", "package_features" keys used) for package/container types.
-		        "supplier": "",  # optional, Supplier name in ERPNext for carrier
+		    "options": [],  # optional list of accessorial services (only length used)
+		    "services": [],  # optional list of services (only length used)
+		    "packages": [],  # optional list of dicts ("code", "name", "package_features" keys used) for package/container types.
+		    "supplier": "",  # optional, Supplier name in ERPNext for carrier
 		}
 
 		If the provider doesn't connect carriers to an account and uses a different model, return
@@ -79,7 +79,7 @@ class BaseLTL:
 		raise NotImplementedError
 
 	def get_carrier_service_levels(
-		self, doc: Shipment | str | dict, settings_name: str | None = None
+		self, doc: Shipment, settings_name: str | None = None
 	) -> list[dict]:
 		"""
 		Returns a UI-friendly dict with label and value keys to populate dropdown options in the
@@ -94,15 +94,13 @@ class BaseLTL:
 		"""
 		raise NotImplementedError
 
-	def get_accessorial_service_fields(
-		self, doc: Shipment | str | dict, settings_name: str | None = None
-	) -> dict:
+	def get_accessorial_service_fields(self, doc: Shipment, settings_name: str | None = None) -> dict:
 		"""
 		Returns a dict of field names for supported and unsupported accessorial services - may be
 		carrier-dependent or in general.
 
 		Args:
-		doc: a Shipment document in ERPNext from which to retrieve the shipment info
+		doc: a Shipment document in ERPNext
 		settings_name: Optional Shipstation Settings document name
 
 		Returns:
@@ -132,7 +130,7 @@ class BaseLTL:
 		marked required.
 
 		Args:
-		doc: a Shipment document in ERPNext from which to retrieve the shipment info
+		doc: a Shipment document in ERPNext
 		settings_name: Optional Shipstation Settings document name
 
 		Returns:
@@ -140,9 +138,7 @@ class BaseLTL:
 		"""
 		return NotImplementedError
 
-	def supports_quote_or_spot_quote(
-		self, doc: Shipment | str | dict, settings_name: str | None = None
-	) -> dict:
+	def supports_quote_or_spot_quote(self, doc: Shipment, settings_name: str | None = None) -> dict:
 		"""
 		Convenience function that returns True/False whether a carrier in a Shipment doc (or the
 		API in general) supports requesting quotes and/or spot quotes.
@@ -156,9 +152,7 @@ class BaseLTL:
 		"""
 		return {"supports_quote": False, "supports_spot_quote": False}
 
-	def get_ltl_quotes(
-		self, doc: Shipment | str | dict, settings_name: str | None = None
-	) -> str | None:
+	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""
 		Gets LTL quote(s) in general or for a specific LTL carrier given Shipment data. If found,
 		saves into Shipment Quotation docs and returns a summary message. Otherwise, displays
@@ -189,9 +183,7 @@ class BaseLTL:
 	# 	"""
 	# 	return {"supports_pickup": False}
 
-	def schedule_ltl_pickup(
-		self, doc: Shipment | str | dict, settings_name: str | None = None
-	) -> str | None:
+	def schedule_ltl_pickup(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""
 		Schedules LTL pickup with quote ID(s) saved in doc. If successful, sets fields in the
 		Shipment Information section (if available in the response):
