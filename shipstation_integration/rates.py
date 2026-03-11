@@ -38,7 +38,8 @@ DIMENSION_UOM_MAP = {
 
 WEIGHT_UOM_MAP = {
 	"Pound": "pound",
-	"Kilogram": "kilogram",
+	"Kg": "kilogram",
+	"Kilogram": "kilogram",  # alias — not an ERPNext UOM but kept for robustness
 	"Ounce": "ounce",
 	"Gram": "gram",
 	"pound": "pound",
@@ -334,10 +335,10 @@ def get_rates_for_packing_slip(packing_slip: str) -> list[dict]:
 		"phone": ship_to_address.phone or "0000000000",
 	}
 
-	# Build package from this Packing Slip's Parcel Dimensions
+	# Build package from this Packing Slip's item parcel dimensions
 	package = get_package_from_packing_slip(ps)
 	if not package:
-		frappe.throw(_("Packing Slip must have parcel dimensions configured"))
+		frappe.throw(_("Packing Slip must have items with a Parcel # and parcel dimensions configured"))
 
 	return get_rates(
 		ship_from=ship_from,
@@ -346,37 +347,42 @@ def get_rates_for_packing_slip(packing_slip: str) -> list[dict]:
 	)
 
 
-def get_package_from_packing_slip(packing_slip) -> dict | None:
+def get_package_from_packing_slip(packing_slip, parcel_number: int | None = None) -> dict | None:
 	"""
 	Build a package dict from a Packing Slip document.
 
+	Reads parcel dimensions from the first Packing Slip Item row matching
+	``parcel_number``. If ``parcel_number`` is not provided, uses the first
+	item with any parcel_number assigned. Falls back to the Packing Slip gross
+	weight fields if no item has parcel dimensions.
+
 	Args:
 	        packing_slip: Packing Slip document
+	        parcel_number: Specific parcel number to build the package for.
+	                When None, the first packed item is used (rate-request behaviour).
 
 	Returns:
 	        Package dict for rate request, or None if no valid data
 	"""
-	# Get parcel dimensions from the child table
-	parcel_dims = None
-	if hasattr(packing_slip, "parcel_dimensions") and packing_slip.parcel_dimensions:
-		parcel_dims = (
-			packing_slip.parcel_dimensions[0] if len(packing_slip.parcel_dimensions) > 0 else None
-		)
+	parcel_item = None
+	for item in getattr(packing_slip, "items", []):
+		if item.parcel_number and (parcel_number is None or item.parcel_number == parcel_number):
+			parcel_item = item
+			break
 
-	if parcel_dims:
-		# Use dimensions from Parcel Dimensions child table
-		dimension_unit = DIMENSION_UOM_MAP.get(parcel_dims.dimension_uom, "inch")
-		weight_unit = WEIGHT_UOM_MAP.get(parcel_dims.weight_uom, "pound")
+	if parcel_item:
+		dimension_unit = DIMENSION_UOM_MAP.get(parcel_item.dimension_uom, "inch")
+		weight_unit = WEIGHT_UOM_MAP.get(parcel_item.parcel_weight_uom, "pound")
 
 		return {
 			"weight": {
-				"value": flt(parcel_dims.weight) or 1.0,
+				"value": flt(parcel_item.parcel_weight) or 1.0,
 				"unit": weight_unit,
 			},
 			"dimensions": {
-				"length": flt(parcel_dims.length) or 1,
-				"width": flt(parcel_dims.width) or 1,
-				"height": flt(parcel_dims.height) or 1,
+				"length": flt(parcel_item.parcel_length) or 1,
+				"width": flt(parcel_item.parcel_width) or 1,
+				"height": flt(parcel_item.parcel_height) or 1,
 				"unit": dimension_unit,
 			},
 		}

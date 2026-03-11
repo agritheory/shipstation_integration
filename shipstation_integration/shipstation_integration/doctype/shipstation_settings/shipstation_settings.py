@@ -13,6 +13,7 @@ from shipstation import ShipStation
 from shipstation.models import ShipStationWebhook
 
 from shipstation_integration.items import create_item
+from shipstation_integration.ltl import ShipstationLTL
 from shipstation_integration.orders import list_orders
 from shipstation_integration.shipments import list_shipments
 from shipstation_integration.tags import list_tags
@@ -43,6 +44,8 @@ class ShipstationSettings(Document):
 			self.set_onload("carriers", self.carrier_data())
 		if self.shipstation_api_carrier_data:
 			self.set_onload("api_carriers", self.api_carrier_data())
+		if self.shipstation_api_ltl_carrier_data:
+			self.set_onload("api_ltl_carriers", self.api_ltl_carrier_data())
 
 	def validate(self):
 		self.validate_label_generation()
@@ -100,6 +103,27 @@ class ShipstationSettings(Document):
 			frappe.throw(_("ShipStation API key not configured"))
 		# Use longer timeout for rate requests (default is 5s which is too short)
 		return ShipEngine({"api_key": api_key, "timeout": 30})
+
+	def get_ltl_class(self):
+		"""Looks for an overriding LTL class via hooks, otherwise returns Shipstation LTL class"""
+		hook = frappe.get_hooks("override_shipstation")
+		if hook and hook.get("ltl"):
+			method_string = hook.get("ltl")[-1]
+			frappe.get_attr(method_string)()
+		else:
+			return ShipstationLTL()
+
+	def get_base_url_and_headers(self):  # TODO: delete (moved to LTL classes)
+		"""
+		For requests not available through ShipEngine (e.g. LTL), returns base url and headers for
+		traditional GET/POST/PUT/DELETE requests.
+		"""
+		api_key = self.get_password("shipstation_api_key")
+		if not api_key:
+			frappe.throw(_("ShipStation API key not configured"))
+		base_url = "https://api.shipengine.com"
+		headers = {"Content-Type": "application/json", "Accept": "application/json", "Api-Key": api_key}
+		return base_url, headers
 
 	@frappe.whitelist()
 	def test_shipstation_api_connection(self):
@@ -205,6 +229,28 @@ class ShipstationSettings(Document):
 		if not self.shipstation_api_carrier_data:
 			return []
 		return json.loads(self.shipstation_api_carrier_data)
+
+	def api_ltl_carrier_data(self):
+		"""Return parsed API LTL carrier data."""
+		if not self.shipstation_api_ltl_carrier_data:
+			return []
+		return json.loads(self.shipstation_api_ltl_carrier_data)
+
+	@frappe.whitelist()
+	def fetch_ltl_carriers(self):
+		"""Restructures LTL carrier list returned from API for Settings fields."""
+		ltl_class = self.get_ltl_class()
+		carriers = ltl_class.list_ltl_carriers(
+			self.name, create_transporters=False
+		)  # TODO: create transporters?
+		self.shipstation_api_ltl_carrier_data = json.dumps(carriers)
+		self.save()
+		frappe.msgprint(
+			_("Successfully fetched {0} LTL carriers from {1} API.").format(
+				len(carriers), ltl_class.provider
+			)
+		)
+		return carriers
 
 	@frappe.whitelist()
 	def sync_carrier_packages(self):
@@ -523,3 +569,18 @@ class ShipstationSettings(Document):
 				title="Failed to register ShipStation API v2 webhooks",
 				message=str(e),
 			)
+
+	def get_api_response_error_info(self, response_json):  # TODO: move to LTL class
+		"""
+		Extracts error type and message from Shipstation API response JSON.
+
+		Args:
+		response_json: JSON object returned from API (response.json())
+		"""
+		err_type = "error type not provided"
+		err_msg = "error message not provided"
+		if isinstance(response_json, dict):
+			errors = response_json.get("errors", [{}])[0]
+			err_type = errors.get("error_type", err_type)
+			err_msg = errors.get("message", err_msg)
+		return err_type, err_msg

@@ -34,12 +34,13 @@ app_include_js = ["shipstation_integration.bundle.js"]
 # include js in doctype views
 
 doctype_js = {
+	"Customer": "public/js/customer.js",
 	"Delivery Note": "public/js/delivery_note.js",
 	"Packing Slip": "public/js/packing_slip.js",
 	"Sales Order": "public/js/sales_order.js",
-	"Supplier": "public/js/supplier.js",
-	"Customer": "public/js/customer.js",
+	"Shipment": "public/js/shipment_custom.js",
 	"Shipment Parcel Template": "public/js/shipment_parcel_template.js",
+	"Supplier": "public/js/supplier.js",
 }
 
 doctype_list_js = {
@@ -95,13 +96,12 @@ after_install = "shipstation_integration.install.after_install"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Packing Slip": {
+		"before_submit": "shipstation_integration.packing_slip.before_submit",
+		"on_submit": "shipstation_integration.packing_slip.on_submit",
+	}
+}
 
 # Scheduled Tasks
 # ---------------
@@ -132,6 +132,8 @@ scheduler_events = {
 # }
 
 override_doctype_class = {
+	"Packing Slip": "shipstation_integration.shipstation_integration.overrides.packing_slip.ShipstationPackingSlip",
 	"Sales Order": "shipstation_integration.shipstation_integration.overrides.sales_order.ShipStationSalesOrder",
+	"Shipment": "shipstation_integration.shipstation_integration.overrides.shipment.ShipStationShipment",
 	"Shipment Parcel Template": "shipstation_integration.shipstation_integration.overrides.shipment_parcel_template.ShipstationShipmentParcelTemplate",
 }

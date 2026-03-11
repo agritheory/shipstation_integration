@@ -1,0 +1,159 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-03-05 12:57:49.494962",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "shipment",
+  "carrier",
+  "carrier_id",
+  "carrier_scac",
+  "column_break_tmop",
+  "accept_quote",
+  "is_spot_quote",
+  "quote_or_offer_id",
+  "quote_or_offer_transaction_id",
+  "expiration_date",
+  "dates_and_service_level_detail_section",
+  "pickup_date",
+  "service_level",
+  "column_break_qhuf",
+  "estimated_delivery_days",
+  "estimated_delivery_date",
+  "charges_detail_section",
+  "charges",
+  "grand_total"
+ ],
+ "fields": [
+  {
+   "fieldname": "shipment",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Shipment",
+   "options": "Shipment",
+   "reqd": 1
+  },
+  {
+   "fieldname": "carrier",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Carrier"
+  },
+  {
+   "fieldname": "carrier_id",
+   "fieldtype": "Data",
+   "label": "Carrier ID"
+  },
+  {
+   "fieldname": "carrier_scac",
+   "fieldtype": "Data",
+   "label": "Carrier SCAC"
+  },
+  {
+   "fieldname": "column_break_tmop",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "accept_quote",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Accept Quote"
+  },
+  {
+   "fieldname": "quote_or_offer_id",
+   "fieldtype": "Data",
+   "label": "Quote or Offer ID"
+  },
+  {
+   "fieldname": "quote_or_offer_transaction_id",
+   "fieldtype": "Data",
+   "label": "Quote or Offer Transaction ID"
+  },
+  {
+   "fieldname": "expiration_date",
+   "fieldtype": "Date",
+   "label": "Expiration Date"
+  },
+  {
+   "fieldname": "dates_and_service_level_detail_section",
+   "fieldtype": "Section Break",
+   "label": "Dates and Service Level Detail"
+  },
+  {
+   "fieldname": "pickup_date",
+   "fieldtype": "Date",
+   "label": "Pickup Date"
+  },
+  {
+   "fieldname": "service_level",
+   "fieldtype": "Data",
+   "label": "Service Level"
+  },
+  {
+   "fieldname": "column_break_qhuf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "estimated_delivery_days",
+   "fieldtype": "Float",
+   "label": "Estimated Delivery Days"
+  },
+  {
+   "fieldname": "estimated_delivery_date",
+   "fieldtype": "Date",
+   "label": "Estimated Delivery Date"
+  },
+  {
+   "fieldname": "charges_detail_section",
+   "fieldtype": "Section Break",
+   "label": "Charges Detail"
+  },
+  {
+   "fieldname": "charges",
+   "fieldtype": "Table",
+   "options": "Shipment Quotation Charge"
+  },
+  {
+   "fieldname": "grand_total",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Grand Total"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_spot_quote",
+   "fieldtype": "Check",
+   "label": "Is Spot Quote"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-03-09 12:40:35.007431",
+ "modified_by": "Administrator",
+ "module": "Shipstation Integration",
+ "name": "Shipment Quotation",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

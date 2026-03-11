@@ -23,13 +23,22 @@
 		"shipstation_user",
 		"sb_shipstation_api",
 		"enable_shipstation_api",
+		"base_url",
 		"shipstation_api_key",
+		"alternative_ltl_client_id",
+		"alternative_ltl_client_secret",
+		"fetch_api_ltl_carriers",
+		"shipstation_api_ltl_carrier_data",
+		"api_ltl_carriers_html",
 		"column_break_api",
 		"test_api_connection",
 		"fetch_api_carriers",
 		"sync_carrier_packages",
 		"shipstation_api_carrier_data",
 		"api_carriers_html",
+		"sb_gs1",
+		"gs1_company_prefix",
+		"column_break_gs1",
 		"sb_filters",
 		"since_date",
 		"column_break_lzby",
@@ -219,11 +228,44 @@
 			"label": "Enable ShipStation API v2"
 		},
 		{
+			"fieldname": "base_url",
+			"fieldtype": "Data",
+			"label": "Base URL"
+		},
+		{
 			"depends_on": "eval:doc.enable_shipstation_api",
 			"fieldname": "shipstation_api_key",
 			"fieldtype": "Password",
 			"label": "ShipStation API Key",
 			"description": "API key for ShipStation API v2. Obtain from your ShipStation account settings."
+		},
+		{
+			"fieldname": "alternative_ltl_client_id",
+			"fieldtype": "Password",
+			"label": "Alternative LTL Client ID"
+		},
+		{
+			"fieldname": "alternative_ltl_client_secret",
+			"fieldtype": "Password",
+			"label": "Alternative LTL Client Secret"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",
+			"fieldname": "fetch_api_ltl_carriers",
+			"fieldtype": "Button",
+			"label": "Fetch LTL Carriers"
+		},
+		{
+			"fieldname": "shipstation_api_ltl_carrier_data",
+			"fieldtype": "Code",
+			"hidden": 1,
+			"label": "API LTL Carrier Data"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api && doc.shipstation_api_ltl_carrier_data",
+			"fieldname": "api_ltl_carriers_html",
+			"fieldtype": "HTML",
+			"label": "API LTL Carriers"
 		},
 		{
 			"fieldname": "column_break_api",
@@ -259,6 +301,21 @@
 			"fieldname": "api_carriers_html",
 			"fieldtype": "HTML",
 			"label": "API Carriers"
+		},
+		{
+			"fieldname": "sb_gs1",
+			"fieldtype": "Section Break",
+			"label": "GS1 / SSCC"
+		},
+		{
+			"description": "Licensed GS1 Company Prefix (7–10 digits). Required to generate valid SSCC-18 barcodes. Obtain from gs1us.org.",
+			"fieldname": "gs1_company_prefix",
+			"fieldtype": "Data",
+			"label": "GS1 Company Prefix"
+		},
+		{
+			"fieldname": "column_break_gs1",
+			"fieldtype": "Column Break"
 		}
 	],
 	"hide_toolbar": 1,
