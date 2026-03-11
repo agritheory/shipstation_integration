@@ -12,6 +12,7 @@
   "column_break_tmop",
   "accept_quote",
   "is_spot_quote",
+  "includes_insurance",
   "quote_or_offer_id",
   "quote_or_offer_transaction_id",
   "expiration_date",
@@ -23,7 +24,14 @@
   "estimated_delivery_date",
   "charges_detail_section",
   "charges",
-  "grand_total"
+  "grand_total",
+  "insurance_section",
+  "certificate_number",
+  "quote_valid_to",
+  "terms_and_conditions",
+  "column_break_gqeq",
+  "deductible_amount",
+  "insured_amount"
  ],
  "fields": [
   {
@@ -126,12 +134,53 @@
    "fieldname": "is_spot_quote",
    "fieldtype": "Check",
    "label": "Is Spot Quote"
+  },
+  {
+   "depends_on": "includes_insurance",
+   "fieldname": "insurance_section",
+   "fieldtype": "Section Break",
+   "label": "Insurance"
+  },
+  {
+   "default": "0",
+   "fieldname": "includes_insurance",
+   "fieldtype": "Check",
+   "label": "Includes Insurance"
+  },
+  {
+   "fieldname": "certificate_number",
+   "fieldtype": "Data",
+   "label": "Certificate Number"
+  },
+  {
+   "fieldname": "quote_valid_to",
+   "fieldtype": "Date",
+   "label": "Quote Valid To"
+  },
+  {
+   "fieldname": "terms_and_conditions",
+   "fieldtype": "Text",
+   "label": "Terms and Conditions"
+  },
+  {
+   "fieldname": "column_break_gqeq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "deductible_amount",
+   "fieldtype": "Currency",
+   "label": "Deductible Amount"
+  },
+  {
+   "fieldname": "insured_amount",
+   "fieldtype": "Currency",
+   "label": "Insured Amount"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-09 12:40:35.007431",
+ "modified": "2026-03-11 10:49:02.693410",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Shipment Quotation",
