@@ -258,7 +258,7 @@ class ShipstationLTL(BaseLTL):
 		Returns:
 		List of dicts with "value" and "label" keys for use in select field
 		"""
-		options = []
+		options = []  # type: list[dict]
 		if not doc.preferred_carrier:
 			return options
 		carrier_id = doc.carrier_id or self.get_carrier_id_for_supplier(
@@ -284,9 +284,7 @@ class ShipstationLTL(BaseLTL):
 			)
 		return options
 
-	def get_accessorial_service_fields(
-		self, doc: Shipment, settings_name: str | None = None
-	) -> dict[list[str]]:
+	def get_accessorial_service_fields(self, doc: Shipment, settings_name: str | None = None) -> dict:
 		"""
 		Returns a dict of field names for supported and unsupported accessorial services - may be
 		carrier-dependent or in general.
@@ -392,13 +390,11 @@ class ShipstationLTL(BaseLTL):
 		Message string to display in UI or throws an error if encountered
 		"""
 		self.validate_carrier_and_id(doc, settings_name)
-		carrier_id = doc.carrier_id or self.get_carrier_id_for_supplier(
-			doc.preferred_carrier, settings_name
-		)
+		carrier_id = doc.carrier_id
 
 		quote_support = self.supports_quote_or_spot_quote(doc, settings_name)
 		supports_spot_quote = quote_support.get("supports_spot_quote")
-		is_spot_quote = supports_spot_quote and doc.request_spot_quote
+		is_spot_quote = bool(supports_spot_quote and doc.request_spot_quote)
 		intro_text = ""
 
 		# Handle case where regular quotes aren't supported
@@ -465,8 +461,8 @@ class ShipstationLTL(BaseLTL):
 			sq.pickup_date = quote.get("pickup_date")
 			sq.service_level = quote.get("service", {}).get("carrier_description")
 			sq.estimated_delivery_days = float(quote.get("estimated_delivery_days", 0))
-			backup_total = 0
-			for charge in quote.get("charges"):
+			backup_total = 0.0
+			for charge in quote.get("charges", []):
 				c_type = charge.get("type", "N/A").title()
 				amount = float(charge.get("amount", {}).get("value", 0))
 				currency = charge.get("amount", {}).get("currency")
@@ -889,13 +885,13 @@ class ShipstationLTL(BaseLTL):
 
 		try:
 			with httpx.Client() as client:
-				post_data = {
+				payload = {
 					"carrier_id": carrier_id,
 					"shipment": self.get_shipment_object_from_doc(doc),
 					"shipment_measurements": self.get_shipment_measurements_object_from_doc(doc),
 				}
 				response = client.post(
-					f"{base_url}/v-beta/ltl/quotes/{carrier_id}", headers=headers, data=json.dumps(post_data)
+					f"{base_url}/v-beta/ltl/quotes/{carrier_id}", headers=headers, json=payload
 				)
 				data = response.json()
 				response.raise_for_status()
@@ -939,13 +935,13 @@ class ShipstationLTL(BaseLTL):
 
 		try:
 			with httpx.Client() as client:
-				post_data = {
+				payload = {
 					"carrier_id": carrier_id,
 					"shipment": self.get_shipment_object_from_doc(doc),
 					"shipment_measurements": self.get_shipment_measurements_object_from_doc(doc),
 				}
 				response = client.post(
-					f"{base_url}/v-beta/ltl/spot-quotes/{carrier_id}", headers=headers, data=json.dumps(post_data)
+					f"{base_url}/v-beta/ltl/spot-quotes/{carrier_id}", headers=headers, json=payload
 				)
 				data = response.json()
 				response.raise_for_status()
@@ -1003,7 +999,7 @@ class ShipstationLTL(BaseLTL):
 
 		try:
 			with httpx.Client() as client:
-				post_data = {
+				payload = {
 					"quote_id": quote_id,
 					"pickup_date": str(doc.get("pickup_date")),  # YYYY-MM-DD format
 					"pickup_window": self.get_shipment_pickup_window_from_doc(doc),
@@ -1015,7 +1011,7 @@ class ShipstationLTL(BaseLTL):
 					# "options": [],  # optional / were included in the quote
 				}
 				response = client.post(
-					f"{base_url}/v-beta/ltl/quotes/{quote_id}/pickup", headers=headers, data=json.dumps(post_data)
+					f"{base_url}/v-beta/ltl/quotes/{quote_id}/pickup", headers=headers, json=payload
 				)
 				data = response.json()
 				response.raise_for_status()
@@ -1055,12 +1051,12 @@ class ShipstationLTL(BaseLTL):
 		"""
 		base_url, headers = self.get_base_url_and_headers(settings_name)
 		self.validate_carrier_and_id(doc, settings_name)
-		carrier_id = doc.carrier_id or self.get_carrier_id_for_supplier(doc.preferred_carrier)
+		carrier_id = doc.carrier_id
 
 		try:
 			shipment_object = self.get_shipment_object_from_doc(doc=doc, for_pickup_no_quote=True)
 			with httpx.Client() as client:
-				post_data = {
+				payload = {
 					"carrier_id": carrier_id,
 					"carrier": {  # optional
 						"instructions": doc.get("carrier_instructions", ""),
@@ -1071,11 +1067,11 @@ class ShipstationLTL(BaseLTL):
 				}
 				if doc.get("quote_or_offer_id"):
 					# type may be "bill_of_lading", "pro", "quote", "purchase_order", or "other"
-					post_data.update(
+					payload.update(
 						{"reference_identifiers": [{"type": "quote", "value": doc.get("quote_or_offer_id")}]}
 					)
 				response = client.post(
-					f"{base_url}/v-beta/ltl/pickups/{carrier_id}", headers=headers, data=json.dumps(post_data)
+					f"{base_url}/v-beta/ltl/pickups/{carrier_id}", headers=headers, json=payload
 				)
 				data = response.json()
 				response.raise_for_status()
@@ -1120,19 +1116,20 @@ class ShipstationLTL(BaseLTL):
 
 		try:
 			with httpx.Client() as client:
-				post_data = {"carrier_instructions": doc.get("carrier_instructions", "")}
+				payload = {"carrier_instructions": doc.get("carrier_instructions", "")}
 				response = client.post(
 					f"{base_url}/v-beta/ltl/quote/{quote_id}/bill_of_lading",
 					headers=headers,
-					data=json.dumps(post_data),
+					json=payload,
 				)
 				data = response.json()
 				response.raise_for_status()
 				docs = data.get("documents", [])
+				now_dt = now().split(".")[0]  # remove microseconds
 				for d in docs:
 					if d.get("type") == "bill_of_lading":
-						bol = base64.decode(d.get("image"))
-						save_file(f"{doc.name}-BOL.pdf", bol, "Shipment", doc.name)
+						bol = base64.b64decode(d.get("image"))
+						save_file(f"{doc.name}-{d.get('type')}-{now_dt}.pdf", bol, "Shipment", doc.name)
 				return data
 
 		except httpx.HTTPStatusError as e:
@@ -1174,19 +1171,20 @@ class ShipstationLTL(BaseLTL):
 
 		try:
 			with httpx.Client() as client:
-				post_data = {"carrier_instructions": doc.get("carrier_instructions", "")}
+				payload = {"carrier_instructions": doc.get("carrier_instructions", "")}
 				response = client.post(
 					f"{base_url}/v-beta/ltl/pickups/{pickup_id}/bill_of_lading",
 					headers=headers,
-					data=json.dumps(post_data),
+					json=payload,
 				)
 				data = response.json()
 				response.raise_for_status()
 				docs = data.get("documents", [])
+				now_dt = now().split(".")[0]  # remove microseconds
 				for d in docs:
 					if d.get("type") == "bill_of_lading":
-						bol = base64.decode(d.get("image"))
-						save_file(f"{doc.name}-BOL.pdf", bol, "Shipment", doc.name)
+						bol = base64.b64decode(d.get("image"))
+						save_file(f"{doc.name}-{d.get('type')}-{now_dt}.pdf", bol, "Shipment", doc.name)
 				return data
 
 		except httpx.HTTPStatusError as e:
@@ -1225,7 +1223,7 @@ class ShipstationLTL(BaseLTL):
 		"""
 		self.validate_carrier_and_id(doc, settings_name)
 		base_url, headers = self.get_base_url_and_headers(settings_name)
-		carrier_id = doc.carrier_id or self.get_carrier_id_for_supplier(doc.preferred_carrier)
+		carrier_id = doc.carrier_id
 		pro_number = doc.awb_number
 		if not pro_number:
 			frappe.throw("No PRO Number found - make sure to schedule an LTL pickup first.")
@@ -1257,7 +1255,7 @@ class ShipstationLTL(BaseLTL):
 			frappe.log_error(title="Error listing LTL carrier documents", message=error_msg)
 			frappe.throw(_("Failed to list LTL carrier documents: {0}").format(error_msg))
 
-	def get_and_validate_uoms(self, row: ShipmentParcel | dict) -> tuple | None:
+	def get_and_validate_uoms(self, row: ShipmentParcel) -> tuple:
 		"""
 		Given a Shipment Parcel row from a Shipment doc, validates the UOMs for length, width, and
 		density, then returns the appropriate values to use for each in a Shipstation API call.
@@ -1269,27 +1267,40 @@ class ShipstationLTL(BaseLTL):
 		The value to use for the UOM in the API call, or an Error if Shipstation doesn't accept
 		the given UOM.
 		"""
+		errors = []
+		err_template = "The {dim} UOM of {user_uom} used in row {row_idx} is not supported by Shipstation. Please use {supported}."
 		len_uom = self.uom_map["length"].get(row.length_uom)
 		if not len_uom:
 			supported_lengths = list(self.uom_map["length"].keys())
-			frappe.throw(
-				f"The length UOM of {row.length_uom} used in row {row.idx} is not supported by {self.provider}. Please use {comma_or(supported_lengths)}."
+			errors.append(
+				err_template.format(
+					dim="length", user_uom=row.length_uom, row_idx=row.idx, supported=comma_or(supported_lengths)
+				)
 			)
 
 		weight_uom = self.uom_map["weight"].get(row.weight_uom)
 		if not weight_uom:
 			supported_weights = list(self.uom_map["weight"].keys())
-			frappe.throw(
-				f"The weight UOM of {row.weight_uom} used in row {row.idx} is not supported by {self.provider}. Please use {comma_or(supported_weights)}."
+			errors.append(
+				err_template.format(
+					dim="weight", user_uom=row.weight_uom, row_idx=row.idx, supported=comma_or(supported_weights)
+				)
 			)
 
 		density_uom = self.uom_map["density"].get(row.density_uom)
 		if not density_uom:
 			supported_densities = list(self.uom_map["density"].keys())
-			frappe.throw(
-				f"The density UOM of {row.density_uom} used in row {row.idx} is not supported by {self.provider}. Please use {comma_or(supported_densities)}."
+			errors.append(
+				err_template.format(
+					dim="density",
+					user_uom=row.density_uom,
+					row_idx=row.idx,
+					supported=comma_or(supported_densities),
+				)
 			)
 
+		if errors:
+			frappe.throw(msg=". ".join(errors))
 		return len_uom, weight_uom, density_uom
 
 	def get_shipment_object_from_doc(self, doc: Shipment, for_pickup_no_quote: bool = False) -> dict:
@@ -1317,7 +1328,6 @@ class ShipstationLTL(BaseLTL):
 		haz_name = ship_from["contact"]["name"]
 		haz_phone = ship_from["contact"]["phone_number"]
 		for row in doc.shipment_parcel:
-			row = frappe._dict(row)
 			len_uom, weight_uom, density_uom = self.get_and_validate_uoms(row)
 			packages.append(  # need an object for each package in shipment
 				{
@@ -1454,7 +1464,7 @@ class ShipstationLTL(BaseLTL):
 				msg=_("Shipment Parcel information needed for length, width, height, and weight UOM data."),
 				title=_("Missing Shipment Parcel Information"),
 			)
-		row = frappe._dict(doc.shipment_parcel[0])
+		row = doc.shipment_parcel[0]
 		len_uom, weight_uom, density_uom = self.get_and_validate_uoms(row)
 
 		# Linear length and width fields required

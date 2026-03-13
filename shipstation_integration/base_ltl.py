@@ -123,7 +123,7 @@ class BaseLTL:
 
 	def validate_required_shipment_form_fields(
 		self, doc: Shipment, settings_name: str | None = None
-	) -> str:
+	) -> str | None:
 		"""
 		Returns a message to display in the UI noting any fields that are required to make a
 		'get_ltl_quotes' API call that are missing data. It can skip fields that are already
@@ -136,7 +136,7 @@ class BaseLTL:
 		Returns:
 		Message string to display in UI
 		"""
-		return NotImplementedError
+		raise NotImplementedError
 
 	def supports_quote_or_spot_quote(self, doc: Shipment, settings_name: str | None = None) -> dict:
 		"""

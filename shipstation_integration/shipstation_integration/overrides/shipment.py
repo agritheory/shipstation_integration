@@ -11,8 +11,15 @@ from shipstation_integration.utils import get_shipstation_settings
 
 class ShipStationShipment(Shipment):
 	def validate(self):
-		# TODO: if freight_type == "LTL" -> call ltl_class method to validate required fields
+		# TODO: if freight_type == "LTL" -> call ltl_class method to show missing but required fields
 		super().validate()
+		self.set_carrier_id_for_shipstation()
+
+	def set_carrier_id_for_shipstation(self):
+		settings = get_shipstation_settings()
+		ltl_class = settings.get_ltl_class()
+		if ltl_class.provider == "Shipstation" and self.preferred_carrier and not self.carrier_id:
+			self.carrier_id = ltl_class.get_carrier_id_for_supplier(self.preferred_carrier, settings.name)
 
 
 @frappe.whitelist()
@@ -95,7 +102,7 @@ def get_carrier_service_levels(
 @frappe.whitelist()
 def get_supported_accessorial_service_fields(
 	doc: Shipment | str, settings_name: str | None = None
-) -> dict[list[str]]:
+) -> dict[str, list[str]]:
 	"""
 	Returns a list of field names for supported accessorial services - may be carrier-
 	dependent or in general.
