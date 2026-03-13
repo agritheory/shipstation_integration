@@ -59,7 +59,7 @@ class ShipmentQuotation(Document):
 
 
 @frappe.whitelist()
-def check_if_shipment_pickup_scheduled(doc: ShipmentQuotation | str | dict) -> dict:
+def check_if_shipment_pickup_scheduled(doc: ShipmentQuotation | str) -> dict:
 	"""
 	Checks if the Shipment in shipment field has a pickup scheduled by checking values set in
 	its pickup_id or awb_number (BOL/tracking/PRO number) fields.
