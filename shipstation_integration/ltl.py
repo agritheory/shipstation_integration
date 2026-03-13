@@ -429,7 +429,7 @@ class ShipstationLTL(BaseLTL):
 		quote_response: list[dict],
 		is_spot_quote: bool = False,
 		intro_text: str = "",
-	) -> str | None:
+	) -> str:
 		"""
 		Processes the returned quotes from get_ltl_quotes and saves into Shipment Quotations
 
