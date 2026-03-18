@@ -5,6 +5,7 @@ import json
 
 import frappe
 from erpnext.stock.doctype.shipment.shipment import Shipment
+from frappe.exceptions import ValidationError
 
 from shipstation_integration.utils import get_shipstation_settings
 
@@ -16,10 +17,15 @@ class ShipStationShipment(Shipment):
 		self.set_carrier_id_for_shipstation()
 
 	def set_carrier_id_for_shipstation(self):
-		settings = get_shipstation_settings()
-		ltl_class = settings.get_ltl_class()
-		if ltl_class.provider == "Shipstation" and self.preferred_carrier and not self.carrier_id:
-			self.carrier_id = ltl_class.get_carrier_id_for_supplier(self.preferred_carrier, settings.name)
+		if self.preferred_carrier and not self.carrier_id:
+			try:
+				settings = get_shipstation_settings()
+				ltl_class = settings.get_ltl_class()
+				if ltl_class.provider == "Shipstation":
+					self.carrier_id = ltl_class.get_carrier_id_for_supplier(self.preferred_carrier, settings.name)
+			except ValidationError:
+				# Ignore error if no settings found
+				return
 
 
 @frappe.whitelist()
