@@ -45,7 +45,7 @@ def is_beam_installed() -> bool:
 	return bool(frappe.db.exists("DocType", "Handling Unit"))
 
 
-def _beam_handling_units_enabled(company: str) -> bool:
+def beam_handling_units_enabled(company: str) -> bool:
 	"""Return True if BEAM has ``enable_handling_units`` set for *company*."""
 	if not is_beam_installed():
 		return False
@@ -57,12 +57,12 @@ def _beam_handling_units_enabled(company: str) -> bool:
 	return bool(settings)
 
 
-def _psi_has_handling_unit_field() -> bool:
+def psi_has_handling_unit_field() -> bool:
 	"""Return True if BEAM's Inventory Dimension has been applied to Packing Slip Item."""
 	return frappe.get_meta("Packing Slip Item").has_field("handling_unit")
 
 
-def _dni_has_handling_unit_field() -> bool:
+def dni_has_handling_unit_field() -> bool:
 	"""Return True if BEAM's Inventory Dimension has been applied to Delivery Note Item."""
 	return frappe.get_meta("Delivery Note Item").has_field("handling_unit")
 
@@ -125,13 +125,13 @@ def on_packing_slip_submit(doc) -> None:
 
 	company = frappe.db.get_value("Delivery Note", doc.delivery_note, "company")
 
-	if _beam_handling_units_enabled(company):
+	if beam_handling_units_enabled(company):
 		create_packing_slip_repack_entry(doc, company)
 	else:
 		for code in {item.ucc128 for item in doc.items if item.ucc128}:
 			create_handling_unit_for_sscc(code)
 
-	_update_dn_item_handling_units(doc)
+	update_dn_item_handling_units(doc)
 
 
 # ---------------------------------------------------------------------------
@@ -174,8 +174,8 @@ def create_packing_slip_repack_entry(doc, company: str) -> str | None:
 	if not packed:
 		return None
 
-	has_hu_on_dni = _dni_has_handling_unit_field()
-	has_hu_on_psi = _psi_has_handling_unit_field()
+	has_hu_on_dni = dni_has_handling_unit_field()
+	has_hu_on_psi = psi_has_handling_unit_field()
 
 	# ------------------------------------------------------------------ #
 	# Gather source items from DN                                          #
@@ -374,7 +374,7 @@ def create_packing_slip_repack_entry(doc, company: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def _update_dn_item_handling_units(doc) -> None:
+def update_dn_item_handling_units(doc) -> None:
 	"""
 	Update ``Delivery Note Item.handling_unit`` to the new SSCC HU for each
 	DN item whose entire PS quantity lands in a single parcel.
@@ -383,7 +383,7 @@ def _update_dn_item_handling_units(doc) -> None:
 	that item — the stock ledger relationship is captured by the Repack SE
 	instead.
 	"""
-	if not _dni_has_handling_unit_field():
+	if not dni_has_handling_unit_field():
 		return
 
 	# Map each dn_detail → set of (parcel_number, ucc128) pairs it appears in.
@@ -397,6 +397,229 @@ def _update_dn_item_handling_units(doc) -> None:
 		parcel_numbers = {p[0] for p in parcel_set}
 		if len(parcel_numbers) == 1:
 			# All qty for this DN item is in one parcel — safe to set the HU.
+			sscc = next(iter(parcel_set))[1]
+			frappe.db.set_value("Delivery Note Item", dn_detail, "handling_unit", sscc)
+
+
+# ---------------------------------------------------------------------------
+# Shipment submit entry point
+# ---------------------------------------------------------------------------
+
+
+def on_shipment_submit(doc) -> None:
+	"""
+	Called from ``shipstation_integration.shipment_pack.on_submit``.
+
+	Mirrors the Packing Slip flow but operates on Shipment Delivery Note rows
+	instead of Packing Slip Item rows.  When BEAM handling units are enabled:
+	  1. Create and save the Repack SE as a draft.
+	  2. Create SSCC HUs.
+	  3. Back-fill handling_unit on SE target rows, then submit.
+	  4. Update DN item handling_unit fields.
+
+	When BEAM is installed but HU tracking is disabled, SSCC HU documents are
+	still created so barcodes remain scannable.
+	"""
+	if not is_beam_installed():
+		return
+
+	packed_rows = [
+		row for row in (doc.shipment_delivery_note or []) if row.parcel_number and row.ucc128
+	]
+	if not packed_rows:
+		return
+
+	# Determine company from the Shipment's own company field
+	company = doc.company
+
+	if beam_handling_units_enabled(company):
+		create_shipment_repack_entry(doc, company)
+	else:
+		for code in {row.ucc128 for row in packed_rows if row.ucc128}:
+			create_handling_unit_for_sscc(code)
+
+	update_sdn_dn_item_handling_units(doc)
+
+
+# ---------------------------------------------------------------------------
+# Repack Stock Entry for Shipment
+# ---------------------------------------------------------------------------
+
+
+def create_shipment_repack_entry(doc, company: str) -> str | None:
+	"""
+	Build and submit a Repack Stock Entry from Shipment Delivery Note rows.
+
+	Source rows come from the DN items referenced by ``dn_detail`` on each
+	SDN row.  Target rows are one per packed SDN row, with SSCC codes
+	pre-set on in-memory row objects so BEAM's generate_handling_units hook
+	skips UUID generation.
+
+	Returns the submitted SE name, or None if no packed rows with SSCC codes.
+	"""
+	packed = [row for row in (doc.shipment_delivery_note or []) if row.parcel_number and row.ucc128]
+	if not packed:
+		return None
+
+	has_hu_on_dni = dni_has_handling_unit_field()
+
+	zero_rate_items: set[str] = set()
+	source_map: dict[tuple, dict] = {}
+
+	for sdn_row in packed:
+		if not sdn_row.dn_detail:
+			continue
+
+		dn_item = frappe.db.get_value(
+			"Delivery Note Item",
+			sdn_row.dn_detail,
+			[
+				"item_code",
+				"warehouse",
+				"uom",
+				"conversion_factor",
+				"handling_unit",
+				"incoming_rate",
+				"is_free_item",
+			],
+			as_dict=True,
+		)
+		if not dn_item or not dn_item.warehouse:
+			continue
+
+		source_hu = dn_item.handling_unit if has_hu_on_dni else None
+
+		basic_rate = flt(dn_item.incoming_rate)
+		allow_zero = 1 if dn_item.is_free_item else 0
+
+		if not basic_rate and not dn_item.is_free_item:
+			from erpnext.stock.utils import get_incoming_rate
+
+			basic_rate = flt(
+				get_incoming_rate(
+					{
+						"item_code": sdn_row.item_code,
+						"warehouse": dn_item.warehouse,
+						"posting_date": today(),
+						"posting_time": frappe.utils.now_datetime().strftime("%H:%M:%S"),
+						"qty": -1 * flt(sdn_row.qty),
+						"voucher_type": "Stock Entry",
+						"voucher_no": "",
+						"company": company,
+					},
+					raise_error_if_no_rate=False,
+				)
+			)
+			if not basic_rate:
+				allow_zero = 1
+				zero_rate_items.add(sdn_row.item_code)
+
+		key = (sdn_row.item_code, dn_item.warehouse, source_hu or "")
+		if key not in source_map:
+			source_map[key] = {
+				"item_code": sdn_row.item_code,
+				"s_warehouse": dn_item.warehouse,
+				"handling_unit": source_hu,
+				"uom": dn_item.uom or sdn_row.stock_uom,
+				"conversion_factor": flt(dn_item.conversion_factor) or 1.0,
+				"basic_rate": basic_rate,
+				"allow_zero_valuation_rate": allow_zero,
+				"qty": 0.0,
+			}
+		source_map[key]["qty"] += flt(sdn_row.qty)
+
+	if source_map:
+		target_warehouse = next(iter(source_map.values()))["s_warehouse"]
+	elif packed[0].dn_detail:
+		target_warehouse = frappe.db.get_value("Delivery Note Item", packed[0].dn_detail, "warehouse")
+	else:
+		frappe.log_error(
+			title="Shipment Repack SE skipped",
+			message=f"No warehouse found for Shipment {doc.name}; no Repack SE created.",
+		)
+		return None
+
+	se = frappe.new_doc("Stock Entry")
+	se.stock_entry_type = "Repack"
+	se.purpose = "Repack"
+	se.company = company
+	se.posting_date = today()
+	se.posting_time = frappe.utils.now_datetime().strftime("%H:%M:%S")
+	se.remarks = _("Repack for Shipment {0}").format(doc.name)
+
+	for src in source_map.values():
+		row = se.append(
+			"items",
+			{
+				"item_code": src["item_code"],
+				"s_warehouse": src["s_warehouse"],
+				"qty": src["qty"],
+				"uom": src["uom"],
+				"conversion_factor": src["conversion_factor"],
+				"basic_rate": src["basic_rate"],
+				"allow_zero_valuation_rate": src["allow_zero_valuation_rate"],
+			},
+		)
+		if src["handling_unit"]:
+			row.handling_unit = src["handling_unit"]
+
+	target_rows: list[tuple] = []
+	for sdn_row in packed:
+		target_item: dict = {
+			"item_code": sdn_row.item_code,
+			"t_warehouse": target_warehouse,
+			"qty": flt(sdn_row.qty),
+			"uom": sdn_row.stock_uom,
+			"conversion_factor": 1.0,
+		}
+		if sdn_row.item_code in zero_rate_items:
+			target_item["allow_zero_valuation_rate"] = 1
+
+		row = se.append("items", target_item)
+		if sdn_row.ucc128:
+			target_rows.append((row, sdn_row.ucc128))
+		else:
+			row.is_finished_item = 1
+			target_rows.append((row, ""))
+
+	se.save(ignore_permissions=True)
+
+	for _row, sscc in target_rows:
+		if sscc:
+			create_handling_unit_for_sscc(sscc)
+
+	for row, sscc in target_rows:
+		if sscc:
+			row.handling_unit = sscc
+
+	frappe.flags.beam_allow_source_rows_without_hu = True
+	try:
+		se.submit()
+	finally:
+		frappe.flags.beam_allow_source_rows_without_hu = False
+
+	frappe.db.set_value("Shipment", doc.name, "repack_stock_entry", se.name)
+
+	return se.name
+
+
+def update_sdn_dn_item_handling_units(doc) -> None:
+	"""
+	Update Delivery Note Item.handling_unit to the SSCC HU for each DN item
+	whose entire Shipment quantity lands in a single parcel.
+	"""
+	if not dni_has_handling_unit_field():
+		return
+
+	dn_detail_parcels: dict[str, set[tuple]] = {}
+	for row in doc.shipment_delivery_note or []:
+		if not row.dn_detail or not row.parcel_number or not row.ucc128:
+			continue
+		dn_detail_parcels.setdefault(row.dn_detail, set()).add((row.parcel_number, row.ucc128))
+
+	for dn_detail, parcel_set in dn_detail_parcels.items():
+		parcel_numbers = {p[0] for p in parcel_set}
+		if len(parcel_numbers) == 1:
 			sscc = next(iter(parcel_set))[1]
 			frappe.db.set_value("Delivery Note Item", dn_detail, "handling_unit", sscc)
 
@@ -417,7 +640,7 @@ def get_source_handling_units(packing_slip: str) -> dict:
 
 	Returns an empty dict if BEAM is not installed or no source HUs exist.
 	"""
-	if not is_beam_installed() or not _dni_has_handling_unit_field():
+	if not is_beam_installed() or not dni_has_handling_unit_field():
 		return {}
 
 	ps = frappe.get_doc("Packing Slip", packing_slip)

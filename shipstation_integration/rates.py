@@ -465,6 +465,99 @@ def get_rates_for_delivery_note(delivery_note: str) -> list[dict]:
 	)
 
 
+@frappe.whitelist()
+def get_rates_for_shipment(shipment: str) -> list[dict]:
+	"""
+	Get shipping rates for a Shipment.
+
+	Addresses are read from the Shipment's pickup_address_name (ship from)
+	and delivery_address_name (ship to).  Package dimensions come from
+	Shipment Delivery Note rows grouped by parcel_number — one package per
+	unique parcel.
+
+	Args:
+	        shipment: Shipment document name
+
+	Returns:
+	        List of available shipping rates
+	"""
+	doc = frappe.get_doc("Shipment", shipment)
+
+	if not doc.pickup_address_name:
+		frappe.throw(_("Shipment must have a pickup (ship from) address"))
+	if not doc.delivery_address_name:
+		frappe.throw(_("Shipment must have a delivery (ship to) address"))
+
+	ship_from_address = frappe.get_doc("Address", doc.pickup_address_name)
+	ship_to_address = frappe.get_doc("Address", doc.delivery_address_name)
+
+	ship_from_country = frappe.db.get_value("Country", ship_from_address.country, "code") or "US"
+	ship_to_country = frappe.db.get_value("Country", ship_to_address.country, "code") or "US"
+
+	ship_from = {
+		"name": doc.company,
+		"street1": ship_from_address.address_line1,
+		"street2": ship_from_address.address_line2 or "",
+		"city": ship_from_address.city,
+		"state": get_state_code(ship_from_address.state, ship_from_country),
+		"postal_code": ship_from_address.pincode,
+		"country": ship_from_country,
+		"phone": ship_from_address.phone or "0000000000",
+	}
+
+	recipient_name = ship_to_address.address_title or doc.delivery_to or "Recipient"
+	ship_to = {
+		"name": recipient_name,
+		"street1": ship_to_address.address_line1,
+		"street2": ship_to_address.address_line2 or "",
+		"city": ship_to_address.city,
+		"state": get_state_code(ship_to_address.state, ship_to_country),
+		"postal_code": ship_to_address.pincode,
+		"country": ship_to_country,
+		"phone": ship_to_address.phone or "0000000000",
+	}
+
+	packages = get_packages_from_shipment(doc)
+	if not packages:
+		frappe.throw(_("Shipment must have SDN items with a Parcel # and parcel dimensions configured"))
+
+	return get_rates(ship_from=ship_from, ship_to=ship_to, packages=packages)
+
+
+def get_packages_from_shipment(doc) -> list[dict]:
+	"""
+	Build a list of package dicts from Shipment Delivery Note rows.
+
+	One package is built per unique parcel_number using the dimensions from
+	the first SDN row belonging to that parcel.  Returns an empty list if no
+	rows have a parcel_number assigned.
+	"""
+	parcel_map: dict[int, dict] = {}
+	for row in doc.shipment_delivery_note or []:
+		if not row.parcel_number:
+			continue
+		if row.parcel_number in parcel_map:
+			continue
+
+		dimension_unit = DIMENSION_UOM_MAP.get(getattr(row, "dimension_uom", None), "inch")
+		weight_unit = WEIGHT_UOM_MAP.get(getattr(row, "parcel_weight_uom", None), "pound")
+
+		parcel_map[row.parcel_number] = {
+			"weight": {
+				"value": flt(getattr(row, "parcel_weight", None)) or 1.0,
+				"unit": weight_unit,
+			},
+			"dimensions": {
+				"length": flt(getattr(row, "parcel_length", None)) or 1,
+				"width": flt(getattr(row, "parcel_width", None)) or 1,
+				"height": flt(getattr(row, "parcel_height", None)) or 1,
+				"unit": dimension_unit,
+			},
+		}
+
+	return list(parcel_map.values())
+
+
 def get_fallback_package(dn) -> dict:
 	"""
 	Create a fallback package using calculated weight from Delivery Note items.

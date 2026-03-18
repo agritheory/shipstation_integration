@@ -84,6 +84,67 @@ def assign_sscc_codes(doc) -> list[str]:
 	return new_codes
 
 
+def assign_shipment_sscc_codes(doc) -> list[str]:
+	"""
+	In-memory version for Shipment before_submit / on_submit hooks.
+
+	Groups Shipment Delivery Note rows by parcel_number, generates one SSCC
+	per parcel (skipping parcels that already have a code), and assigns the
+	code directly to the in-memory row objects.
+
+	Returns the list of newly generated SSCC codes.
+	"""
+	settings = get_sscc_settings()
+	prefix = settings.gs1_company_prefix
+	abbr = frappe.db.get_value("Company", doc.company, "abbr")
+	parcels: dict[int, list] = {}
+	for row in doc.shipment_delivery_note or []:
+		if row.parcel_number:
+			parcels.setdefault(row.parcel_number, []).append(row)
+	new_codes: list[str] = []
+	for rows in parcels.values():
+		if any(r.ucc128 for r in rows):
+			continue
+		code = generate_sscc(prefix, abbr)
+		for r in rows:
+			r.ucc128 = code
+		new_codes.append(code)
+	return new_codes
+
+
+@frappe.whitelist()
+def generate_shipment_sscc(shipment: str) -> dict:
+	"""
+	Generate SSCC-18 codes for each unique parcel_number in the Shipment
+	Delivery Note table.  Parcels that already have a ucc128 are skipped.
+
+	Writes codes directly to the DB (same pattern as generate_packing_slip_sscc)
+	and returns a summary dict so the frontend can apply the values live.
+	"""
+	doc = frappe.get_doc("Shipment", shipment)
+	settings = get_sscc_settings()
+	prefix = settings.gs1_company_prefix
+	abbr = frappe.db.get_value("Company", doc.company, "abbr")
+	parcels: dict[int, list] = {}
+	for row in doc.shipment_delivery_note or []:
+		if row.parcel_number:
+			parcels.setdefault(row.parcel_number, []).append(row)
+	generated = 0
+	skipped = 0
+	codes: list[dict] = []
+	for rows in parcels.values():
+		if any(r.ucc128 for r in rows):
+			skipped += 1
+			continue
+		code = generate_sscc(prefix, abbr)
+		for r in rows:
+			r.ucc128 = code
+			frappe.db.set_value("Shipment Delivery Note", r.name, "ucc128", code)
+			codes.append({"name": r.name, "ucc128": code})
+		generated += 1
+	return {"generated": generated, "skipped": skipped, "codes": codes}
+
+
 @frappe.whitelist()
 def generate_packing_slip_sscc(packing_slip: str) -> dict:
 	doc = frappe.get_doc("Packing Slip", packing_slip)

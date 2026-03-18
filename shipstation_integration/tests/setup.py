@@ -103,9 +103,9 @@ def create_shipstation_settings(settings):
 	"""Upsert a Shipstation Settings document with GS1 company prefix and LTL carrier data."""
 	default_item_group = frappe.get_value("Item Group", {"is_group": 0}, "name")
 
-	try:
-		ss = frappe.get_doc("Shipstation Settings", "Shipstation Settings")
-	except frappe.DoesNotExistError:
+	if frappe.db.exists("Shipstation Settings", settings.company):
+		ss = frappe.get_doc("Shipstation Settings", settings.company)
+	else:
 		ss = frappe.new_doc("Shipstation Settings")
 		ss.name = settings.company
 
@@ -325,6 +325,9 @@ def create_shipment_for_ltl(settings):
 	shipment.freight_type = "LTL"
 	shipment.value_of_goods = 500.00
 	shipment.description_of_content = "Baked goods - assorted pies"
+	shipment.billing_type = "Shipper"
+	shipment.payment_terms = "Prepaid"
+	shipment.billing_account = "TEST-ACCOUNT-001"
 
 	shipment.append(
 		"shipment_parcel",

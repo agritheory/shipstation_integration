@@ -528,6 +528,205 @@ def build_shipment_from_packing_slip(
 	}
 
 
+@frappe.whitelist()
+def create_label_for_shipment(
+	shipment: str,
+	rate_id: str | None = None,
+	carrier_id: str | None = None,
+	service_code: str | None = None,
+	force: bool = False,
+) -> list[dict]:
+	"""
+	Create shipping labels for a Shipment using ShipStation API v2.
+
+	One label is created per unique parcel_number found in the Shipment
+	Delivery Note rows.  Each label gets its own tracking number which is
+	written back to the SDN rows belonging to that parcel.
+
+	Args:
+	        shipment: Shipment document name
+	        rate_id: Optional rate ID from previous rate request (single-parcel only)
+	        carrier_id: Carrier ID (required if rate_id not provided)
+	        service_code: Service code (required if rate_id not provided)
+	        force: If True, allow re-purchasing even if tracking numbers already exist
+
+	Returns:
+	        List of label responses (one per parcel)
+	"""
+	doc = frappe.get_doc("Shipment", shipment)
+
+	if not doc.pickup_address_name:
+		frappe.throw(_("Shipment must have a pickup (ship from) address"))
+	if not doc.delivery_address_name:
+		frappe.throw(_("Shipment must have a delivery (ship to) address"))
+
+	# Check for existing labels
+	existing_tracking = next(
+		(row.tracking_number for row in (doc.shipment_delivery_note or []) if row.tracking_number),
+		None,
+	)
+	if existing_tracking and not force:
+		frappe.throw(
+			_(
+				"A label has already been purchased for this Shipment (Tracking: {0}). "
+				"Pass force=True to re-purchase."
+			).format(existing_tracking),
+			frappe.DuplicateEntryError,
+			title=_("Label Already Exists"),
+		)
+
+	parcel_numbers = sorted(
+		{row.parcel_number for row in (doc.shipment_delivery_note or []) if row.parcel_number}
+	)
+	if not parcel_numbers:
+		frappe.throw(
+			_("No SDN items have been assigned to a parcel. Pack items before purchasing labels.")
+		)
+
+	if rate_id and len(parcel_numbers) > 1:
+		frappe.throw(
+			_(
+				"rate_id can only be used for single-parcel shipments. "
+				"Use carrier_id and service_code for multi-parcel."
+			)
+		)
+
+	settings = get_shipstation_settings()
+	label_responses = []
+
+	for parcel_number in parcel_numbers:
+		if rate_id:
+			label_response = create_label_from_rate(rate_id=rate_id)
+		else:
+			if not carrier_id or not service_code:
+				frappe.throw(_("Either rate_id or both carrier_id and service_code are required"))
+
+			shipment_data = build_shipment_from_shipment_doc(doc, carrier_id, service_code, parcel_number)
+			label_response = create_label(shipment_data=shipment_data)
+
+		if label_response.get("label_download"):
+			file_doc = download_and_attach_label(
+				label_response["label_download"],
+				doc.doctype,
+				doc.name,
+				settings,
+			)
+			label_response["attached_file"] = file_doc.name if file_doc else None
+
+		label_response["parcel_number"] = parcel_number
+		update_shipment_delivery_note_tracking(doc, label_response, parcel_number)
+		label_responses.append(label_response)
+
+	return label_responses
+
+
+def build_shipment_from_shipment_doc(
+	doc, carrier_id: str, service_code: str, parcel_number: int
+) -> dict:
+	"""
+	Build ShipEngine shipment payload from a Shipment document for a specific parcel.
+
+	Addresses come from the Shipment's pickup_address_name (ship from) and
+	delivery_address_name (ship to).  Package dimensions are sourced from SDN
+	rows assigned to parcel_number.
+	"""
+	from shipstation_integration.rates import get_state_code
+
+	ship_from_address = frappe.get_doc("Address", doc.pickup_address_name)
+	ship_to_address = frappe.get_doc("Address", doc.delivery_address_name)
+
+	ship_from_country = (
+		frappe.db.get_value("Country", ship_from_address.country, "code") or "US"
+	).upper()
+	ship_to_country = (
+		frappe.db.get_value("Country", ship_to_address.country, "code") or "US"
+	).upper()
+
+	# Derive a customer/recipient name from the delivery address
+	recipient_name = ship_to_address.address_title or doc.delivery_to
+
+	parcel_rows = [
+		row for row in (doc.shipment_delivery_note or []) if row.parcel_number == parcel_number
+	]
+
+	if parcel_rows:
+		ref = parcel_rows[0]
+		dimension_unit = DIMENSION_UOM_MAP.get(ref.dimension_uom, "inch")
+		weight_unit = WEIGHT_UOM_MAP.get(ref.parcel_weight_uom, "pound")
+		package = {
+			"weight": {
+				"value": flt(ref.parcel_weight) or 1.0,
+				"unit": weight_unit,
+			},
+			"dimensions": {
+				"length": flt(ref.parcel_length) or 1,
+				"width": flt(ref.parcel_width) or 1,
+				"height": flt(ref.parcel_height) or 1,
+				"unit": dimension_unit,
+			},
+		}
+	else:
+		package = {
+			"weight": {"value": 1.0, "unit": "pound"},
+			"dimensions": {"length": 12, "width": 9, "height": 6, "unit": "inch"},
+		}
+
+	if carrier_id and not str(carrier_id).startswith("se-"):
+		frappe.throw(
+			_(
+				"Invalid carrier ID format: {0}. Expected a ShipEngine carrier ID (e.g. se-123456). "
+				"Please sync carriers in Shipstation Settings."
+			).format(carrier_id)
+		)
+
+	return {
+		"carrier_id": carrier_id,
+		"service_code": service_code,
+		"ship_to": {
+			"name": recipient_name,
+			"phone": ship_to_address.phone or "0000000000",
+			"address_line1": ship_to_address.address_line1,
+			"address_line2": ship_to_address.address_line2 or "",
+			"city_locality": ship_to_address.city,
+			"state_province": get_state_code(ship_to_address.state, ship_to_country),
+			"postal_code": ship_to_address.pincode,
+			"country_code": ship_to_country,
+		},
+		"ship_from": {
+			"name": doc.company,
+			"phone": ship_from_address.phone or "0000000000",
+			"address_line1": ship_from_address.address_line1,
+			"address_line2": ship_from_address.address_line2 or "",
+			"city_locality": ship_from_address.city,
+			"state_province": get_state_code(ship_from_address.state, ship_from_country),
+			"postal_code": ship_from_address.pincode,
+			"country_code": ship_from_country,
+		},
+		"packages": [package],
+	}
+
+
+def update_shipment_delivery_note_tracking(doc, label_response: dict, parcel_number: int) -> None:
+	"""
+	Update Shipment Delivery Note rows belonging to parcel_number with
+	label/tracking info.
+	"""
+	tracking_number = label_response.get("tracking_number")
+	label_url = label_response.get("label_download")
+	carrier_code = label_response.get("carrier_code", "").upper()
+	tracking_url = build_tracking_url(tracking_number, carrier_code)
+
+	tracking_data = {
+		"tracking_number": tracking_number,
+		"tracking_url": tracking_url,
+		"label_url": label_url,
+	}
+
+	for row in doc.shipment_delivery_note or []:
+		if row.parcel_number == parcel_number:
+			frappe.db.set_value("Shipment Delivery Note", row.name, tracking_data)
+
+
 def download_and_attach_label(
 	label_url: str,
 	doctype: str,

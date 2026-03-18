@@ -38,7 +38,7 @@ doctype_js = {
 	"Delivery Note": "public/js/delivery_note.js",
 	"Packing Slip": "public/js/packing_slip.js",
 	"Sales Order": "public/js/sales_order.js",
-	"Shipment": "public/js/shipment_custom.js",
+	"Shipment": ["public/js/shipment_custom.js", "public/js/shipment_pack.js"],
 	"Shipment Parcel Template": "public/js/shipment_parcel_template.js",
 	"Supplier": "public/js/supplier.js",
 }
@@ -100,7 +100,11 @@ doc_events = {
 	"Packing Slip": {
 		"before_submit": "shipstation_integration.packing_slip.before_submit",
 		"on_submit": "shipstation_integration.packing_slip.on_submit",
-	}
+	},
+	"Shipment": {
+		"before_submit": "shipstation_integration.shipment_pack.before_submit",
+		"on_submit": "shipstation_integration.shipment_pack.on_submit",
+	},
 }
 
 # Scheduled Tasks

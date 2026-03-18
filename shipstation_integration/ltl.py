@@ -18,12 +18,25 @@ import httpx
 from erpnext.stock.doctype.shipment.shipment import Shipment
 from erpnext.stock.doctype.shipment_parcel.shipment_parcel import ShipmentParcel
 from frappe import _
-from frappe.utils import add_days, comma_or, get_link_to_form, now
+from frappe.utils import add_days, comma_or, flt, get_link_to_form, now
 from frappe.utils.file_manager import save_file
 
 from shipstation_integration.base_ltl import BaseLTL
 from shipstation_integration.carriers import get_or_create_transporter
+from shipstation_integration.rates import DIMENSION_UOM_MAP, WEIGHT_UOM_MAP
 from shipstation_integration.utils import get_error_message, get_shipstation_settings
+
+
+# Module-level conversion tables used by ShipstationLTL class-body comprehensions.
+# They must live here because Python dict comprehensions in a class body have
+# their own scope and cannot reference sibling class variables.
+CANONICAL_TO_LB: dict[str, float] = {
+	"pound": 1.0,
+	"ounce": 0.0625,
+	"kilogram": 2.20462,
+	"gram": 0.00220462,
+}
+CANONICAL_TO_CUFT: dict[str, float] = {"inch": 1.0 / 1728.0, "centimeter": 1.0 / 28316.85}
 
 
 class ShipstationLTL(BaseLTL):
@@ -33,10 +46,19 @@ class ShipstationLTL(BaseLTL):
 		"""
 		self.provider = "Shipstation"
 
-		# Maps ERPNext UOMs with accepted payload values. Length covers length/width/height
+		# Maps ERPNext UOMs (and all aliases from rates.WEIGHT/DIMENSION_UOM_MAP) to the
+		# plural forms the ShipEngine LTL API expects.
+		_singular_to_plural = {
+			"inch": "inches",
+			"centimeter": "centimeters",
+			"pound": "pounds",
+			"kilogram": "kilograms",
+			"gram": "grams",
+			"ounce": "ounces",
+		}
 		self.uom_map = {
-			"length": {"Inch": "inches", "Centimeter": "centimeters"},
-			"weight": {"Gram": "grams", "Kilogram": "kilograms", "Ounce": "ounces", "Pound": "pounds"},
+			"length": {k: _singular_to_plural.get(v, v) for k, v in DIMENSION_UOM_MAP.items()},
+			"weight": {k: _singular_to_plural.get(v, v) for k, v in WEIGHT_UOM_MAP.items()},
 			"density": {"Pound/Cubic Foot": "lb/ft3"},
 		}
 
@@ -108,7 +130,7 @@ class ShipstationLTL(BaseLTL):
 				carriers = data.get("carriers", [])
 				result = []
 				for c in carriers:
-					formatted = self._format_ltl_carrier(c)
+					formatted = self.format_ltl_carrier(c)
 
 					# Optionally create transporter Supplier
 					if create_transporters and formatted.get("name"):
@@ -595,12 +617,14 @@ class ShipstationLTL(BaseLTL):
 		return msg
 
 	##### CLASS HELPER FUNCTIONS TO SUPPORT BASE CLASS FUNCTIONALITY #####
+	DEFAULT_BASE_URL = "https://api.shipengine.com"
+
 	def get_base_url_and_headers(self, settings_name: str | None = None) -> tuple:
 		settings = get_shipstation_settings(settings_name)
 		api_key = settings.get_password("shipstation_api_key")
 		if not api_key:
 			frappe.throw(_("ShipStation API key not configured in Shipstation Settings"))
-		base_url = settings.base_url
+		base_url = (settings.base_url or self.DEFAULT_BASE_URL).rstrip("/")
 		headers = {"Content-Type": "application/json", "Accept": "application/json", "Api-Key": api_key}
 		return base_url, headers
 
@@ -619,7 +643,7 @@ class ShipstationLTL(BaseLTL):
 			err_msg = errors.get("message", err_msg)
 		return err_type, err_msg
 
-	def _format_ltl_carrier(self, carrier) -> dict:
+	def format_ltl_carrier(self, carrier) -> dict:
 		"""Format LTL carrier data for consistent output."""
 		carrier["carrier_code"] = carrier.get("scac")
 		for p in carrier.get("packages", []):
@@ -674,7 +698,7 @@ class ShipstationLTL(BaseLTL):
 				)
 				data = response.json()
 				response.raise_for_status()
-				return self._format_ltl_carrier(data)
+				return self.format_ltl_carrier(data)
 		except httpx.HTTPStatusError as e:
 			err_type, err_msg = self.get_api_response_error_info(data)
 			frappe.log_error(
@@ -880,6 +904,56 @@ class ShipstationLTL(BaseLTL):
 			frappe.log_error(title="Error listing LTL carrier options", message=error_msg)
 			frappe.throw(_("Failed to list LTL carrier options: {0}").format(error_msg))
 
+	def resolve_package_type_code(
+		self, doc, carrier_id: str, settings_name: str | None = None
+	) -> None:
+		"""
+		Ensure doc.package_type_code is set before building the LTL payload.
+		If not already populated, fetches the carrier's available package types and
+		selects the one whose name matches doc.package_type (case-insensitive), falling
+		back to the first option returned by the API.
+		Sets the resolved code directly on the doc object (in-memory only).
+		"""
+		if doc.get("package_type_code"):
+			return
+
+		pkg_types = self.list_ltl_carrier_package_types(carrier_id, settings_name)
+		if not pkg_types:
+			frappe.throw(
+				_(
+					"Could not retrieve package type options from the carrier. "
+					"Please set Package Type Code manually on the Shipment."
+				),
+				title=_("Package Type Required"),
+			)
+
+		preferred_name = (doc.get("package_type") or "").strip().lower()
+		matched = next(
+			(p for p in pkg_types if p.get("name", "").strip().lower() == preferred_name),
+			None,
+		)
+		doc.package_type_code = (matched or pkg_types[0]).get("code")
+
+	def validate_billing(self, doc) -> None:
+		"""
+		Raise a clear ValidationError before the API call if billing fields required
+		by ShipEngine LTL are missing.  Called outside the try/except in
+		request_ltl_quote and request_ltl_spot_quote so the message reaches the user
+		directly rather than being wrapped in a generic error.
+
+		ShipEngine LTL always requires bill_to.account — it identifies the shipper or
+		payer account with the carrier.  'Third Party' payment terms additionally require
+		it on behalf of the third party.
+		"""
+		if not doc.get("billing_account"):
+			frappe.throw(
+				_(
+					"A Billing Account Number is required for LTL quotes. "
+					"Please enter your carrier account number in the Billing Account field on the Shipment."
+				),
+				title=_("Billing Account Required"),
+			)
+
 	def request_ltl_quote(
 		self, carrier_id: str, doc: Shipment, settings_name: str | None = None
 	) -> list[dict]:
@@ -895,6 +969,8 @@ class ShipstationLTL(BaseLTL):
 		List containing the ShipEngine quote dict, includes quote_id, charges list of dicts, and
 		shipment info
 		"""
+		self.resolve_package_type_code(doc, carrier_id, settings_name)
+		self.validate_billing(doc)
 		base_url, headers = self.get_base_url_and_headers(settings_name)
 
 		try:
@@ -956,6 +1032,8 @@ class ShipstationLTL(BaseLTL):
 				f"No {self.provider} carrier ID found for the preferred carrier - try fetching LTL carriers from Shipstation Settings."
 			)
 
+		self.resolve_package_type_code(doc, carrier_id, settings_name)
+		self.validate_billing(doc)
 		base_url, headers = self.get_base_url_and_headers(settings_name)
 
 		try:
@@ -1278,10 +1356,217 @@ class ShipstationLTL(BaseLTL):
 			frappe.log_error(title="Error listing LTL carrier documents", message=error_msg)
 			frappe.throw(_("Failed to list LTL carrier documents: {0}").format(error_msg))
 
+	# Conversion factors to pounds and cubic feet for density calculation.
+	# Built from WEIGHT_UOM_MAP / DIMENSION_UOM_MAP so all aliases (Kg, kg, cm, …) are covered.
+	# Note: the intermediate dicts are module-level (CANONICAL_TO_LB / CANONICAL_TO_CUFT)
+	# because Python class-body dict comprehensions can't reference sibling class variables.
+	WEIGHT_TO_LB = {k: CANONICAL_TO_LB[v] for k, v in WEIGHT_UOM_MAP.items() if v in CANONICAL_TO_LB}
+	VOL_TO_CUFT = {
+		k: CANONICAL_TO_CUFT[v] for k, v in DIMENSION_UOM_MAP.items() if v in CANONICAL_TO_CUFT
+	}
+
+	# NMFC density → freight class mapping (density in lb/ft³)
+	DENSITY_TO_CLASS = [
+		(50, 50),
+		(35, 55),
+		(30, 60),
+		(22.5, 65),
+		(15, 70),
+		(13.5, 77.5),
+		(12, 85),
+		(10.5, 92.5),
+		(9, 100),
+		(8, 110),
+		(7, 125),
+		(6, 150),
+		(5, 175),
+		(4, 200),
+		(3, 250),
+		(2, 300),
+		(1, 400),
+	]
+
+	def density_to_freight_class(self, density_lb_ft3: float) -> float:
+		"""Return the NMFC freight class for the given density in lb/ft³."""
+		for min_density, freight_class in self.DENSITY_TO_CLASS:
+			if density_lb_ft3 >= min_density:
+				return freight_class
+		return 500
+
+	def get_dn_item_weight(self, dn_detail: str) -> tuple[float, str]:
+		"""
+		Return (total_weight, weight_uom) for a Delivery Note Item row.
+
+		Falls back to (0.0, "Pound") if the row is not found or has no weight.
+		"""
+		if not dn_detail:
+			return 0.0, "Pound"
+		row = frappe.db.get_value(
+			"Delivery Note Item",
+			dn_detail,
+			["weight_per_unit", "total_weight", "qty", "weight_uom"],
+			as_dict=True,
+		)
+		if not row:
+			return 0.0, "Pound"
+		weight = flt(row.total_weight) or flt(row.weight_per_unit) * flt(row.qty)
+		uom = row.weight_uom or "Pound"
+		return weight, uom
+
+	def build_packages_from_sdn(self, doc) -> list[dict]:
+		"""
+		Build a ShipEngine LTL packages list from Shipment Delivery Note rows.
+
+		Groups SDN rows by parcel_number.  For each parcel:
+		  - Dimensions come from the first SDN row that has non-zero parcel dimensions.
+		  - Weight is the sum of each row's parcel_weight (falling back to the linked
+		    DN item's total_weight when parcel_weight is zero).
+		  - Density is calculated automatically from dimensions and weight.
+		  - Freight class is derived from density unless explicitly set on the Shipment.
+
+		Returns a list of package dicts suitable for a ShipEngine LTL quote payload.
+		Raises ValidationError if SDN has no rows or none have a parcel_number.
+		"""
+		sdn_rows = [frappe._dict(r) for r in (doc.shipment_delivery_note or [])]
+		packed = [r for r in sdn_rows if r.parcel_number]
+		if not packed:
+			frappe.throw(
+				_(
+					"Shipment Delivery Note items must be assigned to parcels (set Parcel #) before requesting an LTL quote."
+				),
+				title=_("No Packed Items"),
+			)
+
+		# Group rows by parcel_number
+		parcels: dict[int, list] = {}
+		for row in packed:
+			parcels.setdefault(int(row.parcel_number), []).append(row)
+
+		packages = []
+		for parcel_num in sorted(parcels):
+			rows = parcels[parcel_num]
+
+			# Dimensions: first row with all non-zero values wins
+			dim_row = next(
+				(r for r in rows if flt(r.parcel_length) and flt(r.parcel_width) and flt(r.parcel_height)),
+				None,
+			)
+			if dim_row is None:
+				frappe.throw(
+					_(
+						"Parcel {0} has no dimensions set. Please enter length, width, and height on at least one Shipment Delivery Note row for this parcel before requesting an LTL quote."
+					).format(parcel_num),
+					title=_("Missing Parcel Dimensions"),
+				)
+			length = flt(dim_row.parcel_length)
+			width = flt(dim_row.parcel_width)
+			height = flt(dim_row.parcel_height)
+			dim_uom_key = dim_row.dimension_uom or "Inch"
+			len_uom = self.uom_map["length"].get(dim_uom_key)
+			if not len_uom:
+				frappe.throw(
+					_(
+						f"Unsupported dimension UOM '{dim_uom_key}' on parcel {parcel_num}. Use {comma_or(list(self.uom_map['length'].keys()))}."
+					)
+				)
+
+			# Weight: prefer explicit parcel_weight; fall back to DN item weight
+			total_weight = 0.0
+			weight_uom_key = "Pound"
+			for row in rows:
+				pw = flt(row.parcel_weight)
+				if pw:
+					total_weight += pw
+					weight_uom_key = row.parcel_weight_uom or "Pound"
+				elif row.dn_detail:
+					w, wu = self.get_dn_item_weight(row.dn_detail)
+					total_weight += w
+					weight_uom_key = wu or weight_uom_key
+
+			if not total_weight:
+				frappe.throw(
+					_(
+						"Parcel {0} has no weight. Please set parcel weight on the Shipment Delivery Note rows, or ensure the linked Delivery Note items have a weight defined."
+					).format(parcel_num),
+					title=_("Missing Parcel Weight"),
+				)
+
+			weight_uom = self.uom_map["weight"].get(weight_uom_key)
+			if not weight_uom:
+				frappe.throw(
+					_(
+						f"Unsupported weight UOM '{weight_uom_key}' on parcel {parcel_num}. Use {comma_or(list(self.uom_map['weight'].keys()))}."
+					)
+				)
+
+			# Density and freight class (auto-calculated)
+			density_parcel = frappe._dict(
+				{
+					"length": length,
+					"width": width,
+					"height": height,
+					"length_uom": dim_uom_key,
+					"weight": total_weight,
+					"weight_uom": weight_uom_key,
+					"count": 1,
+				}
+			)
+			density_lb_ft3 = self.calculate_density_lb_ft3(density_parcel)
+			freight_class = self.density_to_freight_class(density_lb_ft3)
+
+			pkg: dict = {
+				"code": doc.package_type_code,
+				"freight_class": freight_class,
+				"density": {"value": round(density_lb_ft3, 4), "unit": "lb/ft3"},
+				"description": doc.get("description_of_content", ""),
+				"dimensions": {"width": width, "height": height, "length": length, "unit": len_uom},
+				"weight": {"value": total_weight, "unit": weight_uom},
+				"quantity": 1,
+				"stackable": False,
+				"hazardous_materials": bool(doc.get("hazardous_material")),
+			}
+			if doc.get("nmfc_freight_class"):
+				pkg["nmfc_code"] = str(doc.nmfc_freight_class)
+			packages.append(pkg)
+
+		return packages
+
+	def calculate_density_lb_ft3(self, row: ShipmentParcel | dict) -> float:
+		"""
+		Calculate density in lb/ft³ from a Shipment Parcel row's dimensions and weight.
+
+		Uses length/width/height with length_uom and weight with weight_uom.
+		Returns 0.0 if any required field is missing or zero.
+		"""
+		length = flt(row.get("length") if isinstance(row, dict) else row.length)
+		width = flt(row.get("width") if isinstance(row, dict) else row.width)
+		height = flt(row.get("height") if isinstance(row, dict) else row.height)
+		weight = flt(row.get("weight") if isinstance(row, dict) else row.weight)
+		count = flt(row.get("count") if isinstance(row, dict) else getattr(row, "count", 1)) or 1
+
+		len_uom = row.get("length_uom") if isinstance(row, dict) else getattr(row, "length_uom", None)
+		wt_uom = row.get("weight_uom") if isinstance(row, dict) else getattr(row, "weight_uom", None)
+
+		if not (length and width and height and weight and len_uom and wt_uom):
+			return 0.0
+
+		vol_to_cuft = self.VOL_TO_CUFT.get(len_uom)
+		wt_to_lb = self.WEIGHT_TO_LB.get(wt_uom)
+		if not vol_to_cuft or not wt_to_lb:
+			return 0.0
+
+		volume_cuft = length * width * height * vol_to_cuft * count
+		weight_lb = weight * wt_to_lb
+		return round(weight_lb / volume_cuft, 4) if volume_cuft else 0.0
+
 	def get_and_validate_uoms(self, row: ShipmentParcel | dict) -> tuple | None:
 		"""
 		Given a Shipment Parcel row from a Shipment doc, validates the UOMs for length, width, and
 		density, then returns the appropriate values to use for each in a Shipstation API call.
+
+		If density_uom is not set, defaults to "Pound/Cubic Foot" (the only UOM supported by
+		Shipstation).  The corresponding density value is calculated automatically from the parcel
+		dimensions and weight when density is zero or unset.
 
 		Args:
 		row: a Shipment Parcel document (a row in a Shipment's Shipment Parcel child table)
@@ -1304,7 +1589,10 @@ class ShipstationLTL(BaseLTL):
 				f"The weight UOM of {row.weight_uom} used in row {row.idx} is not supported by {self.provider}. Please use {comma_or(supported_weights)}."
 			)
 
-		density_uom = self.uom_map["density"].get(row.density_uom)
+		# Density UOM defaults to Pound/Cubic Foot — the only UOM Shipstation accepts.
+		# Explicit validation is preserved for any non-empty value so typos surface clearly.
+		effective_density_uom = row.density_uom or "Pound/Cubic Foot"
+		density_uom = self.uom_map["density"].get(effective_density_uom)
 		if not density_uom:
 			supported_densities = list(self.uom_map["density"].keys())
 			frappe.throw(
@@ -1333,40 +1621,10 @@ class ShipstationLTL(BaseLTL):
 		if doc.billing_type == "Consignee" and doc.billing_account:
 			ship_to.update({"account": doc.billing_account})
 
-		# Packages / Handling Units
-		packages = []
+		# Packages / Handling Units — built from Shipment Delivery Note rows
 		haz_name = ship_from["contact"]["name"]
 		haz_phone = ship_from["contact"]["phone_number"]
-		for row in doc.shipment_parcel:
-			row = frappe._dict(row)
-			len_uom, weight_uom, density_uom = self.get_and_validate_uoms(row)
-			packages.append(  # need an object for each package in shipment
-				{
-					"code": row.package_type_code,  # ShipEngine package type code
-					"freight_class": int(row.nmfc_freight_class),  # NMFC freight class (50-500)
-					"density": {"value": row.density, "unit": density_uom},
-					"nmfc_code": row.nmfc_commodity_code,  # NMFC commodity code / item number
-					"description": doc.get("description_of_content", ""),  # description of what's in container
-					"dimensions": {
-						"width": row.width,
-						"height": row.height,
-						"length": row.length,
-						"unit": len_uom,  # can be "inches" or "centimeters"
-					},
-					"weight": {
-						"value": row.weight,
-						"unit": weight_uom,  # can be "grams", "kilograms", "ounces", or "pounds"
-					},
-					"quantity": row.count,  # number of packages of this type
-					"stackable": bool(row.is_stackable),  # Boolean whether can be safely stacked or not
-					"hazardous_materials": bool(
-						row.hazardous_material
-					),  # Boolean whether package contains hazardous materials or not
-				}
-			)
-			if row.hazardous_material:
-				haz_name = row.emergency_name or haz_name
-				haz_phone = row.emergency_phone_number or haz_phone
+		packages = self.build_packages_from_sdn(doc)
 
 		# Accessorial services (list of: {"code": "ipu", "attributes": {}}, attributes depend on svc)
 		options = []
@@ -1379,8 +1637,8 @@ class ShipstationLTL(BaseLTL):
 				options.append(svc)
 
 		# Billing
-		b_type = doc.billing_type.replace(" ", "_").lower()
-		b_pmt_terms = doc.payment_terms.replace(" ", "_").lower()
+		b_type = (doc.billing_type or "Shipper").replace(" ", "_").lower()
+		b_pmt_terms = (doc.payment_terms or "Prepaid").replace(" ", "_").lower()
 		if b_type not in ["consignee", "shipper", "third_party"]:
 			frappe.throw("The Billing Type must be either 'Consignee', 'Shipper', or 'Third Party'.")
 
@@ -1388,10 +1646,11 @@ class ShipstationLTL(BaseLTL):
 			frappe.throw("The Billing Payment Term must be either 'Collect', 'Prepaid', or 'Third Party'.")
 
 		bill_to = {
-			"type": b_type,  # may be "consignee", "shipper", or "third_party"
-			"payment_terms": b_pmt_terms,  # may be "collect", "prepaid", or "third_party"
-			"account": doc.billing_account,
+			"type": b_type,
+			"payment_terms": b_pmt_terms,
 		}
+		if doc.get("billing_account"):
+			bill_to["account"] = doc.billing_account
 		if doc.billing_type == "Shipper" and not doc.billing_address:
 			bill_to["address"] = ship_from["address"]
 			bill_to["contact"] = ship_from["contact"]
@@ -1459,31 +1718,40 @@ class ShipstationLTL(BaseLTL):
 
 	def get_shipment_measurements_object_from_doc(self, doc: Shipment) -> dict:
 		"""
-		Collects necessary data from a Shipment document in ERPNext to populate a shipment object.
+		Derive total shipment measurements from Shipment Delivery Note rows.
 
 		Acceptable length units are: "inches" or "centimeters"
 		Acceptable weight units are: "grams", "kilograms", "ounces", or "pounds"
+
+		Totals are computed per unique parcel_number:
+		  - total_linear_length: sum of each parcel's length
+		  - total_width: maximum width across all parcels
+		  - total_height: maximum height across all parcels
+		  - total_weight: sum of weight across all parcels
 
 		Args:
 		doc: a Shipment document in ERPNext from which to retrieve the shipment info
 
 		Returns:
-		shipment object dict that may be used in a get quote or get spot quote request
+		shipment measurements dict for use in a get-quote or spot-quote request
 		"""
-		if not doc.get("shipment_parcel"):
-			frappe.throw(
-				msg=_("Shipment Parcel information needed for length, width, height, and weight UOM data."),
-				title=_("Missing Shipment Parcel Information"),
-			)
-		row = frappe._dict(doc.shipment_parcel[0])
-		len_uom, weight_uom, density_uom = self.get_and_validate_uoms(row)
+		packages = self.build_packages_from_sdn(doc)
 
-		# Linear length and width fields required
+		# Infer UOM strings from the first package (all parcels share the same UOM within a shipment)
+		first = packages[0]
+		len_uom = first["dimensions"]["unit"]
+		weight_uom = first["weight"]["unit"]
+
+		total_linear_length = sum(p["dimensions"]["length"] for p in packages)
+		total_width = max(p["dimensions"]["width"] for p in packages)
+		total_height = max(p["dimensions"]["height"] for p in packages)
+		total_weight = sum(p["weight"]["value"] for p in packages)
+
 		return {
-			"total_linear_length": {"value": doc.total_length, "unit": len_uom},
-			"total_width": {"value": doc.total_width, "unit": len_uom},
-			"total_height": {"value": doc.total_height, "unit": len_uom},
-			"total_weight": {"value": doc.total_weight, "unit": weight_uom},
+			"total_linear_length": {"value": total_linear_length, "unit": len_uom},
+			"total_width": {"value": total_width, "unit": len_uom},
+			"total_height": {"value": total_height, "unit": len_uom},
+			"total_weight": {"value": total_weight, "unit": weight_uom},
 		}
 
 	def get_shipment_pickup_window_from_doc(self, doc: Shipment) -> dict:

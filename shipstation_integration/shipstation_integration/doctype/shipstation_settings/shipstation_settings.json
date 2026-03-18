@@ -228,6 +228,8 @@
 			"label": "Enable ShipStation API v2"
 		},
 		{
+			"default": "https://api.shipengine.com",
+			"description": "ShipStation/ShipEngine API base URL. Leave as default unless using a sandbox or alternative endpoint.",
 			"fieldname": "base_url",
 			"fieldtype": "Data",
 			"label": "Base URL"
