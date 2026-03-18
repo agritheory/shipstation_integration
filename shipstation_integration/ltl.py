@@ -1570,7 +1570,7 @@ class ShipstationLTL(BaseLTL):
 				err_template.format(
 					dim="weight", user_uom=row.weight_uom, row_idx=row.idx, supported=comma_or(supported_weights)
 				)
-			)  
+			)
 
 		# Density UOM defaults to Pound/Cubic Foot — the only UOM Shipstation accepts.
 		# Explicit validation is preserved for any non-empty value so typos surface clearly.
