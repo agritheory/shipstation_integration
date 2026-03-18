@@ -12,6 +12,7 @@ frappe.ui.form.on('Shipment', {
 	refresh: frm => {
 		if (frm.doc.freight_type === 'LTL') {
 			get_accessorial_services(frm)
+			get_ltl_package_type_options(frm)
 		}
 		set_query_for_shipment_dimension_uoms(frm)
 		get_carrier_service_levels(frm)
@@ -36,7 +37,7 @@ frappe.ui.form.on('Shipment', {
 
 	preferred_carrier: frm => {
 		if (frm.doc.freight_type === 'LTL') {
-			get_ltl_carrier_id(frm)
+			get_ltl_carrier_id(frm).then(() => get_ltl_package_type_options(frm))
 			get_carrier_service_levels(frm)
 			get_accessorial_services(frm)
 			show_quote_and_spot_quote_fields(frm)
@@ -91,12 +92,12 @@ frappe.ui.form.on('Shipment', {
 frappe.ui.form.on('Shipment Parcel', {
 	shipment_parcel_add: (frm, cdt, cdn) => {
 		if (frm.doc.freight_type === 'LTL') {
-			get_ltl_package_type_options(frm, cdt, cdn)
+			get_ltl_package_type_options(frm)
 		}
 	},
 	form_render: (frm, cdt, cdn) => {
 		if (frm.doc.freight_type === 'LTL') {
-			get_ltl_package_type_options(frm, cdt, cdn)
+			get_ltl_package_type_options(frm)
 		}
 	},
 })
@@ -117,14 +118,18 @@ async function get_ltl_carrier_id(frm) {
 		})
 }
 
-async function get_ltl_package_type_options(frm, cdt, cdn) {
+async function get_ltl_package_type_options(frm) {
+	if (!frm.doc.carrier_id) return
 	await frappe
 		.xcall('shipstation_integration.shipstation_integration.overrides.shipment.get_ltl_package_type_options', {
 			carrier_id: frm.doc.carrier_id,
 			settings_name: null,
 		})
 		.then(options => {
-			frm.set_df_property('shipment_parcel', 'options', options, frm.doc.name, 'package_type_code', cdn)
+			// Populate the Shipment-level package_type_code dropdown with carrier-specific options
+			const select_options = ['', ...options.map(o => o.value)].join('\n')
+			frm.set_df_property('package_type_code', 'options', select_options)
+			frm.refresh_field('package_type_code')
 		})
 }
 

@@ -1,353 +1,372 @@
 {
- "actions": [],
- "autoname": "Prompt",
- "creation": "2019-12-10 11:54:44.442858",
- "doctype": "DocType",
- "editable_grid": 1,
- "engine": "InnoDB",
- "field_order": [
-  "enabled",
-  "enable_label_generation",
-  "sb_legacy_api",
-  "enable_legacy_api",
-  "api_key",
-  "api_secret",
-  "column_break_legacy",
-  "get_items",
-  "get_orders",
-  "get_shipments",
-  "get_tags",
-  "update_carriers_and_stores",
-  "default_item_group",
-  "weight_conversion",
-  "shipstation_user",
-  "sb_shipstation_api",
-  "enable_shipstation_api",
-  "base_url",
-  "shipstation_api_key",
-  "alternative_ltl_client_id",
-  "alternative_ltl_client_secret",
-  "fetch_api_ltl_carriers",
-  "shipstation_api_ltl_carrier_data",
-  "api_ltl_carriers_html",
-  "column_break_api",
-  "test_api_connection",
-  "fetch_api_carriers",
-  "sync_carrier_packages",
-  "shipstation_api_carrier_data",
-  "api_carriers_html",
-  "sb_filters",
-  "since_date",
-  "column_break_lzby",
-  "sb_warehouses",
-  "shipstation_warehouses",
-  "fetch_warehouses",
-  "reset_warehouses",
-  "sb_stores",
-  "shipstation_stores",
-  "sb_carriers",
-  "carrier_data",
-  "carriers_html"
- ],
- "fields": [
-  {
-   "description": "Configure the legacy ShipStation API for order sync, store management, and webhooks.",
-   "fieldname": "sb_legacy_api",
-   "fieldtype": "Section Break",
-   "label": "ShipStation Legacy API (v1)"
-  },
-  {
-   "default": "0",
-   "fieldname": "enable_legacy_api",
-   "fieldtype": "Check",
-   "label": "Enable Legacy API (v1)"
-  },
-  {
-   "depends_on": "eval:doc.enable_legacy_api",
-   "fieldname": "api_key",
-   "fieldtype": "Password",
-   "in_list_view": 1,
-   "label": "API Key"
-  },
-  {
-   "depends_on": "eval:doc.enable_legacy_api",
-   "fieldname": "api_secret",
-   "fieldtype": "Password",
-   "in_list_view": 1,
-   "label": "API Secret"
-  },
-  {
-   "fieldname": "column_break_legacy",
-   "fieldtype": "Column Break"
-  },
-  {
-   "depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
-   "fieldname": "get_items",
-   "fieldtype": "Button",
-   "label": "Get Items",
-   "permlevel": 1
-  },
-  {
-   "depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
-   "fieldname": "get_orders",
-   "fieldtype": "Button",
-   "label": "Get Orders",
-   "permlevel": 1
-  },
-  {
-   "depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
-   "fieldname": "get_shipments",
-   "fieldtype": "Button",
-   "label": "Get Shipments",
-   "permlevel": 1
-  },
-  {
-   "fieldname": "default_item_group",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Default Item Group",
-   "options": "Item Group",
-   "reqd": 1
-  },
-  {
-   "fieldname": "shipstation_stores",
-   "fieldtype": "Table",
-   "label": "Shipstation Stores",
-   "options": "Shipstation Store"
-  },
-  {
-   "fieldname": "carrier_data",
-   "fieldtype": "Code",
-   "hidden": 1,
-   "label": "carrier_data"
-  },
-  {
-   "fieldname": "carriers_html",
-   "fieldtype": "HTML"
-  },
-  {
-   "description": "Only orders from the above Shipstation warehouses will be synced. If no warehouses are set, the system will default to fetching from all Shipstation warehouses.",
-   "fieldname": "shipstation_warehouses",
-   "fieldtype": "Table MultiSelect",
-   "label": "Shipstation Warehouses",
-   "options": "Shipstation Warehouse"
-  },
-  {
-   "depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
-   "fieldname": "sb_stores",
-   "fieldtype": "Section Break",
-   "label": "Stores"
-  },
-  {
-   "depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
-   "fieldname": "sb_carriers",
-   "fieldtype": "Section Break",
-   "label": "Legacy Carriers"
-  },
-  {
-   "depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
-   "fieldname": "update_carriers_and_stores",
-   "fieldtype": "Button",
-   "label": "Update Carriers and Stores"
-  },
-  {
-   "default": "1",
-   "fieldname": "enabled",
-   "fieldtype": "Check",
-   "label": "Enabled"
-  },
-  {
-   "fieldname": "sb_filters",
-   "fieldtype": "Section Break",
-   "label": "Filters"
-  },
-  {
-   "description": "If orders are found before this date, they will not be created. This filter can be useful to avoid stock mismatches after reconciliation.",
-   "fieldname": "since_date",
-   "fieldtype": "Date",
-   "label": "Since Date"
-  },
-  {
-   "default": "0",
-   "depends_on": "eval:doc.enabled",
-   "fieldname": "enable_label_generation",
-   "fieldtype": "Check",
-   "label": "Enable Label Generation"
-  },
-  {
-   "fieldname": "sb_warehouses",
-   "fieldtype": "Section Break"
-  },
-  {
-   "depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
-   "fieldname": "fetch_warehouses",
-   "fieldtype": "Button",
-   "label": "Fetch All"
-  },
-  {
-   "depends_on": "eval:!doc.__islocal",
-   "fieldname": "reset_warehouses",
-   "fieldtype": "Button",
-   "label": "Reset"
-  },
-  {
-   "fieldname": "weight_conversion",
-   "fieldtype": "Select",
-   "label": "Weight Conversion",
-   "options": "As Provided\nConvert to Gram\nConvert to Ounce"
-  },
-  {
-   "fieldname": "column_break_lzby",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "shipstation_user",
-   "fieldtype": "Link",
-   "label": "ShipStation User",
-   "options": "User"
-  },
-  {
-   "depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
-   "fieldname": "get_tags",
-   "fieldtype": "Button",
-   "label": "Get Tags"
-  },
-  {
-   "description": "Configure ShipStation API v2 (formerly ShipEngine) for rate shopping and direct label generation with additional carriers.",
-   "fieldname": "sb_shipstation_api",
-   "fieldtype": "Section Break",
-   "label": "ShipStation API v2"
-  },
-  {
-   "default": "0",
-   "fieldname": "enable_shipstation_api",
-   "fieldtype": "Check",
-   "label": "Enable ShipStation API v2"
-  },
-  {
-   "depends_on": "eval:doc.enable_shipstation_api",
-   "description": "API key for ShipStation API v2. Obtain from your ShipStation account settings.",
-   "fieldname": "shipstation_api_key",
-   "fieldtype": "Password",
-   "label": "ShipStation API Key"
-  },
-  {
-   "fieldname": "column_break_api",
-   "fieldtype": "Column Break"
-  },
-  {
-   "depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",
-   "fieldname": "test_api_connection",
-   "fieldtype": "Button",
-   "label": "Test API Connection"
-  },
-  {
-   "depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",
-   "fieldname": "fetch_api_carriers",
-   "fieldtype": "Button",
-   "label": "Fetch Carriers"
-  },
-  {
-   "depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",
-   "description": "Fetch detailed package types with dimensions for all carriers",
-   "fieldname": "sync_carrier_packages",
-   "fieldtype": "Button",
-   "label": "Sync Package Types"
-  },
-  {
-   "fieldname": "shipstation_api_carrier_data",
-   "fieldtype": "Code",
-   "hidden": 1,
-   "label": "API Carrier Data"
-  },
-  {
-   "depends_on": "eval:doc.enable_shipstation_api && doc.shipstation_api_carrier_data",
-   "fieldname": "api_carriers_html",
-   "fieldtype": "HTML",
-   "label": "API Carriers"
-  },
-  {
-   "fieldname": "shipstation_api_ltl_carrier_data",
-   "fieldtype": "Code",
-   "hidden": 1,
-   "label": "API LTL Carrier Data"
-  },
-  {
-   "depends_on": "eval:doc.enable_shipstation_api && doc.shipstation_api_ltl_carrier_data",
-   "fieldname": "api_ltl_carriers_html",
-   "fieldtype": "HTML",
-   "label": "API LTL Carriers"
-  },
-  {
-   "depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",
-   "fieldname": "fetch_api_ltl_carriers",
-   "fieldtype": "Button",
-   "label": "Fetch LTL Carriers"
-  },
-  {
-   "fieldname": "alternative_ltl_client_id",
-   "fieldtype": "Password",
-   "label": "Alternative LTL Client ID"
-  },
-  {
-   "fieldname": "alternative_ltl_client_secret",
-   "fieldtype": "Password",
-   "label": "Alternative LTL Client Secret"
-  },
-  {
-   "fieldname": "base_url",
-   "fieldtype": "Data",
-   "label": "Base URL"
-  }
- ],
- "hide_toolbar": 1,
- "links": [],
- "modified": "2026-02-27 11:14:21.114220",
- "modified_by": "Administrator",
- "module": "Shipstation Integration",
- "name": "Shipstation Settings",
- "naming_rule": "Set by user",
- "owner": "Administrator",
- "permissions": [
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
-  },
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Administrator",
-   "share": 1,
-   "write": 1
-  },
-  {
-   "email": 1,
-   "export": 1,
-   "permlevel": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Administrator",
-   "share": 1,
-   "write": 1
-  }
- ],
- "row_format": "Dynamic",
- "sort_field": "modified",
- "sort_order": "DESC",
- "states": [],
- "track_views": 1
+	"actions": [],
+	"autoname": "Prompt",
+	"creation": "2019-12-10 11:54:44.442858",
+	"doctype": "DocType",
+	"editable_grid": 1,
+	"engine": "InnoDB",
+	"field_order": [
+		"enabled",
+		"enable_label_generation",
+		"sb_legacy_api",
+		"enable_legacy_api",
+		"api_key",
+		"api_secret",
+		"column_break_legacy",
+		"get_items",
+		"get_orders",
+		"get_shipments",
+		"get_tags",
+		"update_carriers_and_stores",
+		"default_item_group",
+		"weight_conversion",
+		"shipstation_user",
+		"sb_shipstation_api",
+		"enable_shipstation_api",
+		"base_url",
+		"shipstation_api_key",
+		"alternative_ltl_client_id",
+		"alternative_ltl_client_secret",
+		"fetch_api_ltl_carriers",
+		"shipstation_api_ltl_carrier_data",
+		"api_ltl_carriers_html",
+		"column_break_api",
+		"test_api_connection",
+		"fetch_api_carriers",
+		"sync_carrier_packages",
+		"shipstation_api_carrier_data",
+		"api_carriers_html",
+		"sb_gs1",
+		"gs1_company_prefix",
+		"column_break_gs1",
+		"sb_filters",
+		"since_date",
+		"column_break_lzby",
+		"sb_warehouses",
+		"shipstation_warehouses",
+		"fetch_warehouses",
+		"reset_warehouses",
+		"sb_stores",
+		"shipstation_stores",
+		"sb_carriers",
+		"carrier_data",
+		"carriers_html"
+	],
+	"fields": [
+		{
+			"fieldname": "sb_legacy_api",
+			"fieldtype": "Section Break",
+			"label": "ShipStation Legacy API (v1)",
+			"description": "Configure the legacy ShipStation API for order sync, store management, and webhooks."
+		},
+		{
+			"default": "0",
+			"fieldname": "enable_legacy_api",
+			"fieldtype": "Check",
+			"label": "Enable Legacy API (v1)"
+		},
+		{
+			"depends_on": "eval:doc.enable_legacy_api",
+			"fieldname": "api_key",
+			"fieldtype": "Password",
+			"in_list_view": 1,
+			"label": "API Key"
+		},
+		{
+			"depends_on": "eval:doc.enable_legacy_api",
+			"fieldname": "api_secret",
+			"fieldtype": "Password",
+			"in_list_view": 1,
+			"label": "API Secret"
+		},
+		{
+			"fieldname": "column_break_legacy",
+			"fieldtype": "Column Break"
+		},
+		{
+			"depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
+			"fieldname": "get_items",
+			"fieldtype": "Button",
+			"label": "Get Items",
+			"permlevel": 1
+		},
+		{
+			"depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
+			"fieldname": "get_orders",
+			"fieldtype": "Button",
+			"label": "Get Orders",
+			"permlevel": 1
+		},
+		{
+			"depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
+			"fieldname": "get_shipments",
+			"fieldtype": "Button",
+			"label": "Get Shipments",
+			"permlevel": 1
+		},
+		{
+			"fieldname": "default_item_group",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "Default Item Group",
+			"options": "Item Group",
+			"reqd": 1
+		},
+		{
+			"fieldname": "shipstation_stores",
+			"fieldtype": "Table",
+			"label": "Shipstation Stores",
+			"options": "Shipstation Store"
+		},
+		{
+			"fieldname": "carrier_data",
+			"fieldtype": "Code",
+			"hidden": 1,
+			"label": "carrier_data"
+		},
+		{
+			"fieldname": "carriers_html",
+			"fieldtype": "HTML"
+		},
+		{
+			"description": "Only orders from the above Shipstation warehouses will be synced. If no warehouses are set, the system will default to fetching from all Shipstation warehouses.",
+			"fieldname": "shipstation_warehouses",
+			"fieldtype": "Table MultiSelect",
+			"label": "Shipstation Warehouses",
+			"options": "Shipstation Warehouse"
+		},
+		{
+			"depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
+			"fieldname": "sb_stores",
+			"fieldtype": "Section Break",
+			"label": "Stores"
+		},
+		{
+			"depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
+			"fieldname": "sb_carriers",
+			"fieldtype": "Section Break",
+			"label": "Legacy Carriers"
+		},
+		{
+			"depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
+			"fieldname": "update_carriers_and_stores",
+			"fieldtype": "Button",
+			"label": "Update Carriers and Stores"
+		},
+		{
+			"default": "1",
+			"fieldname": "enabled",
+			"fieldtype": "Check",
+			"label": "Enabled"
+		},
+		{
+			"fieldname": "sb_filters",
+			"fieldtype": "Section Break",
+			"label": "Filters"
+		},
+		{
+			"description": "If orders are found before this date, they will not be created. This filter can be useful to avoid stock mismatches after reconciliation.",
+			"fieldname": "since_date",
+			"fieldtype": "Date",
+			"label": "Since Date"
+		},
+		{
+			"default": "0",
+			"depends_on": "eval:doc.enabled",
+			"fieldname": "enable_label_generation",
+			"fieldtype": "Check",
+			"label": "Enable Label Generation"
+		},
+		{
+			"fieldname": "sb_warehouses",
+			"fieldtype": "Section Break"
+		},
+		{
+			"depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
+			"fieldname": "fetch_warehouses",
+			"fieldtype": "Button",
+			"label": "Fetch All"
+		},
+		{
+			"depends_on": "eval:!doc.__islocal",
+			"fieldname": "reset_warehouses",
+			"fieldtype": "Button",
+			"label": "Reset"
+		},
+		{
+			"fieldname": "weight_conversion",
+			"fieldtype": "Select",
+			"label": "Weight Conversion",
+			"options": "As Provided\nConvert to Gram\nConvert to Ounce"
+		},
+		{
+			"fieldname": "column_break_lzby",
+			"fieldtype": "Column Break"
+		},
+		{
+			"fieldname": "shipstation_user",
+			"fieldtype": "Link",
+			"label": "ShipStation User",
+			"options": "User"
+		},
+		{
+			"depends_on": "eval:doc.enable_legacy_api && !doc.__islocal",
+			"fieldname": "get_tags",
+			"fieldtype": "Button",
+			"label": "Get Tags"
+		},
+		{
+			"fieldname": "sb_shipstation_api",
+			"fieldtype": "Section Break",
+			"label": "ShipStation API v2",
+			"description": "Configure ShipStation API v2 (formerly ShipEngine) for rate shopping and direct label generation with additional carriers."
+		},
+		{
+			"default": "0",
+			"fieldname": "enable_shipstation_api",
+			"fieldtype": "Check",
+			"label": "Enable ShipStation API v2"
+		},
+		{
+			"default": "https://api.shipengine.com",
+			"description": "ShipStation/ShipEngine API base URL. Leave as default unless using a sandbox or alternative endpoint.",
+			"fieldname": "base_url",
+			"fieldtype": "Data",
+			"label": "Base URL"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api",
+			"fieldname": "shipstation_api_key",
+			"fieldtype": "Password",
+			"label": "ShipStation API Key",
+			"description": "API key for ShipStation API v2. Obtain from your ShipStation account settings."
+		},
+		{
+			"fieldname": "alternative_ltl_client_id",
+			"fieldtype": "Password",
+			"label": "Alternative LTL Client ID"
+		},
+		{
+			"fieldname": "alternative_ltl_client_secret",
+			"fieldtype": "Password",
+			"label": "Alternative LTL Client Secret"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",
+			"fieldname": "fetch_api_ltl_carriers",
+			"fieldtype": "Button",
+			"label": "Fetch LTL Carriers"
+		},
+		{
+			"fieldname": "shipstation_api_ltl_carrier_data",
+			"fieldtype": "Code",
+			"hidden": 1,
+			"label": "API LTL Carrier Data"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api && doc.shipstation_api_ltl_carrier_data",
+			"fieldname": "api_ltl_carriers_html",
+			"fieldtype": "HTML",
+			"label": "API LTL Carriers"
+		},
+		{
+			"fieldname": "column_break_api",
+			"fieldtype": "Column Break"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",
+			"fieldname": "test_api_connection",
+			"fieldtype": "Button",
+			"label": "Test API Connection"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",
+			"fieldname": "fetch_api_carriers",
+			"fieldtype": "Button",
+			"label": "Fetch Carriers"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",
+			"fieldname": "sync_carrier_packages",
+			"fieldtype": "Button",
+			"label": "Sync Package Types",
+			"description": "Fetch detailed package types with dimensions for all carriers"
+		},
+		{
+			"fieldname": "shipstation_api_carrier_data",
+			"fieldtype": "Code",
+			"hidden": 1,
+			"label": "API Carrier Data"
+		},
+		{
+			"depends_on": "eval:doc.enable_shipstation_api && doc.shipstation_api_carrier_data",
+			"fieldname": "api_carriers_html",
+			"fieldtype": "HTML",
+			"label": "API Carriers"
+		},
+		{
+			"fieldname": "sb_gs1",
+			"fieldtype": "Section Break",
+			"label": "GS1 / SSCC"
+		},
+		{
+			"description": "Licensed GS1 Company Prefix (7–10 digits). Required to generate valid SSCC-18 barcodes. Obtain from gs1us.org.",
+			"fieldname": "gs1_company_prefix",
+			"fieldtype": "Data",
+			"label": "GS1 Company Prefix"
+		},
+		{
+			"fieldname": "column_break_gs1",
+			"fieldtype": "Column Break"
+		}
+	],
+	"hide_toolbar": 1,
+	"links": [],
+	"modified": "2026-01-31 12:00:00.000000",
+	"modified_by": "Administrator",
+	"module": "Shipstation Integration",
+	"name": "Shipstation Settings",
+	"naming_rule": "Set by user",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "System Manager",
+			"share": 1,
+			"write": 1
+		},
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "Administrator",
+			"share": 1,
+			"write": 1
+		},
+		{
+			"email": 1,
+			"export": 1,
+			"permlevel": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "Administrator",
+			"share": 1,
+			"write": 1
+		}
+	],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": [],
+	"track_views": 1
 }

@@ -1,0 +1,20 @@
+{
+  "description": "Captured ShipStation LTL pickup scheduling API responses for testing",
+  "captured_responses": [
+    {
+      "endpoint": "POST /v-beta/ltl/quotes/{quote_id}/pickup",
+      "response": {
+        "pickup_id": "ltl-pickup-11223344-5566-7788-99aa-bbccddeeff00",
+        "shipment_id": "ltl-shipment-aabbccdd-1122-3344-5566-778899aabbcc",
+        "pro_number": "0123456789",
+        "confirmation_number": "CONF-2026-031200001",
+        "documents": [
+          {
+            "type": "bol",
+            "image": "JVBERi0xLjQgMSAwIG9iaiA8PCAvVHlwZSAvQ2F0YWxvZyA+PiBlbmRvYmo="
+          }
+        ]
+      }
+    }
+  ]
+}

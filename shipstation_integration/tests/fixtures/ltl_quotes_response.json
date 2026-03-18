@@ -1,0 +1,92 @@
+{
+  "description": "Captured ShipStation LTL quote API responses for testing",
+  "captured_responses": [
+    {
+      "endpoint": "POST /v-beta/ltl/quotes",
+      "response": [
+        {
+          "quote_id": "ltl-quote-aaa111bb-cc22-dd33-ee44-ff5566778899",
+          "expiration_date": "2026-03-17",
+          "pickup_date": "2026-03-12",
+          "estimated_delivery_days": 3,
+          "service": {
+            "carrier_code": "TEST",
+            "carrier_description": "Standard LTL",
+            "service_code": "STD"
+          },
+          "charges": [
+            {
+              "type": "freight",
+              "amount": {
+                "currency": "USD",
+                "value": 412.50
+              },
+              "description": "Base Freight Charge"
+            },
+            {
+              "type": "fuel",
+              "amount": {
+                "currency": "USD",
+                "value": 61.88
+              },
+              "description": "Fuel Surcharge"
+            },
+            {
+              "type": "total",
+              "amount": {
+                "currency": "USD",
+                "value": 474.38
+              },
+              "description": "Total Charges"
+            }
+          ]
+        },
+        {
+          "quote_id": "ltl-quote-bbb222cc-dd33-ee44-ff55-aa6677889900",
+          "expiration_date": "2026-03-17",
+          "pickup_date": "2026-03-12",
+          "estimated_delivery_days": 2,
+          "service": {
+            "carrier_code": "TEST",
+            "carrier_description": "Expedited LTL",
+            "service_code": "EXP"
+          },
+          "charges": [
+            {
+              "type": "freight",
+              "amount": {
+                "currency": "USD",
+                "value": 589.00
+              },
+              "description": "Base Freight Charge"
+            },
+            {
+              "type": "fuel",
+              "amount": {
+                "currency": "USD",
+                "value": 88.35
+              },
+              "description": "Fuel Surcharge"
+            },
+            {
+              "type": "discount",
+              "amount": {
+                "currency": "USD",
+                "value": 30.00
+              },
+              "description": "Volume Discount"
+            },
+            {
+              "type": "total",
+              "amount": {
+                "currency": "USD",
+                "value": 647.35
+              },
+              "description": "Total Charges"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

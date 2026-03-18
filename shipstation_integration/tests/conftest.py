@@ -85,6 +85,9 @@ def mock_shipstation_settings(monkeypatch):
 	monkeypatch.setattr(
 		"shipstation_integration.rates.get_shipstation_settings", lambda *args, **kwargs: mock_settings
 	)
+	monkeypatch.setattr(
+		"shipstation_integration.ltl.get_shipstation_settings", lambda *args, **kwargs: mock_settings
+	)
 
 	return mock_settings
 
