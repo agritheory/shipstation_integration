@@ -19,6 +19,7 @@ import frappe
 import pytest
 
 from shipstation_integration.ltl import ShipstationLTL
+from shipstation_integration.tests.conftest import db_instance
 
 
 # ---------------------------------------------------------------------------
@@ -235,8 +236,8 @@ def test_schedule_pickup_attaches_bol(db_instance, ltl_shipment, quotes_fixture,
 	)
 	assert len(attachments) >= 1, "Expected at least one attached BOL file"
 	assert any(
-		"bol" in (a.file_name or "").lower() for a in attachments
-	), "Expected an attachment with 'bol' in the filename"
+		"bill_of_lading" in (a.file_name or "").lower() for a in attachments
+	), "Expected an attachment with 'bill_of_lading' in the filename"
 
 	# Confirm success message content
 	assert pickup_fixture["pickup_id"] in msg

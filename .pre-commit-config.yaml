@@ -21,7 +21,7 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
-        args: ["--ignore-words-list", "notin"]
+        args: ["--ignore-words-list", "notin, UE, gERE"]
         exclude: 'yarn.lock|poetry.lock|\.llm/'
         additional_dependencies:
           - tomli
