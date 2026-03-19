@@ -914,11 +914,12 @@ class ShipstationLTL(BaseLTL):
 			)
 
 		preferred_name = (doc.get("package_type") or "").strip().lower()
+		default = ([p for p in pkg_types if p.get("name") == "Package"] or pkg_types)[0]
 		matched = next(
 			(p for p in pkg_types if p.get("name", "").strip().lower() == preferred_name),
 			None,
 		)
-		doc.package_type_code = (matched or pkg_types[0]).get("code")
+		doc.package_type_code = (matched or default).get("code")
 
 	def validate_billing(self, doc) -> None:
 		"""
@@ -1404,7 +1405,8 @@ class ShipstationLTL(BaseLTL):
 		Returns a list of package dicts suitable for a ShipEngine LTL quote payload.
 		Raises ValidationError if SDN has no rows or none have a parcel_number.
 		"""
-		sdn_rows = [frappe._dict(r) for r in (doc.shipment_delivery_note or [])]
+		# sdn_rows = [frappe._dict(r) for r in (doc.shipment_delivery_note or [])]
+		sdn_rows = doc.shipment_delivery_note
 		packed = [r for r in sdn_rows if r.parcel_number]
 		if not packed:
 			frappe.throw(

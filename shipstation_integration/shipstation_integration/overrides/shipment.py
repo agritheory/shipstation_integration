@@ -14,18 +14,6 @@ class ShipStationShipment(Shipment):
 	def validate(self):
 		# TODO: if freight_type == "LTL" -> call ltl_class method to show missing but required fields
 		super().validate()
-		self.set_carrier_id_for_shipstation()
-
-	def set_carrier_id_for_shipstation(self):
-		if self.preferred_carrier and not self.carrier_id:
-			try:
-				settings = get_shipstation_settings()
-				ltl_class = settings.get_ltl_class()
-				if ltl_class.provider == "Shipstation":
-					self.carrier_id = ltl_class.get_carrier_id_for_supplier(self.preferred_carrier, settings.name)
-			except ValidationError:
-				# Ignore error if no settings found
-				return
 
 
 @frappe.whitelist()
