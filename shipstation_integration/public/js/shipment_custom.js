@@ -252,7 +252,7 @@ async function show_quote_and_spot_quote_fields(frm) {
 }
 
 function add_schedule_pickup_button(frm) {
-	if (frm.doc.freight_type === 'LTL' && frm.doc.quote_or_offer_id) {
+	if (frm.doc.freight_type === 'LTL' && frm.doc.quote_or_offer_id && !(frm.doc.pickup_id || frm.doc.awb_number)) {
 		frm.add_custom_button(__('Schedule LTL Pickup'), () => {
 			frappe.call({
 				method: 'shipstation_integration.shipstation_integration.overrides.shipment.schedule_ltl_pickup',
@@ -269,6 +269,6 @@ function add_schedule_pickup_button(frm) {
 			})
 		})
 	} else {
-		frm.remove_custom_button('Get LTL Quotes')
+		frm.remove_custom_button('Schedule LTL Pickup')
 	}
 }

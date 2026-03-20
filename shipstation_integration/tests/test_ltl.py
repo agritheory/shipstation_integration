@@ -34,10 +34,12 @@ def ltl_shipment():
 	original_package_type_code = shipment.package_type_code
 	original_sdn_rows = [row.as_dict() for row in shipment.shipment_delivery_note]
 
+	dn = frappe.get_all("Delivery Note", order_by="creation")  # get original DN from setup
 	dn_items = frappe.get_all(
 		"Delivery Note Item",
-		filters={"parent": shipment.delivery_note},
+		filters={"parent": dn[0].name},
 		fields=["name", "item_code", "item_name", "qty", "stock_uom"],
+		limit=2,  # four items in BEAM-test data's SO - limit to 2 for simplicity
 	)
 
 	shipment.shipment_delivery_note = []
@@ -45,7 +47,7 @@ def ltl_shipment():
 		shipment.append(
 			"shipment_delivery_note",
 			{
-				"delivery_note": shipment.delivery_note,
+				"delivery_note": dn[0].name,
 				"dn_detail": item.name,
 				"item_code": item.item_code,
 				"item_name": item.item_name,
@@ -61,7 +63,7 @@ def ltl_shipment():
 			},
 		)
 
-	shipment.package_type_code = "PLT"
+	shipment.package_type_code = "pkg"
 	shipment.save()
 	shipment.reload()
 
@@ -239,7 +241,7 @@ def test_build_packages_from_sdn_groups_rows_by_parcel_number(ltl, ltl_shipment)
 
 def test_build_packages_from_sdn_package_type_code_from_shipment(ltl, ltl_shipment):
 	pkg = ltl.build_packages_from_sdn(ltl_shipment)[0]
-	assert pkg["code"] == "PLT"
+	assert pkg["code"] == "pkg"
 
 
 def test_build_packages_from_sdn_raises_when_no_rows_have_parcel_number(ltl, ltl_shipment):

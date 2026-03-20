@@ -30,7 +30,7 @@ jobs:
         run: pip install mypy
 
       - name: Install mypy types
-        run: mypy ./shipstation_integration/. --install-types --non-interactive
+        run: mypy ./shipstation_integration/. --install-types --non-interactive --follow-untyped-imports
 
       - name: Run mypy
         uses: sasanquaneuf/mypy-github-action@releases/v1
