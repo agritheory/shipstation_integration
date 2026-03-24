@@ -55,7 +55,10 @@ class BaseLTL:
 		raise NotImplementedError
 
 	def get_carrier_id_for_supplier(
-		self, supplier_name: str, settings_name: str | None = None
+		self,
+		supplier_name: str,
+		settings_name: str | None = None,
+		company: str | None = None,
 	) -> str | None:
 		"""
 		Retrieves the provider's carrier_id for a given Supplier (transporter) name. This may be
@@ -65,6 +68,7 @@ class BaseLTL:
 		Args:
 		supplier_name: The Supplier document name (e.g., "UPS", "USPS")
 		settings_name: Optional Shipstation Settings document name
+		company: Optional company for Freight Carrier Settings context
 
 		Returns:
 		Provider's carrier_id (e.g., "100abcde-...") or None if not found
@@ -72,7 +76,10 @@ class BaseLTL:
 		raise NotImplementedError
 
 	def get_package_type_options(
-		self, carrier_id: str | None = None, settings_name: str | None = None
+		self,
+		carrier_id: str | None = None,
+		settings_name: str | None = None,
+		doc: Shipment | None = None,
 	) -> list[dict]:
 		"""
 		Returns a UI-friendly dict with label and value keys to populate dropdown options in the
@@ -81,6 +88,7 @@ class BaseLTL:
 		Args:
 		carrier_id: The provider's LTL carrier ID, if used (e.g., "100abcde-...")
 		settings_name: Optional Shipstation Settings document name
+		doc: Optional Shipment context for Freight Carrier Settings resolution
 
 		Returns:
 		List of dicts with "value" and "label" keys for use in select field

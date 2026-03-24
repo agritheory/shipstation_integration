@@ -22,7 +22,7 @@ def create_item(
 	product: ShipStationItem | ShipStationOrderItem,
 	settings: "ShipstationSettings",
 	store: Optional["ShipstationStore"] = None,
-) -> str:
+) -> "Item":
 
 	if settings.shipstation_user:
 		frappe.set_user(settings.shipstation_user)
@@ -34,8 +34,9 @@ def create_item(
 		item_code = frappe.db.get_value("Item", {"item_code": product.sku.strip()})
 		item_name = frappe.db.get_value("Item", item_code, "item_name") or item_name
 
+	item: "Item"
 	if item_code:
-		item: "Item" = frappe.get_doc("Item", item_code)
+		item = frappe.get_doc("Item", item_code)
 	else:
 		weight_per_unit, weight_uom = 1.0, "Ounce"
 		if isinstance(product, ShipStationItem):
@@ -66,7 +67,7 @@ def create_item(
 					weight_per_unit = flt(weight_per_unit * 0.035274, 2)
 					weight_uom = "Ounce"
 
-		item: "Item" = frappe.new_doc("Item")
+		item = frappe.new_doc("Item")
 		item.update(
 			{
 				"item_code": product.sku or item_name,

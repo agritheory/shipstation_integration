@@ -10,7 +10,7 @@ using the ShipEngine API (ShipStation API v2).
 
 import json
 import re
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import frappe
 import httpx
@@ -235,6 +235,7 @@ def list_carriers(
 		error_msg = get_error_message(e)
 		frappe.log_error(title="Error listing carriers", message=error_msg)
 		frappe.throw(_("Failed to list carriers: {0}").format(error_msg))
+		return []
 
 
 @frappe.whitelist()
@@ -266,10 +267,12 @@ def get_carrier(carrier_id: str, settings_name: str | None = None) -> dict:
 			message=f"Carrier ID: {carrier_id}\nStatus: {e.response.status_code}\nResponse: {e.response.text}",
 		)
 		frappe.throw(_("Failed to get carrier: {0}").format(e.response.text))
+		return {}
 	except Exception as e:
 		error_msg = get_error_message(e)
 		frappe.log_error(title="Error getting carrier", message=error_msg)
 		frappe.throw(_("Failed to get carrier: {0}").format(error_msg))
+		return {}
 
 
 @frappe.whitelist()
@@ -307,10 +310,12 @@ def list_carrier_package_types(carrier_id: str, settings_name: str | None = None
 			message=f"Carrier ID: {carrier_id}\nStatus: {e.response.status_code}\nResponse: {e.response.text}",
 		)
 		frappe.throw(_("Failed to list carrier package types: {0}").format(e.response.text))
+		return []
 	except Exception as e:
 		error_msg = get_error_message(e)
 		frappe.log_error(title="Error listing carrier package types", message=error_msg)
 		frappe.throw(_("Failed to list carrier package types: {0}").format(error_msg))
+		return []
 
 
 @frappe.whitelist()
@@ -345,10 +350,12 @@ def list_carrier_services(carrier_id: str, settings_name: str | None = None) -> 
 			message=f"Carrier ID: {carrier_id}\nStatus: {e.response.status_code}\nResponse: {e.response.text}",
 		)
 		frappe.throw(_("Failed to list carrier services: {0}").format(e.response.text))
+		return []
 	except Exception as e:
 		error_msg = get_error_message(e)
 		frappe.log_error(title="Error listing carrier services", message=error_msg)
 		frappe.throw(_("Failed to list carrier services: {0}").format(error_msg))
+		return []
 
 
 @frappe.whitelist()
@@ -440,7 +447,7 @@ def sync_carrier_package_types(settings_name: str | None = None) -> dict:
 			if supplier_name and not existing_before:
 				transporters_created += 1
 
-		carrier_data = {
+		carrier_data: dict[str, Any] = {
 			"carrier_id": carrier_id,
 			"carrier_code": carrier_code,
 			"account_number": account_number,
@@ -487,7 +494,7 @@ def sync_carrier_package_types(settings_name: str | None = None) -> dict:
 
 						# Create/update Shipment Parcel Template for packages with dimensions
 						created, updated = sync_carrier_parcel_template(
-							formatted_pkg, carrier_code, name, supplier_name
+							formatted_pkg, carrier_code or "", name or "", supplier_name
 						)
 						templates_created += created
 						templates_updated += updated
@@ -606,15 +613,16 @@ def sync_carrier_parcel_template(
 
 	if has_valid_dimensions:
 		# Convert inches to cm if needed (Shipment Parcel Template uses cm)
+		lf, wf, hf = float(length or 0), float(width or 0), float(height or 0)
 		if unit in ("inch", "inches", "in"):
 			# 1 inch = 2.54 cm
-			length = int(round(length * 2.54))
-			width = int(round(width * 2.54))
-			height = int(round(height * 2.54))
+			length = int(round(lf * 2.54))
+			width = int(round(wf * 2.54))
+			height = int(round(hf * 2.54))
 		else:
-			length = int(round(length))
-			width = int(round(width))
-			height = int(round(height))
+			length = int(round(lf))
+			width = int(round(wf))
+			height = int(round(hf))
 	else:
 		# Use placeholder dimensions for packages without dimension data
 		# These should be updated by the user if they want accurate dimensions

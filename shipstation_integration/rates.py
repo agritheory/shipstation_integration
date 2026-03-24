@@ -202,6 +202,7 @@ def get_rates(
 			message=f"Rate Request: {rate_request}\n\nError: {error_msg}",
 		)
 		frappe.throw(_("Failed to fetch shipping rates: {0}").format(error_msg))
+		return []
 
 
 @frappe.whitelist()
@@ -250,6 +251,7 @@ def estimate_rates(
 		error_msg = get_error_message(e)
 		frappe.log_error(title="Error estimating shipping rates", message=error_msg)
 		frappe.throw(_("Failed to estimate shipping rates: {0}").format(error_msg))
+		return []
 
 
 @frappe.whitelist()
@@ -274,6 +276,7 @@ def get_rate_by_id(rate_id: str, settings_name: str | None = None) -> dict:
 		error_msg = get_error_message(e)
 		frappe.log_error(title="Error fetching rate", message=error_msg)
 		frappe.throw(_("Failed to fetch rate: {0}").format(error_msg))
+		return {}
 
 
 @frappe.whitelist()
@@ -539,8 +542,12 @@ def get_packages_from_shipment(doc) -> list[dict]:
 		if row.parcel_number in parcel_map:
 			continue
 
-		dimension_unit = DIMENSION_UOM_MAP.get(getattr(row, "dimension_uom", None), "inch")
-		weight_unit = WEIGHT_UOM_MAP.get(getattr(row, "parcel_weight_uom", None), "pound")
+		dimension_key = getattr(row, "dimension_uom", None)
+		weight_key = getattr(row, "parcel_weight_uom", None)
+		dimension_unit = DIMENSION_UOM_MAP.get(
+			str(dimension_key) if dimension_key is not None else "", "inch"
+		)
+		weight_unit = WEIGHT_UOM_MAP.get(str(weight_key) if weight_key is not None else "", "pound")
 
 		parcel_map[row.parcel_number] = {
 			"weight": {

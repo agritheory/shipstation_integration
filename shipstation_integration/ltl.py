@@ -118,7 +118,7 @@ class ShipstationLTL(BaseLTL):
 		company: str | None = None,
 		supplier: str | None = None,
 		doc: Shipment | None = None,
-	) -> list[dict] | None:
+	) -> list[dict]:
 		"""
 		List all LTL carriers connected to the ShipStation account.
 
@@ -136,6 +136,7 @@ class ShipstationLTL(BaseLTL):
 		_ = settings_name
 		auth_doc = self._ltl_auth_doc(doc=doc, company=company, supplier=supplier)
 		base_url, headers = self.get_base_url_and_headers(auth_doc)
+		data: dict = {}
 		try:
 			with httpx.Client() as client:
 				response = client.get(
@@ -171,10 +172,12 @@ class ShipstationLTL(BaseLTL):
 					err_type, err_msg, str(e)
 				)
 			)
+			return []
 
 		except Exception as e:
 			frappe.log_error(title="Error getting LTL carriers", message=str(e))
 			frappe.throw(_("Failed to get LTL carriers - {0}").format(str(e)))
+			return []
 
 	def get_carrier_id_for_supplier(
 		self,
@@ -661,7 +664,7 @@ class ShipstationLTL(BaseLTL):
 			)
 		default_base = self.DEFAULT_BASE_URL
 		co = get_shipment_company_for_ltl(doc)
-		supplier = doc.get("preferred_carrier")
+		supplier = getattr(doc, "preferred_carrier", None)
 		if not co or not supplier:
 			frappe.throw(
 				_(
@@ -678,6 +681,7 @@ class ShipstationLTL(BaseLTL):
 					"or create a Freight Carrier Settings record manually."
 				).format(co, supplier)
 			)
+		assert fc is not None
 		api_key = fc.get_password("ltl_api_key")
 		if not api_key:
 			frappe.throw(
@@ -737,6 +741,7 @@ class ShipstationLTL(BaseLTL):
 				f"No {self.provider} carrier ID found for the preferred carrier — set Supplier LTL Carrier ID, "
 				"fetch LTL carriers using Freight Carrier Settings on Shipstation Settings, or sync carrier metadata."
 			)
+		return
 
 	def get_ltl_carrier(
 		self, carrier_id: str, settings_name: str | None = None, doc: Shipment | None = None
@@ -754,6 +759,7 @@ class ShipstationLTL(BaseLTL):
 		"""
 		base_url, headers = self.get_base_url_and_headers(doc)
 
+		data: dict = {}
 		try:
 			with httpx.Client() as client:
 				response = client.get(
@@ -774,11 +780,13 @@ class ShipstationLTL(BaseLTL):
 					err_type, err_msg, str(e)
 				)
 			)
+			return {}
 
 		except Exception as e:
 			error_msg = get_error_message(e)
 			frappe.log_error(title="Error getting carrier", message=error_msg)
 			frappe.throw(_("Failed to get carrier: {0}").format(error_msg))
+			return {}
 
 	def list_ltl_carrier_accessorial_services(
 		self, carrier_id: str, settings_name: str | None = None, doc: Shipment | None = None
@@ -796,6 +804,7 @@ class ShipstationLTL(BaseLTL):
 		"""
 		base_url, headers = self.get_base_url_and_headers(doc)
 
+		data: dict = {}
 		try:
 			with httpx.Client() as client:
 				response = client.get(
@@ -817,11 +826,13 @@ class ShipstationLTL(BaseLTL):
 					err_type, err_msg, str(e)
 				)
 			)
+			return []
 
 		except Exception as e:
 			error_msg = get_error_message(e)
 			frappe.log_error(title="Error listing LTL carrier options", message=error_msg)
 			frappe.throw(_("Failed to list LTL carrier options: {0}").format(error_msg))
+			return []
 
 	def list_ltl_carrier_features(
 		self, carrier_id: str, settings_name: str | None = None, doc: Shipment | None = None
@@ -857,6 +868,7 @@ class ShipstationLTL(BaseLTL):
 		"""
 		base_url, headers = self.get_base_url_and_headers(doc)
 
+		data: dict = {}
 		try:
 			with httpx.Client() as client:
 				response = client.get(
@@ -878,11 +890,13 @@ class ShipstationLTL(BaseLTL):
 					"Failed to list LTL carrier package/container types - error type: {0}, message: {1}, error: {2}"
 				).format(err_type, err_msg, str(e))
 			)
+			return []
 
 		except Exception as e:
 			error_msg = get_error_message(e)
 			frappe.log_error(title="Error listing LTL carrier package/container types", message=error_msg)
 			frappe.throw(_("Failed to list LTL carrier package/container types: {0}").format(error_msg))
+			return []
 
 	def get_all_ltl_carrier_package_types(
 		self,
@@ -910,6 +924,7 @@ class ShipstationLTL(BaseLTL):
 					"Company and supplier (or a Shipment with Preferred Carrier) are required for LTL package types."
 				)
 			)
+			return {}
 
 		settings = get_shipstation_settings_optional(settings_name)
 
@@ -957,6 +972,7 @@ class ShipstationLTL(BaseLTL):
 		"""
 		base_url, headers = self.get_base_url_and_headers(doc)
 
+		data: dict = {}
 		try:
 			with httpx.Client() as client:
 				response = client.get(
@@ -978,11 +994,13 @@ class ShipstationLTL(BaseLTL):
 					err_type, err_msg, str(e)
 				)
 			)
+			return []
 
 		except Exception as e:
 			error_msg = get_error_message(e)
 			frappe.log_error(title="Error listing LTL carrier options", message=error_msg)
 			frappe.throw(_("Failed to list LTL carrier options: {0}").format(error_msg))
+			return []
 
 	def resolve_package_type_code(
 		self, doc, carrier_id: str, settings_name: str | None = None
@@ -1006,6 +1024,7 @@ class ShipstationLTL(BaseLTL):
 				),
 				title=_("Package Type Required"),
 			)
+			return
 
 		preferred_name = (doc.get("package_type") or "").strip().lower()
 		default = ([p for p in pkg_types if p.get("name") == "Package"] or pkg_types)[0]
@@ -1034,6 +1053,7 @@ class ShipstationLTL(BaseLTL):
 				),
 				title=_("Billing Account Required"),
 			)
+			return
 
 	def request_ltl_quote(
 		self, carrier_id: str, doc: Shipment, settings_name: str | None = None
@@ -1054,6 +1074,7 @@ class ShipstationLTL(BaseLTL):
 		self.validate_billing(doc)
 		base_url, headers = self.get_base_url_and_headers(doc)
 
+		data: dict = {}
 		try:
 			with httpx.Client() as client:
 				payload = {
@@ -1082,11 +1103,13 @@ class ShipstationLTL(BaseLTL):
 					err_type, err_msg, str(e)
 				)
 			)
+			return []
 
 		except Exception as e:
 			error_msg = get_error_message(e)
 			frappe.log_error(title="Error getting LTL quote", message=error_msg)
 			frappe.throw(_("Failed to get LTL quote: {0}").format(error_msg))
+			return []
 
 	def request_ltl_spot_quote(
 		self, carrier_id: str, doc: Shipment, settings_name: str | None = None
@@ -1106,6 +1129,7 @@ class ShipstationLTL(BaseLTL):
 		self.validate_billing(doc)
 		base_url, headers = self.get_base_url_and_headers(doc)
 
+		data: dict = {}
 		try:
 			with httpx.Client() as client:
 				payload = {
@@ -1136,11 +1160,13 @@ class ShipstationLTL(BaseLTL):
 					err_type, err_msg, str(e)
 				)
 			)
+			return []
 
 		except Exception as e:
 			error_msg = get_error_message(e)
 			frappe.log_error(title="Error getting LTL spot quote", message=error_msg)
 			frappe.throw(_("Failed to get LTL spot quote: {0}").format(error_msg))
+			return []
 
 	def schedule_ltl_pickup_with_quote_id(
 		self, doc: Shipment, settings_name: str | None = None
@@ -1163,6 +1189,7 @@ class ShipstationLTL(BaseLTL):
 			frappe.throw(
 				f"{self.provider} requires a Quote ID to schedule an LTL pickup. Get LTL quotes then accept one of the generated Supplier Quotations."
 			)
+			return {}
 
 		delivery_date = doc.get("estimated_delivery_date") or frappe.get_value(
 			"Shipment Quotation", doc.accepted_quotation, "estimated_delivery_date"
@@ -1170,6 +1197,7 @@ class ShipstationLTL(BaseLTL):
 		if not doc.get("estimated_delivery_date"):
 			frappe.set_value(doc.doctype, doc.name, "estimated_delivery_date", delivery_date)
 
+		data: dict = {}
 		try:
 			with httpx.Client() as client:
 				payload = {
@@ -1201,11 +1229,13 @@ class ShipstationLTL(BaseLTL):
 					"Failed to schedule LTL pickup with quote ID - error type: {0}, message: {1}, error: {2}"
 				).format(err_type, err_msg, str(e))
 			)
+			return {}
 
 		except Exception as e:
 			error_msg = get_error_message(e)
 			frappe.log_error(title="Error scheduling LTL pickup with quote ID", message=error_msg)
 			frappe.throw(_("Failed to schedule LTL pickup with quote ID: {0}").format(error_msg))
+			return {}
 
 	def schedule_ltl_pickup_without_quote_id(
 		self, doc: Shipment, settings_name: str | None = None
@@ -1226,6 +1256,7 @@ class ShipstationLTL(BaseLTL):
 		self.validate_carrier_and_id(doc, settings_name)
 		carrier_id = doc.carrier_id
 
+		data: dict = {}
 		try:
 			shipment_object = self.get_shipment_object_from_doc(doc=doc, for_pickup_no_quote=True)
 			with httpx.Client() as client:
@@ -1261,11 +1292,13 @@ class ShipstationLTL(BaseLTL):
 					err_type, err_msg, str(e)
 				)
 			)
+			return {}
 
 		except Exception as e:
 			error_msg = get_error_message(e)
 			frappe.log_error(title="Error scheduling LTL pickup", message=error_msg)
 			frappe.throw(_("Failed to schedule LTL pickup: {0}").format(error_msg))
+			return {}
 
 	def get_bol_with_quote_id(self, doc: Shipment, settings_name: str | None = None) -> dict:
 		"""
@@ -1286,7 +1319,9 @@ class ShipstationLTL(BaseLTL):
 			frappe.throw(
 				f"No {self.provider} Quote ID found - make sure to get LTL quotes then accept one of the generated Supplier Quotations."
 			)
+			return {}
 
+		data: dict = {}
 		try:
 			with httpx.Client() as client:
 				payload = {"carrier_instructions": doc.get("carrier_instructions", "")}
@@ -1316,11 +1351,13 @@ class ShipstationLTL(BaseLTL):
 					err_type, err_msg, str(e)
 				)
 			)
+			return {}
 
 		except Exception as e:
 			error_msg = get_error_message(e)
 			frappe.log_error(title="Error getting BOL using quote ID", message=error_msg)
 			frappe.throw(_("Failed to get BOL using quote ID: {0}").format(error_msg))
+			return {}
 
 	def get_bol_with_pickup_id(self, doc: Shipment, settings_name: str | None = None) -> dict:
 		"""
@@ -1341,7 +1378,9 @@ class ShipstationLTL(BaseLTL):
 			frappe.throw(
 				f"No {self.provider} Pickup ID found - make sure to first schedule an LTL pickup to generate this ID."
 			)
+			return {}
 
+		data: dict = {}
 		try:
 			with httpx.Client() as client:
 				payload = {"carrier_instructions": doc.get("carrier_instructions", "")}
@@ -1371,11 +1410,13 @@ class ShipstationLTL(BaseLTL):
 					err_type, err_msg, str(e)
 				)
 			)
+			return {}
 
 		except Exception as e:
 			error_msg = get_error_message(e)
 			frappe.log_error(title="Error getting BOL using pickup ID", message=error_msg)
 			frappe.throw(_("Failed to get BOL using pickup ID: {0}").format(error_msg))
+			return {}
 
 	def list_ltl_carrier_documents_by_id_and_pronumber(
 		self, doc: Shipment, settings_name: str | None = None
@@ -1400,7 +1441,9 @@ class ShipstationLTL(BaseLTL):
 		pro_number = doc.awb_number
 		if not pro_number:
 			frappe.throw("No PRO Number found - make sure to schedule an LTL pickup first.")
+			return []
 
+		data: dict = {}
 		try:
 			with httpx.Client() as client:
 				response = client.get(
@@ -1422,11 +1465,13 @@ class ShipstationLTL(BaseLTL):
 					err_type, err_msg, str(e)
 				)
 			)
+			return []
 
 		except Exception as e:
 			error_msg = get_error_message(e)
 			frappe.log_error(title="Error listing LTL carrier documents", message=error_msg)
 			frappe.throw(_("Failed to list LTL carrier documents: {0}").format(error_msg))
+			return []
 
 	# Conversion factors to pounds and cubic feet for density calculation.
 	# Built from WEIGHT_UOM_MAP / DIMENSION_UOM_MAP so all aliases (Kg, kg, cm, …) are covered.
@@ -1531,6 +1576,7 @@ class ShipstationLTL(BaseLTL):
 					).format(parcel_num),
 					title=_("Missing Parcel Dimensions"),
 				)
+			assert dim_row is not None
 			length = flt(dim_row.parcel_length)
 			width = flt(dim_row.parcel_width)
 			height = flt(dim_row.parcel_height)
@@ -1650,41 +1696,59 @@ class ShipstationLTL(BaseLTL):
 		"""
 		errors = []
 		err_template = "The {dim} UOM of {user_uom} used in row {row_idx} is not supported by Shipstation. Please use {supported}."
-		len_uom = self.uom_map["length"].get(row.length_uom)
+		if isinstance(row, dict):
+			length_uom_val = row.get("length_uom")
+			weight_uom_val = row.get("weight_uom")
+			density_uom_val = row.get("density_uom")
+			row_idx = row.get("idx", "")
+		else:
+			length_uom_val = row.length_uom
+			weight_uom_val = row.weight_uom
+			density_uom_val = row.density_uom
+			row_idx = row.idx
+
+		len_uom = self.uom_map["length"].get(length_uom_val)
 		if not len_uom:
 			supported_lengths = list(self.uom_map["length"].keys())
 			errors.append(
 				err_template.format(
-					dim="length", user_uom=row.length_uom, row_idx=row.idx, supported=comma_or(supported_lengths)
+					dim="length",
+					user_uom=length_uom_val,
+					row_idx=row_idx,
+					supported=comma_or(supported_lengths),
 				)
 			)
 
-		weight_uom = self.uom_map["weight"].get(row.weight_uom)
+		weight_uom = self.uom_map["weight"].get(weight_uom_val)
 		if not weight_uom:
 			supported_weights = list(self.uom_map["weight"].keys())
 			errors.append(
 				err_template.format(
-					dim="weight", user_uom=row.weight_uom, row_idx=row.idx, supported=comma_or(supported_weights)
+					dim="weight",
+					user_uom=weight_uom_val,
+					row_idx=row_idx,
+					supported=comma_or(supported_weights),
 				)
 			)
 
 		# Density UOM defaults to Pound/Cubic Foot — the only UOM Shipstation accepts.
 		# Explicit validation is preserved for any non-empty value so typos surface clearly.
-		effective_density_uom = row.density_uom or "Pound/Cubic Foot"
+		effective_density_uom = density_uom_val or "Pound/Cubic Foot"
 		density_uom = self.uom_map["density"].get(effective_density_uom)
 		if not density_uom:
 			supported_densities = list(self.uom_map["density"].keys())
 			errors.append(
 				err_template.format(
 					dim="density",
-					user_uom=row.density_uom,
-					row_idx=row.idx,
+					user_uom=density_uom_val,
+					row_idx=row_idx,
 					supported=comma_or(supported_densities),
 				)
 			)
 
 		if errors:
 			frappe.throw(msg=". ".join(errors))
+		assert len_uom is not None and weight_uom is not None and density_uom is not None
 		return len_uom, weight_uom, density_uom
 
 	def get_shipment_object_from_doc(self, doc: Shipment, for_pickup_no_quote: bool = False) -> dict:

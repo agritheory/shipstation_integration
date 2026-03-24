@@ -67,6 +67,7 @@ def create_label(
 			message=f"Error: {error_msg}\n\nShipment data: {json.dumps(shipment_data, indent=2, default=str)}",
 		)
 		frappe.throw(_("Failed to create shipping label: {0}").format(error_msg))
+		return {}
 
 
 @frappe.whitelist()
@@ -99,6 +100,7 @@ def create_label_from_rate(
 		error_msg = get_error_message(e)
 		frappe.log_error(title="Error creating label from rate", message=error_msg)
 		frappe.throw(_("Failed to create label from rate: {0}").format(error_msg))
+		return {}
 
 
 @frappe.whitelist()
@@ -128,6 +130,7 @@ def void_label(
 	except Exception as e:
 		frappe.log_error(title="Error voiding label", message=str(e))
 		frappe.throw(_("Failed to void label: {0}").format(str(e)))
+		return {}
 
 
 @frappe.whitelist()
@@ -154,6 +157,7 @@ def get_label(
 	except Exception as e:
 		frappe.log_error(title="Error fetching label", message=str(e))
 		frappe.throw(_("Failed to fetch label: {0}").format(str(e)))
+		return {}
 
 
 @frappe.whitelist()
@@ -185,9 +189,11 @@ def create_label_for_packing_slip(
 
 	if not ps.shipping_address_name:
 		frappe.throw(_("Packing Slip must have a shipping address"))
+		return []
 
 	if not ps.dispatch_address_name:
 		frappe.throw(_("Packing Slip must have a dispatch (ship from) address"))
+		return []
 
 	existing = get_existing_label_info(ps)
 	if existing and not force:
@@ -198,10 +204,12 @@ def create_label_for_packing_slip(
 			frappe.DuplicateEntryError,
 			title=_("Label Already Exists"),
 		)
+		return []
 
 	parcel_numbers = sorted({item.parcel_number for item in ps.items if item.parcel_number})
 	if not parcel_numbers:
 		frappe.throw(_("No items have been assigned to a parcel. Pack items before purchasing labels."))
+		return []
 
 	if rate_id and len(parcel_numbers) > 1:
 		frappe.throw(
@@ -209,6 +217,7 @@ def create_label_for_packing_slip(
 				"rate_id can only be used for single-parcel shipments. Use carrier_id and service_code for multi-parcel."
 			)
 		)
+		return []
 
 	settings = get_shipstation_settings()
 	label_responses = []
@@ -219,7 +228,8 @@ def create_label_for_packing_slip(
 		else:
 			if not carrier_id or not service_code:
 				frappe.throw(_("Either rate_id or both carrier_id and service_code are required"))
-
+				return []
+			assert carrier_id is not None and service_code is not None
 			shipment_data = build_shipment_from_packing_slip(ps, carrier_id, service_code, parcel_number)
 			label_response = create_label(shipment_data=shipment_data)
 
@@ -275,9 +285,11 @@ def create_label_for_delivery_note(
 
 	if not dn.shipping_address_name:
 		frappe.throw(_("Delivery Note must have a shipping address"))
+		return {}
 
 	if not dn.dispatch_address_name:
 		frappe.throw(_("Delivery Note must have a dispatch (ship from) address"))
+		return {}
 
 	settings = get_shipstation_settings()
 
@@ -286,7 +298,8 @@ def create_label_for_delivery_note(
 	else:
 		if not carrier_id or not service_code:
 			frappe.throw(_("Either rate_id or both carrier_id and service_code are required"))
-
+			return {}
+		assert carrier_id is not None and service_code is not None
 		shipment_data = build_shipment_from_delivery_note(dn, carrier_id, service_code)
 		label_response = create_label(shipment_data=shipment_data)
 
@@ -387,7 +400,7 @@ def update_packing_slip_tracking(ps, label_response: dict, parcel_number: int) -
 			frappe.db.set_value("Packing Slip Item", item.name, tracking_data)
 
 
-def build_tracking_url(tracking_number: str, carrier_code: str) -> str:
+def build_tracking_url(tracking_number: str | None, carrier_code: str) -> str:
 	"""Build carrier-specific tracking URL."""
 	if not tracking_number:
 		return ""
@@ -428,6 +441,7 @@ def create_return_label(
 	except Exception as e:
 		frappe.log_error(title="Error creating return label", message=str(e))
 		frappe.throw(_("Failed to create return label: {0}").format(str(e)))
+		return {}
 
 
 def format_label_response(label_response) -> dict:
@@ -557,8 +571,10 @@ def create_label_for_shipment(
 
 	if not doc.pickup_address_name:
 		frappe.throw(_("Shipment must have a pickup (ship from) address"))
+		return []
 	if not doc.delivery_address_name:
 		frappe.throw(_("Shipment must have a delivery (ship to) address"))
+		return []
 
 	# Check for existing labels
 	existing_tracking = next(
@@ -574,6 +590,7 @@ def create_label_for_shipment(
 			frappe.DuplicateEntryError,
 			title=_("Label Already Exists"),
 		)
+		return []
 
 	parcel_numbers = sorted(
 		{row.parcel_number for row in (doc.shipment_delivery_note or []) if row.parcel_number}
@@ -582,6 +599,7 @@ def create_label_for_shipment(
 		frappe.throw(
 			_("No SDN items have been assigned to a parcel. Pack items before purchasing labels.")
 		)
+		return []
 
 	if rate_id and len(parcel_numbers) > 1:
 		frappe.throw(
@@ -590,6 +608,7 @@ def create_label_for_shipment(
 				"Use carrier_id and service_code for multi-parcel."
 			)
 		)
+		return []
 
 	settings = get_shipstation_settings()
 	label_responses = []
@@ -600,7 +619,8 @@ def create_label_for_shipment(
 		else:
 			if not carrier_id or not service_code:
 				frappe.throw(_("Either rate_id or both carrier_id and service_code are required"))
-
+				return []
+			assert carrier_id is not None and service_code is not None
 			shipment_data = build_shipment_from_shipment_doc(doc, carrier_id, service_code, parcel_number)
 			label_response = create_label(shipment_data=shipment_data)
 
@@ -678,6 +698,7 @@ def build_shipment_from_shipment_doc(
 				"Please sync carriers in Shipstation Settings."
 			).format(carrier_id)
 		)
+		return {}
 
 	return {
 		"carrier_id": carrier_id,

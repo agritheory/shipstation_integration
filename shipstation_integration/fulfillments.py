@@ -129,6 +129,7 @@ def create_fulfillment(
 	except Exception as e:
 		frappe.log_error(title="Error creating fulfillment", message=str(e))
 		frappe.throw(_("Failed to create fulfillment: {0}").format(str(e)))
+		return {}
 
 
 @frappe.whitelist()
@@ -195,6 +196,7 @@ def list_fulfillments(
 	except Exception as e:
 		frappe.log_error(title="Error listing fulfillments", message=str(e))
 		frappe.throw(_("Failed to list fulfillments: {0}").format(str(e)))
+		return {}
 
 
 @frappe.whitelist()
@@ -238,10 +240,12 @@ def get_fulfillment(
 			return fulfillments[0]
 
 		frappe.throw(_("Fulfillment not found"))
+		return {}
 
 	except Exception as e:
 		frappe.log_error(title="Error fetching fulfillment", message=str(e))
 		frappe.throw(_("Failed to fetch fulfillment: {0}").format(str(e)))
+		return {}
 
 
 @frappe.whitelist()
@@ -273,13 +277,13 @@ def sync_fulfillment_from_delivery_notes(
 			limit=100,
 		)
 
-	results = {
+	results: dict[str, list] = {
 		"success": [],
 		"failed": [],
 		"skipped": [],
 	}
 
-	for dn_name in delivery_notes:
+	for dn_name in delivery_notes or []:
 		try:
 			dn = frappe.get_doc("Delivery Note", dn_name)
 

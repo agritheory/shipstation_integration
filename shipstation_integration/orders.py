@@ -3,7 +3,7 @@
 
 import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import frappe
 from erpnext.stock.doctype.item.item import get_uom_conv_factor
@@ -11,12 +11,13 @@ from frappe.utils import flt, getdate
 from frappe.utils.safe_exec import is_job_queued
 from httpx import HTTPError
 
+from shipstation.models import ShipStationOrder
 from shipstation_integration.customer import create_customer, get_billing_address
 from shipstation_integration.items import create_item
 
 if TYPE_CHECKING:
 	from erpnext.selling.doctype.sales_order.sales_order import SalesOrder
-	from shipstation.models import ShipStationOrder, ShipStationOrderItem
+	from shipstation.models import ShipStationOrderItem
 
 	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
 		ShipstationSettings,
@@ -35,8 +36,8 @@ def queue_orders():
 
 
 def list_orders(
-	settings: "ShipstationSettings" = None,
-	last_order_datetime: datetime.datetime = None,
+	settings: Any = None,
+	last_order_datetime: datetime.datetime | None = None,
 ):
 	if not settings:
 		settings = frappe.get_all("Shipstation Settings", filters={"enabled": True})
@@ -161,7 +162,7 @@ def create_erpnext_order(
 	# using `hasattr` over `getattr` to use type annotations
 	order_items = order.items if hasattr(order, "items") else []
 	if not order_items:
-		return
+		return None
 
 	process_order_items_hook = frappe.get_hooks("process_shipstation_order_items")
 	if process_order_items_hook:
@@ -180,8 +181,8 @@ def create_erpnext_order(
 			discount_amount += abs(rate * item.quantity)
 			continue
 
-		settings = frappe.get_doc("Shipstation Settings", store.parent)
-		stock_item = create_item(item, settings=settings, store=store)
+		shipstation_settings_doc = frappe.get_doc("Shipstation Settings", store.parent)
+		stock_item = create_item(item, settings=shipstation_settings_doc, store=store)
 		uom = stock_item.sales_uom or stock_item.stock_uom
 		conversion_factor = (
 			1 if uom == stock_item.stock_uom else get_uom_conv_factor(uom, stock_item.stock_uom)
@@ -202,7 +203,7 @@ def create_erpnext_order(
 		)
 
 	if not so.get("items"):
-		return
+		return None
 
 	so.dont_update_if_missing = ["customer_name", "base_total_in_words"]
 
@@ -324,23 +325,23 @@ def get_item_notes(item: "ShipStationOrderItem"):
 
 
 def create_order_from_webhook(order: dict, store: str, settings: str):
-	store = frappe.get_doc("Shipstation Store", store)
-	settings = frappe.get_doc("Shipstation Settings", settings)
-	order = ShipStationOrder().json(order)
+	store_doc = frappe.get_doc("Shipstation Store", store)
+	settings_doc = frappe.get_doc("Shipstation Settings", settings)
+	ss_order = ShipStationOrder().json(order)
 
-	if not store.enable_orders:
+	if not store_doc.enable_orders:
 		return
 
-	if not validate_order(settings, order, store):
+	if not validate_order(settings_doc, ss_order, store_doc):
 		return
 
 	should_create_order = True
 
 	process_order_hook = frappe.get_hooks("process_shipstation_order")
 	if process_order_hook:
-		should_create_order = frappe.get_attr(process_order_hook[0])(order, store)
+		should_create_order = frappe.get_attr(process_order_hook[0])(ss_order, store_doc)
 
 	if not should_create_order:
 		return
 
-	create_erpnext_order(order, store, settings)
+	create_erpnext_order(ss_order, store_doc, settings_doc)

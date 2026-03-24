@@ -593,7 +593,7 @@ def get_source_handling_units(packing_slip: str) -> dict:
 		return {}
 
 	ps = frappe.get_doc("Packing Slip", packing_slip)
-	result = {}
+	result: dict[str, str] = {}
 
 	dn_details = [item.dn_detail for item in ps.items if item.dn_detail]
 	if not dn_details:

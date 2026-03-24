@@ -1,7 +1,7 @@
 # Copyright (c) 2026, AgriTheory and contributors
 # For license information, please see license.txt
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import frappe
 from frappe.utils.safe_exec import is_job_queued
@@ -21,23 +21,21 @@ def queue_tags():
 
 
 @frappe.whitelist()
-def list_tags(
-	settings: "ShipstationSettings" = None,
-):
+def list_tags(settings: Any = None):
 	if not settings:
 		settings = frappe.get_all("Shipstation Settings", filters={"enabled": True})
 	elif not isinstance(settings, list):
 		settings = [settings]
 
-	for sss in settings:
-		sss_doc: "ShipstationSettings" = frappe.get_doc("Shipstation Settings", sss.name)
-		if not sss_doc.enabled or not sss_doc.enable_legacy_api:
+	for row in settings:
+		settings_doc: "ShipstationSettings" = frappe.get_doc("Shipstation Settings", row.name)
+		if not settings_doc.enabled or not settings_doc.enable_legacy_api:
 			continue
 
-		client = sss_doc.client()
+		client = settings_doc.client()
 		tags = client.list_tags()
-		if sss.shipstation_user:
-			frappe.set_user(sss.shipstation_user)
+		if settings_doc.shipstation_user:
+			frappe.set_user(settings_doc.shipstation_user)
 		for tag in tags:
 			if frappe.db.exists("Tag", tag.name):
 				tag_doc = frappe.get_doc("Tag", tag.name)

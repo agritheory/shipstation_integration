@@ -2,7 +2,7 @@
 # For license information, please see license.txt
 
 import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import frappe
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import (
@@ -17,13 +17,13 @@ from frappe.utils import getdate
 from frappe.utils.safe_exec import is_job_queued
 from httpx import HTTPError
 
+from shipstation.models import ShipStationOrder
 from shipstation_integration.utils import log_shipstation_error
 
 if TYPE_CHECKING:
 	from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
 	from erpnext.stock.doctype.delivery_note.delivery_note import DeliveryNote
 	from erpnext.stock.doctype.shipment.shipment import Shipment
-	from shipstation.models import ShipStationOrder
 
 	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
 		ShipstationSettings,
@@ -42,8 +42,8 @@ def queue_shipments():
 
 
 def list_shipments(
-	settings: "ShipstationSettings" = None,
-	last_shipment_datetime: "datetime.datetime" = None,
+	settings: Any = None,
+	last_shipment_datetime: datetime.datetime | None = None,
 ):
 	if not settings:
 		settings = frappe.get_all("Shipstation Settings", filters={"enabled": True})
@@ -101,9 +101,9 @@ def list_shipments(
 					{"docstatus": 1, "shipstation_order_id": shipment.order_id},
 				):
 					if shipment.voided:
-						cancel_voided_shipments(shipment, sss)
+						cancel_voided_shipments(shipment, sss_doc)
 				else:
-					create_erpnext_shipment(shipment, store, sss)
+					create_erpnext_shipment(shipment, store, sss_doc)
 
 
 def create_erpnext_shipment(
@@ -199,13 +199,14 @@ def create_delivery_note(
 	if existing_dn:
 		return frappe.get_doc("Delivery Note", existing_dn)
 
+	dn: "DeliveryNote"
 	if sales_invoice:
-		dn: "DeliveryNote" = make_delivery_from_invoice(sales_invoice.name)
+		dn = make_delivery_from_invoice(sales_invoice.name)
 	else:
 		so_name = frappe.get_value("Sales Order", {"shipstation_order_id": shipment.order_id})
 		if not so_name:
 			return
-		dn: "DeliveryNote" = make_delivery_from_order(so_name)
+		dn = make_delivery_from_order(so_name)
 
 	dn.shipstation_shipment_id = shipment.shipment_id
 
@@ -219,8 +220,9 @@ def create_shipment(
 	store: "ShipstationStore",
 	delivery_note: Optional["DeliveryNote"] = None,
 ):
+	shipment_doc: "Shipment"
 	if delivery_note:
-		shipment_doc: "Shipment" = make_shipment(delivery_note.name)
+		shipment_doc = make_shipment(delivery_note.name)
 	else:
 		shipment_deliveries = frappe.get_all(
 			"Delivery Note",
@@ -229,7 +231,7 @@ def create_shipment(
 		)
 		if not shipment_deliveries:
 			return
-		shipment_doc: "Shipment" = make_shipment(shipment_deliveries[0])
+		shipment_doc = make_shipment(shipment_deliveries[0])
 
 	shipment_doc.update(
 		{
@@ -282,27 +284,27 @@ def create_shipment(
 
 
 def create_shipment_from_webhook(shipment: dict, store: str, settings: str):
-	store = frappe.get_doc("Shipstation Store", store)
-	settings = frappe.get_doc("Shipstation Settings", settings)
-	shipment = ShipStationOrder().json(shipment)
+	store_doc = frappe.get_doc("Shipstation Store", store)
+	settings_doc = frappe.get_doc("Shipstation Settings", settings)
+	order = ShipStationOrder().json(shipment)
 
-	if not store.enable_shipments or not any(
+	if not store_doc.enable_shipments or not any(
 		[
-			store.create_sales_invoice,
-			store.create_delivery_note,
-			store.create_shipment,
+			store_doc.create_sales_invoice,
+			store_doc.create_delivery_note,
+			store_doc.create_shipment,
 		]
 	):
 		return
 
-	if settings.since_date and getdate(shipment.create_date) < settings.since_date:
+	if settings_doc.since_date and getdate(order.create_date) < settings_doc.since_date:
 		return
 
 	if frappe.db.exists(
 		"Delivery Note",
-		{"docstatus": 1, "shipstation_order_id": shipment.order_id},
+		{"docstatus": 1, "shipstation_order_id": order.order_id},
 	):
-		if shipment.voided:
-			cancel_voided_shipments(shipment, settings)
+		if order.voided:
+			cancel_voided_shipments(order, settings_doc)
 	else:
-		create_erpnext_shipment(shipment, store, settings)
+		create_erpnext_shipment(order, store_doc, settings_doc)

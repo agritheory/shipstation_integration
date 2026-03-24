@@ -128,7 +128,7 @@ def get_supported_accessorial_service_fields(
 
 
 @frappe.whitelist()
-def supports_quote_or_spot_quote(doc: Shipment | str, settings_name: str | None = None) -> list:
+def supports_quote_or_spot_quote(doc: Shipment | str, settings_name: str | None = None) -> dict:
 	"""
 	Convenience function that returns True/False whether a carrier in a Shipment doc (or the API
 	in general) supports requesting quotes and/or spot quotes.
