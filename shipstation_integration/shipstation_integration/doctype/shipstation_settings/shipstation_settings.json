@@ -25,6 +25,7 @@
 		"enable_shipstation_api",
 		"base_url",
 		"shipstation_api_key",
+		"ltl_fetch_freight_carrier_settings",
 		"alternative_ltl_client_id",
 		"alternative_ltl_client_secret",
 		"fetch_api_ltl_carriers",
@@ -242,14 +243,26 @@
 			"description": "API key for ShipStation API v2. Obtain from your ShipStation account settings."
 		},
 		{
-			"fieldname": "alternative_ltl_client_id",
-			"fieldtype": "Password",
-			"label": "Alternative LTL Client ID"
+			"depends_on": "eval:doc.enable_shipstation_api",
+			"description": "LTL API calls use Freight Carrier Settings only. Choose which carrier row supplies the API key for \"Fetch LTL Carriers\" (company + supplier on that row). Saving this document with API v2 enabled syncs the key into all Freight Carrier Settings for each company and transporter.",
+			"fieldname": "ltl_fetch_freight_carrier_settings",
+			"fieldtype": "Link",
+			"label": "Freight Carrier Settings for LTL fetch",
+			"options": "Freight Carrier Settings"
 		},
 		{
+			"description": "Deprecated — use Freight Carrier Settings. Values are migrated by a one-time patch when possible.",
+			"fieldname": "alternative_ltl_client_id",
+			"fieldtype": "Password",
+			"hidden": 1,
+			"label": "Alternative LTL Client ID (deprecated)"
+		},
+		{
+			"description": "Deprecated — use Freight Carrier Settings.",
 			"fieldname": "alternative_ltl_client_secret",
 			"fieldtype": "Password",
-			"label": "Alternative LTL Client Secret"
+			"hidden": 1,
+			"label": "Alternative LTL Client Secret (deprecated)"
 		},
 		{
 			"depends_on": "eval:doc.enable_shipstation_api && !doc.__islocal",

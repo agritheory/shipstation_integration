@@ -24,7 +24,14 @@ from frappe.utils.file_manager import save_file
 from shipstation_integration.base_ltl import BaseLTL
 from shipstation_integration.carriers import get_or_create_transporter
 from shipstation_integration.rates import DIMENSION_UOM_MAP, WEIGHT_UOM_MAP
-from shipstation_integration.utils import get_error_message, get_shipstation_settings
+from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
+	get_freight_carrier_settings,
+)
+from shipstation_integration.utils import (
+	get_error_message,
+	get_shipment_company_for_ltl,
+	get_shipstation_settings_optional,
+)
 
 
 # Module-level conversion tables used by ShipstationLTL class-body comprehensions.
@@ -105,20 +112,30 @@ class ShipstationLTL(BaseLTL):
 
 	@frappe.whitelist()
 	def list_ltl_carriers(
-		self, settings_name: str | None = None, create_transporters: bool = False
+		self,
+		settings_name: str | None = None,
+		create_transporters: bool = False,
+		company: str | None = None,
+		supplier: str | None = None,
+		doc: Shipment | None = None,
 	) -> list[dict] | None:
 		"""
 		List all LTL carriers connected to the ShipStation account.
 
 		Args:
-		settings_name: Optional Shipstation Settings document name
+		settings_name: Deprecated, unused (LTL auth uses Freight Carrier Settings only).
 		create_transporters: If True, create Supplier records with is_transporter=1
 		for each carrier that doesn't already exist
+		company: Company for Freight Carrier Settings (with supplier) when doc is not passed
+		supplier: Supplier (transporter) name for Freight Carrier Settings when doc is not passed
+		doc: Optional Shipment; uses Preferred Carrier and company from addressing fields
 
 		Returns:
 		List of carrier dicts with carrier_id, carrier_code, name, supplier, etc.
 		"""
-		base_url, headers = self.get_base_url_and_headers(settings_name)
+		_ = settings_name
+		auth_doc = self._ltl_auth_doc(doc=doc, company=company, supplier=supplier)
+		base_url, headers = self.get_base_url_and_headers(auth_doc)
 		try:
 			with httpx.Client() as client:
 				response = client.get(
@@ -160,17 +177,22 @@ class ShipstationLTL(BaseLTL):
 			frappe.throw(_("Failed to get LTL carriers - {0}").format(str(e)))
 
 	def get_carrier_id_for_supplier(
-		self, supplier_name: str, settings_name: str | None = None
+		self,
+		supplier_name: str,
+		settings_name: str | None = None,
+		company: str | None = None,
 	) -> str | None:
 		"""
 		Look up the ShipEngine carrier_id for a given Supplier (transporter) name.
 
-		Uses the synced LTL carrier data stored in Shipstation Settings to map
-		Supplier names to ShipEngine carrier IDs.
+		Uses Supplier.ltl_carrier_id when set, otherwise synced LTL carrier data on Shipstation
+		Settings when available. Does not require ShipStation to be enabled if the supplier ID
+		is stored on the Supplier record.
 
 		Args:
 		supplier_name: The Supplier document name (e.g., "UPS", "USPS")
 		settings_name: Optional Shipstation Settings document name
+		company: Optional company (reserved for future use)
 
 		Returns:
 		ShipEngine carrier_id (e.g., "100abcde-...") or None if not found
@@ -178,7 +200,7 @@ class ShipstationLTL(BaseLTL):
 		if not supplier_name:
 			return None
 
-		settings = get_shipstation_settings(settings_name)
+		settings = get_shipstation_settings_optional(settings_name)
 		id_pattern = re.compile(
 			"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 		)
@@ -194,9 +216,8 @@ class ShipstationLTL(BaseLTL):
 				message=f"Supplier '{supplier_name}' has invalid LTL carrier_id: {carrier_id}",
 			)
 
-		# Get cached carrier data
-		if not settings.shipstation_api_ltl_carrier_data:
-			frappe.throw(_("No carrier data found. Please sync carriers first."))
+		if not settings or not settings.shipstation_api_ltl_carrier_data:
+			return None
 
 		carrier_data = json.loads(settings.shipstation_api_ltl_carrier_data)
 
@@ -237,7 +258,10 @@ class ShipstationLTL(BaseLTL):
 		return None
 
 	def get_package_type_options(
-		self, carrier_id: str | None = None, settings_name: str | None = None
+		self,
+		carrier_id: str | None = None,
+		settings_name: str | None = None,
+		doc: Shipment | None = None,
 	) -> list[dict]:
 		"""
 		Returns a UI-friendly dict with label and value keys to populate dropdown options in the
@@ -252,7 +276,7 @@ class ShipstationLTL(BaseLTL):
 		"""
 		if not carrier_id:
 			return []
-		packages = self.list_ltl_carrier_package_types(carrier_id, settings_name)
+		packages = self.list_ltl_carrier_package_types(carrier_id, settings_name, doc)
 		options = []
 		for pkg in packages:
 			label = pkg.get("name", pkg.get("code", ""))
@@ -284,7 +308,7 @@ class ShipstationLTL(BaseLTL):
 		if not doc.preferred_carrier:
 			return options
 		carrier_id = doc.carrier_id or self.get_carrier_id_for_supplier(
-			doc.preferred_carrier, settings_name
+			doc.preferred_carrier, settings_name, get_shipment_company_for_ltl(doc)
 		)
 		if not carrier_id:
 			frappe.log_error(
@@ -293,7 +317,7 @@ class ShipstationLTL(BaseLTL):
 			)
 			return options
 
-		svc_levels = self.list_ltl_carrier_services(carrier_id, settings_name)
+		svc_levels = self.list_ltl_carrier_services(carrier_id, settings_name, doc)
 		for svc in svc_levels:
 			label = svc.get("name", svc.get("code", ""))
 			if not label:
@@ -323,7 +347,7 @@ class ShipstationLTL(BaseLTL):
 		if not doc.preferred_carrier:
 			return default
 		carrier_id = doc.carrier_id or self.get_carrier_id_for_supplier(
-			doc.preferred_carrier, settings_name
+			doc.preferred_carrier, settings_name, get_shipment_company_for_ltl(doc)
 		)
 		if not carrier_id:
 			frappe.log_error(
@@ -332,7 +356,7 @@ class ShipstationLTL(BaseLTL):
 			)
 			return default
 
-		accessorial_svcs = self.list_ltl_carrier_accessorial_services(carrier_id, settings_name)
+		accessorial_svcs = self.list_ltl_carrier_accessorial_services(carrier_id, settings_name, doc)
 		supported = []
 		for acc_svc in accessorial_svcs:
 			code = acc_svc.get("code", "").upper()
@@ -386,7 +410,7 @@ class ShipstationLTL(BaseLTL):
 		if not doc.preferred_carrier:
 			return default
 		carrier_id = doc.carrier_id or self.get_carrier_id_for_supplier(
-			doc.preferred_carrier, settings_name
+			doc.preferred_carrier, settings_name, get_shipment_company_for_ltl(doc)
 		)
 		if not carrier_id:
 			frappe.log_error(
@@ -395,7 +419,7 @@ class ShipstationLTL(BaseLTL):
 			)
 			return default
 
-		feats = self.list_ltl_carrier_features(carrier_id, settings_name)
+		feats = self.list_ltl_carrier_features(carrier_id, settings_name, doc)
 		return {"supports_quote": "quote" in feats, "supports_spot_quote": "spot_quote" in feats}
 
 	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
@@ -538,7 +562,7 @@ class ShipstationLTL(BaseLTL):
 		if not doc.preferred_carrier:
 			return default
 		carrier_id = doc.carrier_id or self.get_carrier_id_for_supplier(
-			doc.preferred_carrier, settings_name
+			doc.preferred_carrier, settings_name, get_shipment_company_for_ltl(doc)
 		)
 		if not carrier_id:
 			frappe.log_error(
@@ -547,7 +571,7 @@ class ShipstationLTL(BaseLTL):
 			)
 			return default
 
-		feats = self.list_ltl_carrier_features(carrier_id, settings_name)
+		feats = self.list_ltl_carrier_features(carrier_id, settings_name, doc)
 		return {"supports_pickup": "scheduled_pickup" in feats}
 
 	def schedule_ltl_pickup(self, doc: Shipment, settings_name: str | None = None) -> str | None:
@@ -609,12 +633,60 @@ class ShipstationLTL(BaseLTL):
 	##### CLASS HELPER FUNCTIONS TO SUPPORT BASE CLASS FUNCTIONALITY #####
 	DEFAULT_BASE_URL = "https://api.shipengine.com"
 
-	def get_base_url_and_headers(self, settings_name: str | None = None) -> tuple:
-		settings = get_shipstation_settings(settings_name)
-		api_key = settings.get_password("shipstation_api_key")
+	def _ltl_auth_doc(
+		self,
+		doc: Shipment | None = None,
+		company: str | None = None,
+		supplier: str | None = None,
+	):
+		"""Build a minimal doc-like object for resolving Freight Carrier Settings (company + supplier)."""
+		if doc is not None:
+			return doc
+		if company and supplier:
+			return frappe._dict(
+				pickup_from_type="Company",
+				pickup_company=company,
+				preferred_carrier=supplier,
+			)
+		return None
+
+	def get_base_url_and_headers(self, doc: Shipment | None = None) -> tuple[str, dict]:
+		"""Resolve ShipEngine base URL and Api-Key from Freight Carrier Settings only."""
+		if doc is None:
+			frappe.throw(
+				_(
+					"LTL requires Freight Carrier Settings for the shipment's company and preferred carrier "
+					"(or explicit company and supplier)."
+				)
+			)
+		default_base = self.DEFAULT_BASE_URL
+		co = get_shipment_company_for_ltl(doc)
+		supplier = doc.get("preferred_carrier")
+		if not co or not supplier:
+			frappe.throw(
+				_(
+					"Set Preferred Carrier and company (pickup or delivery as Company) on the Shipment "
+					"so LTL can load Freight Carrier Settings."
+				)
+			)
+		fc = get_freight_carrier_settings(co, supplier)
+		if not fc:
+			frappe.throw(
+				_(
+					"No Freight Carrier Settings for company {0} and supplier {1}. "
+					"Save Shipstation Settings with ShipStation API v2 enabled to sync keys into Freight Carrier Settings, "
+					"or create a Freight Carrier Settings record manually."
+				).format(co, supplier)
+			)
+		api_key = fc.get_password("ltl_api_key")
 		if not api_key:
-			frappe.throw(_("ShipStation API key not configured in Shipstation Settings"))
-		base_url = (settings.base_url or self.DEFAULT_BASE_URL).rstrip("/")
+			frappe.throw(
+				_(
+					"LTL API Key is missing on Freight Carrier Settings {0}. "
+					"Sync from Shipstation Settings (API v2) or enter the key on that document."
+				).format(fc.name)
+			)
+		base_url = (fc.base_url or default_base).rstrip("/")
 		headers = {"Content-Type": "application/json", "Accept": "application/json", "Api-Key": api_key}
 		return base_url, headers
 
@@ -658,25 +730,29 @@ class ShipstationLTL(BaseLTL):
 			)
 
 		carrier_id = doc.carrier_id or self.get_carrier_id_for_supplier(
-			doc.preferred_carrier, settings_name
+			doc.preferred_carrier, settings_name, get_shipment_company_for_ltl(doc)
 		)
 		if not carrier_id:
 			frappe.throw(
-				f"No {self.provider} carrier ID found for the preferred carrier - try fetching LTL carriers from Shipstation Settings to collect them."
+				f"No {self.provider} carrier ID found for the preferred carrier — set Supplier LTL Carrier ID, "
+				"fetch LTL carriers using Freight Carrier Settings on Shipstation Settings, or sync carrier metadata."
 			)
 
-	def get_ltl_carrier(self, carrier_id: str, settings_name: str | None = None) -> dict:
+	def get_ltl_carrier(
+		self, carrier_id: str, settings_name: str | None = None, doc: Shipment | None = None
+	) -> dict:
 		"""
 		Get details for a specific LTL carrier.
 
 		Args:
 		carrier_id: The ShipEngine LTL carrier ID (e.g., "100abcde-...")
 		settings_name: Optional Shipstation Settings document name
+		doc: Optional Shipment for Freight Carrier Settings API key resolution
 
 		Returns:
 		LTL carrier details dict
 		"""
-		base_url, headers = self.get_base_url_and_headers(settings_name)
+		base_url, headers = self.get_base_url_and_headers(doc)
 
 		try:
 			with httpx.Client() as client:
@@ -705,7 +781,7 @@ class ShipstationLTL(BaseLTL):
 			frappe.throw(_("Failed to get carrier: {0}").format(error_msg))
 
 	def list_ltl_carrier_accessorial_services(
-		self, carrier_id: str, settings_name: str | None = None
+		self, carrier_id: str, settings_name: str | None = None, doc: Shipment | None = None
 	) -> list[dict]:
 		"""
 		List all options aka accessorial services (e.g. Hazardous Material, Perishable, Inside Pickup)
@@ -718,7 +794,7 @@ class ShipstationLTL(BaseLTL):
 		Returns:
 		List of LTL carrier options dicts with attributes, code, features, and name for each option
 		"""
-		base_url, headers = self.get_base_url_and_headers(settings_name)
+		base_url, headers = self.get_base_url_and_headers(doc)
 
 		try:
 			with httpx.Client() as client:
@@ -748,7 +824,7 @@ class ShipstationLTL(BaseLTL):
 			frappe.throw(_("Failed to list LTL carrier options: {0}").format(error_msg))
 
 	def list_ltl_carrier_features(
-		self, carrier_id: str, settings_name: str | None = None
+		self, carrier_id: str, settings_name: str | None = None, doc: Shipment | None = None
 	) -> list[str]:
 		"""
 		Convenience function to list all features (e.g. "spot_quote", "tracking", "scheduled_pickup")
@@ -762,11 +838,11 @@ class ShipstationLTL(BaseLTL):
 		Returns:
 		List of feature strings
 		"""
-		carrier_data = self.get_ltl_carrier(carrier_id=carrier_id, settings_name=settings_name)
+		carrier_data = self.get_ltl_carrier(carrier_id=carrier_id, settings_name=settings_name, doc=doc)
 		return carrier_data.get("features", [])
 
 	def list_ltl_carrier_package_types(
-		self, carrier_id: str, settings_name: str | None = None
+		self, carrier_id: str, settings_name: str | None = None, doc: Shipment | None = None
 	) -> list[dict]:
 		"""
 		List all package aka container types (e.g. "Bag", "Skid", or "Piece") for a specific LTL
@@ -779,7 +855,7 @@ class ShipstationLTL(BaseLTL):
 		Returns:
 		List of LTL carrier package dicts with code, features, and name for each package
 		"""
-		base_url, headers = self.get_base_url_and_headers(settings_name)
+		base_url, headers = self.get_base_url_and_headers(doc)
 
 		try:
 			with httpx.Client() as client:
@@ -808,26 +884,44 @@ class ShipstationLTL(BaseLTL):
 			frappe.log_error(title="Error listing LTL carrier package/container types", message=error_msg)
 			frappe.throw(_("Failed to list LTL carrier package/container types: {0}").format(error_msg))
 
-	def get_all_ltl_carrier_package_types(self, settings_name: str | None = None) -> dict:
+	def get_all_ltl_carrier_package_types(
+		self,
+		settings_name: str | None = None,
+		company: str | None = None,
+		supplier: str | None = None,
+		doc: Shipment | None = None,
+	) -> dict:
 		"""
 		Get package types for all configured LTL carriers.
 
 		Args:
-		settings_name: Optional Shipstation Settings document name
+		settings_name: Optional Shipstation Settings document name (for cached LTL JSON only)
+		company: Company for Freight Carrier Settings when doc is not passed
+		supplier: Supplier for Freight Carrier Settings when doc is not passed
+		doc: Optional Shipment for auth context
 
 		Returns:
 		Dict mapping carrier_id to list of package types
 		"""
-		settings = get_shipstation_settings(settings_name)
+		auth = self._ltl_auth_doc(doc=doc, company=company, supplier=supplier)
+		if auth is None:
+			frappe.throw(
+				_(
+					"Company and supplier (or a Shipment with Preferred Carrier) are required for LTL package types."
+				)
+			)
+
+		settings = get_shipstation_settings_optional(settings_name)
 
 		# Get carrier IDs from stored LTL carrier data
 		carrier_data = []
-		if settings.shipstation_api_ltl_carrier_data:
+		if settings and settings.shipstation_api_ltl_carrier_data:
 			carrier_data = json.loads(settings.shipstation_api_ltl_carrier_data)
 
 		if not carrier_data:
-			# Fetch carriers if not cached
-			carriers = self.list_ltl_carriers(settings_name)
+			co = get_shipment_company_for_ltl(auth)
+			sup = auth.get("preferred_carrier")
+			carriers = self.list_ltl_carriers(company=co, supplier=sup)
 			carrier_ids = [c["carrier_id"] for c in carriers]
 		else:
 			carrier_ids = [c.get("carrier_id") for c in carrier_data if c.get("carrier_id")]
@@ -835,7 +929,7 @@ class ShipstationLTL(BaseLTL):
 		result = {}
 		for carrier_id in carrier_ids:
 			try:
-				packages = self.list_ltl_carrier_package_types(carrier_id, settings_name)
+				packages = self.list_ltl_carrier_package_types(carrier_id, doc=auth)
 				result[carrier_id] = packages
 			except Exception as e:
 				# Log but don't fail for individual carriers
@@ -848,7 +942,7 @@ class ShipstationLTL(BaseLTL):
 		return result
 
 	def list_ltl_carrier_services(
-		self, carrier_id: str, settings_name: str | None = None
+		self, carrier_id: str, settings_name: str | None = None, doc: Shipment | None = None
 	) -> list[dict]:
 		"""
 		List all service levels (e.g. Guaranteed Morning, Guaranteed Noon, Standard) for a specific
@@ -861,7 +955,7 @@ class ShipstationLTL(BaseLTL):
 		Returns:
 		List of LTL carrier service dicts with code, features, and name for each option
 		"""
-		base_url, headers = self.get_base_url_and_headers(settings_name)
+		base_url, headers = self.get_base_url_and_headers(doc)
 
 		try:
 			with httpx.Client() as client:
@@ -903,7 +997,7 @@ class ShipstationLTL(BaseLTL):
 		if doc.get("package_type_code"):
 			return
 
-		pkg_types = self.list_ltl_carrier_package_types(carrier_id, settings_name)
+		pkg_types = self.list_ltl_carrier_package_types(carrier_id, settings_name, doc)
 		if not pkg_types:
 			frappe.throw(
 				_(
@@ -958,7 +1052,7 @@ class ShipstationLTL(BaseLTL):
 		"""
 		self.resolve_package_type_code(doc, carrier_id, settings_name)
 		self.validate_billing(doc)
-		base_url, headers = self.get_base_url_and_headers(settings_name)
+		base_url, headers = self.get_base_url_and_headers(doc)
 
 		try:
 			with httpx.Client() as client:
@@ -1010,7 +1104,7 @@ class ShipstationLTL(BaseLTL):
 		"""
 		self.resolve_package_type_code(doc, carrier_id, settings_name)
 		self.validate_billing(doc)
-		base_url, headers = self.get_base_url_and_headers(settings_name)
+		base_url, headers = self.get_base_url_and_headers(doc)
 
 		try:
 			with httpx.Client() as client:
@@ -1063,7 +1157,7 @@ class ShipstationLTL(BaseLTL):
 		(Base64-encoded BOL, which decodes to PDF format), pickup_id, and shipment_id among other
 		information
 		"""
-		base_url, headers = self.get_base_url_and_headers(settings_name)
+		base_url, headers = self.get_base_url_and_headers(doc)
 		quote_id = doc.quote_or_offer_id
 		if not quote_id:
 			frappe.throw(
@@ -1128,7 +1222,7 @@ class ShipstationLTL(BaseLTL):
 		(Base64-encoded BOL, which decodes to PDF format), pickup_id, and shipment_id among other
 		information
 		"""
-		base_url, headers = self.get_base_url_and_headers(settings_name)
+		base_url, headers = self.get_base_url_and_headers(doc)
 		self.validate_carrier_and_id(doc, settings_name)
 		carrier_id = doc.carrier_id
 
@@ -1186,7 +1280,7 @@ class ShipstationLTL(BaseLTL):
 		ShipEngine dict with type (value will be "bill_of_lading"), image (value is the base64-
 		encoded BOL document), and format (value will be "pdf") for the shipment
 		"""
-		base_url, headers = self.get_base_url_and_headers(settings_name)
+		base_url, headers = self.get_base_url_and_headers(doc)
 		quote_id = doc.quote_or_offer_id
 		if not quote_id:
 			frappe.throw(
@@ -1241,7 +1335,7 @@ class ShipstationLTL(BaseLTL):
 		ShipEngine dict with type (value will be "bill_of_lading"), image (value is the base64-encoded
 		BOL document), and format (value will be "pdf") for the shipment
 		"""
-		base_url, headers = self.get_base_url_and_headers(settings_name)
+		base_url, headers = self.get_base_url_and_headers(doc)
 		pickup_id = doc.pickup_id
 		if not pickup_id:
 			frappe.throw(
@@ -1301,7 +1395,7 @@ class ShipstationLTL(BaseLTL):
 		the format the image will be in once decoded)
 		"""
 		self.validate_carrier_and_id(doc, settings_name)
-		base_url, headers = self.get_base_url_and_headers(settings_name)
+		base_url, headers = self.get_base_url_and_headers(doc)
 		carrier_id = doc.carrier_id
 		pro_number = doc.awb_number
 		if not pro_number:
@@ -1820,3 +1914,12 @@ class ShipstationLTL(BaseLTL):
 				"email": contact.get(email_field),
 			},
 		}
+
+
+def get_ltl_class_instance() -> BaseLTL:
+	"""Return the LTL implementation from hooks or the default ShipstationLTL."""
+	hook = frappe.get_hooks("override_shipstation")
+	if hook and hook.get("ltl"):
+		method_string = hook.get("ltl")[-1]
+		return frappe.get_attr(method_string)()
+	return ShipstationLTL()

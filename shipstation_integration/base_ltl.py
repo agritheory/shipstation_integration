@@ -13,12 +13,19 @@ class BaseLTL:
 		self.provider = ""
 
 	def list_ltl_carriers(
-		self, settings_name: str | None = None, create_transporters: bool = False
+		self,
+		settings_name: str | None = None,
+		create_transporters: bool = False,
+		company: str | None = None,
+		supplier: str | None = None,
+		doc: Shipment | None = None,
 	) -> list[dict]:
 		"""
 		List all LTL carriers connected to the provider account. Returns a list of carrier dict
 		objects. The results are used to store and display LTL carrier data in Shipstation
 		Settings.
+
+		Auth: Freight Carrier Settings for (company, supplier) or Shipment doc — not Shipstation Settings.
 
 		Front end expects each carrier dict to have the following format:
 		{
@@ -35,9 +42,12 @@ class BaseLTL:
 		an empty list.
 
 		Args:
-		settings_name: Optional Shipstation Settings document name
+		settings_name: Deprecated / unused for default implementation
 		create_transporters: If True, create Supplier records with is_transporter=1 for each
 		carrier that doesn't already exist
+		company: Company for Freight Carrier Settings
+		supplier: Supplier (transporter) for Freight Carrier Settings
+		doc: Optional Shipment
 
 		Returns:
 		List of carrier dicts with carrier_id, carrier_code, name, supplier, etc.

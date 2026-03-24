@@ -21,10 +21,6 @@ function clean_value(value) {
 	return value
 }
 
-// ---------------------------------------------------------------------------
-// Parcel packing UX
-// ---------------------------------------------------------------------------
-
 function get_parcel_color(parcel_number) {
 	if (!parcel_number) return null
 	return PARCEL_COLORS[(parcel_number - 1) % PARCEL_COLORS.length]
@@ -271,10 +267,6 @@ function split_selected_rows(frm) {
 	return false
 }
 
-// ---------------------------------------------------------------------------
-// Frappe form events
-// ---------------------------------------------------------------------------
-
 frappe.ui.form.on('Packing Slip', {
 	setup: function (frm) {
 		frm.set_query('shipping_address_name', function () {
@@ -508,10 +500,6 @@ frappe.ui.form.on('Packing Slip Item', {
 		update_parcel_details(frm, cdt, cdn)
 	},
 })
-
-// ---------------------------------------------------------------------------
-// Helper functions
-// ---------------------------------------------------------------------------
 
 function load_carrier_services(frm, supplier_name) {
 	if (!supplier_name) return

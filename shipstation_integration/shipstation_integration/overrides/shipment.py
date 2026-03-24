@@ -5,9 +5,13 @@ import json
 
 import frappe
 from erpnext.stock.doctype.shipment.shipment import Shipment
-from frappe.exceptions import ValidationError
+from shipstation_integration.ltl import get_ltl_class_instance
+from shipstation_integration.utils import get_shipstation_settings_optional
 
-from shipstation_integration.utils import get_shipstation_settings
+
+def _ltl_settings_name(settings_name: str | None) -> str | None:
+	settings = get_shipstation_settings_optional(settings_name)
+	return settings.name if settings else None
 
 
 class ShipStationShipment(Shipment):
@@ -18,7 +22,7 @@ class ShipStationShipment(Shipment):
 
 @frappe.whitelist()
 def get_carrier_id_for_supplier(
-	supplier_name: str, settings_name: str | None = None
+	supplier_name: str, settings_name: str | None = None, company: str | None = None
 ) -> str | None:
 	"""
 	Returns the provider-specific carrier ID for a given Supplier in ERPNext.
@@ -26,18 +30,24 @@ def get_carrier_id_for_supplier(
 	Args:
 	supplier_name: name of a Supplier in ERPNext
 	settings_name: Optional Shipstation Settings document name
+	company: Optional Company for Freight Carrier Settings context
 
 	Returns:
 	Carrier ID if available
 	"""
-	settings = get_shipstation_settings(settings_name)
-	ltl_class = settings.get_ltl_class()
-	return ltl_class.get_carrier_id_for_supplier(supplier_name, settings.name)
+	if company is None:
+		company = frappe.defaults.get_user_default("Company")
+	ltl_class = get_ltl_class_instance()
+	return ltl_class.get_carrier_id_for_supplier(
+		supplier_name, _ltl_settings_name(settings_name), company
+	)
 
 
 @frappe.whitelist()
 def get_ltl_package_type_options(
-	carrier_id: str | None = None, settings_name: str | None = None
+	carrier_id: str | None = None,
+	settings_name: str | None = None,
+	shipment: str | None = None,
 ) -> list:
 	"""
 	Returns a UI-friendly dict with label and value keys to populate dropdown options in the
@@ -46,13 +56,18 @@ def get_ltl_package_type_options(
 	Args:
 	carrier_id: The ShipEngine LTL carrier ID (e.g., "100abcde-...")
 	settings_name: Optional Shipstation Settings document name
+	shipment: Optional JSON Shipment fields for Freight Carrier Settings API key resolution
 
 	Returns:
 	List of dicts with "value" and "label" keys for use in select field
 	"""
-	settings = get_shipstation_settings(settings_name)
-	ltl_class = settings.get_ltl_class()
-	return ltl_class.get_package_type_options(carrier_id, settings.name)
+	doc = None
+	if shipment:
+		parsed = json.loads(shipment) if isinstance(shipment, str) else shipment
+		if isinstance(parsed, dict):
+			doc = frappe._dict(parsed)
+	ltl_class = get_ltl_class_instance()
+	return ltl_class.get_package_type_options(carrier_id, _ltl_settings_name(settings_name), doc)
 
 
 @frappe.whitelist()
@@ -61,14 +76,14 @@ def get_shipment_dimension_uoms(settings_name: str | None = None) -> dict:
 	UOM options for package length, weight, and density for Shipment Parcel table fields.
 
 	Args:
-	settings_name: Optional Shipstation Settings document name
+	settings_name: Optional Shipstation Settings document name (unused; LTL UOMs do not require API)
 
 	Returns:
 	Dict with "length_uom", "weight_uom", and "density_uom" keys. Each value is a list of ERPNext
 	UOMs the API payloads can accept
 	"""
-	settings = get_shipstation_settings(settings_name)
-	ltl_class = settings.get_ltl_class()
+	_ = settings_name
+	ltl_class = get_ltl_class_instance()
 	return ltl_class.get_shipment_dimension_uoms()
 
 
@@ -88,9 +103,8 @@ def get_carrier_service_levels(
 	List of dicts with "value" and "label" keys for use in select field
 	"""
 	doc = frappe.get_doc(json.loads(doc)) if isinstance(doc, str) else doc
-	settings = get_shipstation_settings(settings_name)
-	ltl_class = settings.get_ltl_class()
-	return ltl_class.get_carrier_service_levels(doc, settings.name)
+	ltl_class = get_ltl_class_instance()
+	return ltl_class.get_carrier_service_levels(doc, _ltl_settings_name(settings_name))
 
 
 @frappe.whitelist()
@@ -109,9 +123,8 @@ def get_supported_accessorial_service_fields(
 	List of the Shipment document field names for supported accessorial services.
 	"""
 	doc = frappe.get_doc(json.loads(doc)) if isinstance(doc, str) else doc
-	settings = get_shipstation_settings(settings_name)
-	ltl_class = settings.get_ltl_class()
-	return ltl_class.get_accessorial_service_fields(doc, settings.name)
+	ltl_class = get_ltl_class_instance()
+	return ltl_class.get_accessorial_service_fields(doc, _ltl_settings_name(settings_name))
 
 
 @frappe.whitelist()
@@ -128,9 +141,8 @@ def supports_quote_or_spot_quote(doc: Shipment | str, settings_name: str | None 
 	Dict with keys for "supports_quote" and "supports_spot_quote" with boolean values
 	"""
 	doc = frappe.get_doc(json.loads(doc)) if isinstance(doc, str) else doc
-	settings = get_shipstation_settings(settings_name)
-	ltl_class = settings.get_ltl_class()
-	return ltl_class.supports_quote_or_spot_quote(doc, settings.name)
+	ltl_class = get_ltl_class_instance()
+	return ltl_class.supports_quote_or_spot_quote(doc, _ltl_settings_name(settings_name))
 
 
 @frappe.whitelist()
@@ -148,9 +160,8 @@ def get_ltl_quotes(doc: Shipment | str, settings_name: str | None = None) -> str
 	Message string to display in UI
 	"""
 	doc = frappe.get_doc(json.loads(doc)) if isinstance(doc, str) else doc
-	settings = get_shipstation_settings(settings_name)
-	ltl_class = settings.get_ltl_class()
-	return ltl_class.get_ltl_quotes(doc, settings.name)
+	ltl_class = get_ltl_class_instance()
+	return ltl_class.get_ltl_quotes(doc, _ltl_settings_name(settings_name))
 
 
 # @frappe.whitelist()
@@ -158,18 +169,17 @@ def get_ltl_quotes(doc: Shipment | str, settings_name: str | None = None) -> str
 # 	"""
 # 	Convenience function that returns dict with True/False whether a specific carrier (or the
 # 	API in general) supports electronically scheduling a pickup.
-
+#
 # 	Args:
 # 	doc: a Shipment document in ERPNext
 # 	settings_name: Optional Shipstation Settings document name
-
+#
 # 	Returns:
 # 	Dict with key for "supports_pickup" with boolean value
 # 	"""
 # 	doc = frappe.get_doc(json.loads(doc)) if isinstance(doc, str) else doc
-# 	settings = get_shipstation_settings(settings_name)
-# 	ltl_class = settings.get_ltl_class()
-# 	return ltl_class.supports_scheduled_pickup(doc, settings.name)
+# 	ltl_class = get_ltl_class_instance()
+# 	return ltl_class.supports_scheduled_pickup(doc, _ltl_settings_name(settings_name))
 
 
 @frappe.whitelist()
@@ -189,8 +199,7 @@ def schedule_ltl_pickup(doc: Shipment | str, settings_name: str | None = None) -
 	Message string to display in UI
 	"""
 	doc = frappe.get_doc(json.loads(doc)) if isinstance(doc, str) else doc
-	settings = get_shipstation_settings(settings_name)
-	ltl_class = settings.get_ltl_class()
-	message = ltl_class.schedule_ltl_pickup(doc, settings.name)
+	ltl_class = get_ltl_class_instance()
+	message = ltl_class.schedule_ltl_pickup(doc, _ltl_settings_name(settings_name))
 	# TODO: if successful, save shipping amount to DN and submit?
 	return message

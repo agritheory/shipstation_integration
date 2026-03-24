@@ -1,13 +1,6 @@
 # Copyright (c) 2026, AgriTheory and contributors
 # For license information, please see license.txt
 
-"""Tests for the LTL shipping module (ltl.py).
-
-All tests that touch document-level behavior run against the real LTL
-Shipment created by the test setup fixture.  API calls that require the
-network are monkeypatched so the suite remains fast and deterministic.
-"""
-
 import pytest
 import frappe
 
@@ -21,13 +14,6 @@ def ltl():
 
 @pytest.fixture
 def ltl_shipment():
-	"""The draft LTL Shipment created by test setup, with Shipment Delivery Note
-	rows pre-populated from the linked Delivery Note.
-
-	Both DN items are placed in parcel 1 (48×40×36 in, 125 lb each) so that
-	build_packages_from_sdn sees a single valid package totalling 250 lb.
-	Saves original SDN state and restores on teardown.
-	"""
 	shipment = frappe.get_last_doc("Shipment", filters={"freight_type": "LTL", "docstatus": 0})
 	shipment.reload()
 
@@ -78,11 +64,6 @@ def ltl_shipment():
 	shipment.save()
 
 
-# ---------------------------------------------------------------------------
-# density_to_freight_class
-# ---------------------------------------------------------------------------
-
-
 def test_density_to_freight_class_covers_all_nmfc_thresholds(ltl):
 	expected = [
 		(50, 50),
@@ -124,11 +105,6 @@ def test_density_to_freight_class_below_minimum_is_class_500(ltl):
 	assert ltl.density_to_freight_class(0.5) == 500
 
 
-# ---------------------------------------------------------------------------
-# calculate_density_lb_ft3
-# ---------------------------------------------------------------------------
-
-
 def test_calculate_density_lb_ft3_with_real_shipment_parcel(ltl, ltl_shipment):
 	# The test setup creates one shipment_parcel row: 48×40×36 in, 250 lb, count=1
 	# → 40 ft³ → 6.25 lb/ft³
@@ -163,11 +139,6 @@ def test_calculate_density_lb_ft3_count_multiplies_volume(ltl, ltl_shipment):
 	)
 
 
-# ---------------------------------------------------------------------------
-# validate_billing
-# ---------------------------------------------------------------------------
-
-
 def test_validate_billing_passes_with_test_shipment(ltl, ltl_shipment):
 	# The test shipment has billing_account="TEST-ACCOUNT-001"
 	ltl.validate_billing(ltl_shipment)  # must not raise
@@ -183,11 +154,6 @@ def test_validate_billing_raises_when_billing_account_is_none(ltl, ltl_shipment)
 	ltl_shipment.billing_account = None
 	with pytest.raises(frappe.ValidationError):
 		ltl.validate_billing(ltl_shipment)
-
-
-# ---------------------------------------------------------------------------
-# build_packages_from_sdn
-# ---------------------------------------------------------------------------
 
 
 def test_build_packages_from_sdn_returns_one_package_per_parcel(ltl, ltl_shipment):
@@ -289,11 +255,6 @@ def test_build_packages_from_sdn_nmfc_code_omitted_when_not_set(ltl, ltl_shipmen
 	assert "nmfc_code" not in pkg
 
 
-# ---------------------------------------------------------------------------
-# resolve_package_type_code
-# ---------------------------------------------------------------------------
-
-
 def test_resolve_package_type_code_skips_api_when_code_already_set(ltl, ltl_shipment, monkeypatch):
 	# The fixture sets package_type_code="PLT" — no API call should be made
 	calls = []
@@ -341,11 +302,6 @@ def test_resolve_package_type_code_raises_when_carrier_returns_no_types(
 	monkeypatch.setattr(ltl, "list_ltl_carrier_package_types", lambda *a, **kw: [])
 	with pytest.raises(frappe.ValidationError):
 		ltl.resolve_package_type_code(ltl_shipment, "carrier-1")
-
-
-# ---------------------------------------------------------------------------
-# get_shipment_measurements_object_from_doc
-# ---------------------------------------------------------------------------
 
 
 def test_get_shipment_measurements_has_all_required_keys(ltl, ltl_shipment):

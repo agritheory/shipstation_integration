@@ -1,6 +1,9 @@
 # Copyright (c) 2026, AgriTheory and contributors
 # For license information, please see license.txt
 
+import json
+from pathlib import Path
+
 import frappe
 from erpnext.selling.doctype.sales_order.sales_order import make_delivery_note
 from erpnext.setup.utils import enable_all_roles_and_domains, set_defaults_for_tests
@@ -60,6 +63,7 @@ def create_test_data():
 	create_transporters()
 	create_parcel_templates()
 	create_shipstation_settings(settings)
+	create_freight_carrier_settings_for_tests(settings)
 	create_customer_address(settings)
 	create_inventory_with_handling_units(settings)
 	create_sales_order(settings)
@@ -110,9 +114,49 @@ def create_shipstation_settings(settings):
 		ss.name = settings.company
 
 	ss.enabled = 1
+	ss.enable_shipstation_api = 1
 	ss.default_item_group = default_item_group
 	ss.gs1_company_prefix = "0614141"
+	ss.set("shipstation_api_key", "test_shipstation_api_key_for_ci")
+	ss.shipstation_api_carrier_data = json.dumps(
+		[
+			{"carrier_id": "se-123", "carrier_code": "usps"},
+			{"carrier_id": "se-456", "carrier_code": "fedex"},
+			{"carrier_id": "se-789", "carrier_code": "ups"},
+		]
+	)
 	ss.save()
+
+
+def create_freight_carrier_settings_for_tests(settings):
+	"""Seed Freight Carrier Settings so LTL uses per-carrier credentials (not Shipstation Settings)."""
+	supplier = frappe.db.get_value(
+		"Supplier", {"supplier_name": "Test LTL Carrier", "is_transporter": 1}, "name"
+	)
+	if not supplier:
+		return
+	existing = frappe.db.get_value(
+		"Freight Carrier Settings",
+		{"company": settings.company, "supplier": supplier},
+		"name",
+	)
+	if existing:
+		fc = frappe.get_doc("Freight Carrier Settings", existing)
+	else:
+		fc = frappe.new_doc("Freight Carrier Settings")
+		fc.company = settings.company
+		fc.supplier = supplier
+		fc.insert(ignore_permissions=True)
+		fc.reload()
+	fc.set("ltl_api_key", "test_ltl_api_key_for_ci")
+	if not (fc.base_url or "").strip():
+		fc.base_url = "https://api.shipengine.com"
+	fc.save(ignore_permissions=True)
+
+	if frappe.db.exists("Shipstation Settings", settings.company):
+		ss = frappe.get_doc("Shipstation Settings", settings.company)
+		ss.ltl_fetch_freight_carrier_settings = fc.name
+		ss.save()
 
 
 def create_transporters():
@@ -318,6 +362,7 @@ def create_shipment_for_ltl(settings):
 	shipment.pickup_to = "17:00:00"
 	shipment.delivery_note = dn.name
 	shipment.pickup_from_type = "Company"
+	shipment.pickup_company = settings.company
 	shipment.delivery_to_type = "Customer"
 	shipment.pickup_address_name = company_address
 	shipment.delivery_address_name = customer_address
@@ -343,3 +388,53 @@ def create_shipment_for_ltl(settings):
 	)
 
 	shipment.save()
+
+
+def load_ltl_json_fixture(filename: str) -> dict:
+	fixtures_dir = Path(frappe.get_app_path("shipstation_integration", "tests", "fixtures"))
+	return json.loads((fixtures_dir / filename).read_text())
+
+
+def ltl_quotes_response_for_tests() -> dict:
+	"""First captured ShipEngine LTL quotes response body (list of rate offers)."""
+	return load_ltl_json_fixture("ltl_quotes_response.json")["captured_responses"][0]["response"]
+
+
+def ltl_pickup_response_for_tests() -> dict:
+	"""Captured schedule-pickup API response body."""
+	return load_ltl_json_fixture("ltl_pickup_response.json")["captured_responses"][0]["response"]
+
+
+def get_draft_ltl_shipment_for_tests():
+	"""Draft LTL Shipment created by ``create_shipment_for_ltl`` in ``create_test_data``."""
+	shipment = frappe.get_last_doc("Shipment", filters={"freight_type": "LTL", "docstatus": 0})
+	shipment.reload()
+	return shipment
+
+
+_LTL_SHIPMENT_QUOTATION_RESET_FIELDS = (
+	"accepted_quotation",
+	"quote_or_offer_id",
+	"quote_or_offer_transaction_id",
+	"estimated_delivery_date",
+	"pickup_id",
+	"awb_number",
+	"shipment_id",
+)
+
+
+def reset_ltl_shipment_quotation_test_state() -> None:
+	"""Clear quotation docs and LTL quote/pickup fields on the seed draft LTL Shipment.
+
+	The Shipment is created once by ``create_shipment_for_ltl`` in ``create_test_data``. Tests
+	should call this at the **start** of each case so state comes only from the database + setup,
+	not from pytest fixtures or context managers.
+	"""
+	shipment = frappe.get_last_doc("Shipment", filters={"freight_type": "LTL", "docstatus": 0})
+	for sq in frappe.get_all("Shipment Quotation", filters={"shipment": shipment.name}, pluck="name"):
+		frappe.delete_doc("Shipment Quotation", sq, force=True)
+	frappe.db.set_value(
+		"Shipment",
+		shipment.name,
+		{field: None for field in _LTL_SHIPMENT_QUOTATION_RESET_FIELDS},
+	)

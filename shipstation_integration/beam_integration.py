@@ -19,9 +19,7 @@ beam/beam/beam/handling_unit.py).  We exploit that to pre-set our SSCC
 codes as the HU on target rows so BEAM never overwrites them with
 UUID-derived names.
 
-Source-row constraint
----------------------
-BEAM's ``validate_items_with_handling_unit`` requires that every source row
+Source-row constraint: BEAM's ``validate_items_with_handling_unit`` requires that every source row
 in a Repack SE with ``Item.enable_handling_unit = 1`` carries a
 ``handling_unit`` value.  This requirement does not apply to the packing-slip
 Repack flow: customers who use BEAM HUs exclusively for outbound packing
@@ -33,11 +31,6 @@ BEAM's validation is suppressed via ``frappe.flags`` for this call only.
 import frappe
 from frappe import _
 from frappe.utils import flt, today
-
-
-# ---------------------------------------------------------------------------
-# Feature detection
-# ---------------------------------------------------------------------------
 
 
 def is_beam_installed() -> bool:
@@ -65,11 +58,6 @@ def psi_has_handling_unit_field() -> bool:
 def dni_has_handling_unit_field() -> bool:
 	"""Return True if BEAM's Inventory Dimension has been applied to Delivery Note Item."""
 	return frappe.get_meta("Delivery Note Item").has_field("handling_unit")
-
-
-# ---------------------------------------------------------------------------
-# Handling Unit registration
-# ---------------------------------------------------------------------------
 
 
 def create_handling_unit_for_sscc(sscc_code: str) -> str | None:
@@ -101,11 +89,6 @@ def create_handling_unit_for_sscc(sscc_code: str) -> str | None:
 	return sscc_code
 
 
-# ---------------------------------------------------------------------------
-# Packing Slip submit entry point
-# ---------------------------------------------------------------------------
-
-
 def on_packing_slip_submit(doc) -> None:
 	"""
 	Called from ``shipstation_integration.packing_slip.on_submit``.
@@ -134,19 +117,12 @@ def on_packing_slip_submit(doc) -> None:
 	update_dn_item_handling_units(doc)
 
 
-# ---------------------------------------------------------------------------
-# Repack Stock Entry
-# ---------------------------------------------------------------------------
-
-
 def create_packing_slip_repack_entry(doc, company: str) -> str | None:
 	"""
 	Build and submit a ``Repack`` Stock Entry that records the HU
 	transformation for this Packing Slip in the stock ledger.
 
-	Structure
-	---------
-	Source rows  (s_warehouse only)
+	Structure — source rows (s_warehouse only)
 	    One row per unique ``(item_code, warehouse, source_hu)`` combination
 	    derived from the linked Delivery Note items.  Rows without a source
 	    HU are included only when ``Item.enable_handling_unit = 0``; items
@@ -154,7 +130,7 @@ def create_packing_slip_repack_entry(doc, company: str) -> str | None:
 	    BEAM's ``validate_items_with_handling_unit`` error — callers must
 	    ensure such items were received with BEAM enabled before submitting.
 
-	Target rows  (t_warehouse only)
+	Target rows (t_warehouse only)
 	    One row per packed Packing Slip Item.  ``handling_unit`` is NOT set
 	    during the initial ``save()`` so Frappe's link validator doesn't
 	    reject not-yet-existing HU documents.  After the SE draft is saved
@@ -177,9 +153,6 @@ def create_packing_slip_repack_entry(doc, company: str) -> str | None:
 	has_hu_on_dni = dni_has_handling_unit_field()
 	has_hu_on_psi = psi_has_handling_unit_field()
 
-	# ------------------------------------------------------------------ #
-	# Gather source items from DN                                          #
-	# ------------------------------------------------------------------ #
 	# Tracks item_codes whose source rows have zero rate (not free items) so
 	# matching target rows can also get allow_zero_valuation_rate = 1.
 	zero_rate_items: set[str] = set()
@@ -267,9 +240,6 @@ def create_packing_slip_repack_entry(doc, company: str) -> str | None:
 		)
 		return None
 
-	# ------------------------------------------------------------------ #
-	# Build the Stock Entry                                                #
-	# ------------------------------------------------------------------ #
 	se = frappe.new_doc("Stock Entry")
 	se.stock_entry_type = "Repack"
 	se.purpose = "Repack"
@@ -324,31 +294,30 @@ def create_packing_slip_repack_entry(doc, company: str) -> str | None:
 			row.is_finished_item = 1
 			target_rows.append((row, ""))
 
-	# Step 1: persist the SE as a draft — no HUs required yet.
-	se.save(ignore_permissions=True)
-
-	# Step 2: create SSCC HUs now that the SE draft exists as their anchor.
-	for _row, sscc in target_rows:
-		if sscc:
-			create_handling_unit_for_sscc(sscc)
-
-	# Step 3: set handling_unit on the IN-MEMORY row objects before submit.
-	# Must update the in-memory object (not just the DB) because se.submit()
-	# calls se.save() again from the in-memory doc, which would overwrite any
-	# frappe.db.set_value changes made here.  BEAM's generate_handling_units
-	# hook (before_submit) checks row.get("handling_unit") on the in-memory
-	# doc — setting it here means BEAM sees the SSCC and skips UUID generation.
-	for row, sscc in target_rows:
-		if sscc:
-			row.handling_unit = sscc
-
-	# Customers who use BEAM HUs only for outbound packing will have source
-	# stock with no handling_unit (receipts, transfers, and picks are not HU-
-	# tracked).  Signal BEAM's before_submit validator to skip source-row HU
-	# validation for this Repack SE so it doesn't raise "Handling Unit is
-	# missing" on rows that legitimately have none.
+	# BEAM's validate_items_with_handling_unit runs on save() and submit(). This Repack
+	# is saved first without target handling_unit (SSCC HUs do not exist yet), and
+	# source rows may have no HU when DN items are not HU-tracked — set the flag for
+	# the whole save → HU create → set row.handling_unit → submit sequence.
 	frappe.flags.beam_allow_source_rows_without_hu = True
 	try:
+		# Step 1: persist the SE as a draft — no HUs required yet.
+		se.save(ignore_permissions=True)
+
+		# Step 2: create SSCC HUs now that the SE draft exists as their anchor.
+		for _row, sscc in target_rows:
+			if sscc:
+				create_handling_unit_for_sscc(sscc)
+
+		# Step 3: set handling_unit on the IN-MEMORY row objects before submit.
+		# Must update the in-memory object (not just the DB) because se.submit()
+		# calls se.save() again from the in-memory doc, which would overwrite any
+		# frappe.db.set_value changes made here.  BEAM's generate_handling_units
+		# hook (before_submit) checks row.get("handling_unit") on the in-memory
+		# doc — setting it here means BEAM sees the SSCC and skips UUID generation.
+		for row, sscc in target_rows:
+			if sscc:
+				row.handling_unit = sscc
+
 		se.submit()
 	finally:
 		frappe.flags.beam_allow_source_rows_without_hu = False
@@ -367,11 +336,6 @@ def create_packing_slip_repack_entry(doc, company: str) -> str | None:
 						)
 
 	return se.name
-
-
-# ---------------------------------------------------------------------------
-# DN item handling_unit update
-# ---------------------------------------------------------------------------
 
 
 def update_dn_item_handling_units(doc) -> None:
@@ -399,11 +363,6 @@ def update_dn_item_handling_units(doc) -> None:
 			# All qty for this DN item is in one parcel — safe to set the HU.
 			sscc = next(iter(parcel_set))[1]
 			frappe.db.set_value("Delivery Note Item", dn_detail, "handling_unit", sscc)
-
-
-# ---------------------------------------------------------------------------
-# Shipment submit entry point
-# ---------------------------------------------------------------------------
 
 
 def on_shipment_submit(doc) -> None:
@@ -439,11 +398,6 @@ def on_shipment_submit(doc) -> None:
 			create_handling_unit_for_sscc(code)
 
 	update_sdn_dn_item_handling_units(doc)
-
-
-# ---------------------------------------------------------------------------
-# Repack Stock Entry for Shipment
-# ---------------------------------------------------------------------------
 
 
 def create_shipment_repack_entry(doc, company: str) -> str | None:
@@ -582,18 +536,18 @@ def create_shipment_repack_entry(doc, company: str) -> str | None:
 			row.is_finished_item = 1
 			target_rows.append((row, ""))
 
-	se.save(ignore_permissions=True)
-
-	for _row, sscc in target_rows:
-		if sscc:
-			create_handling_unit_for_sscc(sscc)
-
-	for row, sscc in target_rows:
-		if sscc:
-			row.handling_unit = sscc
-
 	frappe.flags.beam_allow_source_rows_without_hu = True
 	try:
+		se.save(ignore_permissions=True)
+
+		for _row, sscc in target_rows:
+			if sscc:
+				create_handling_unit_for_sscc(sscc)
+
+		for row, sscc in target_rows:
+			if sscc:
+				row.handling_unit = sscc
+
 		se.submit()
 	finally:
 		frappe.flags.beam_allow_source_rows_without_hu = False
@@ -622,11 +576,6 @@ def update_sdn_dn_item_handling_units(doc) -> None:
 		if len(parcel_numbers) == 1:
 			sscc = next(iter(parcel_set))[1]
 			frappe.db.set_value("Delivery Note Item", dn_detail, "handling_unit", sscc)
-
-
-# ---------------------------------------------------------------------------
-# Source HU lookup (used by frontend)
-# ---------------------------------------------------------------------------
 
 
 @frappe.whitelist()

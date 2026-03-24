@@ -1,13 +1,6 @@
 # Copyright (c) 2024, AgriTheory and Contributors
 # See license.txt
 
-"""
-Tests for Packing Slip shipping label generation using ShipStation API v2.
-
-These tests use real Frappe documents (Sales Order, Delivery Note, Packing Slip)
-created by the test setup, with only the ShipStation API response mocked.
-"""
-
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -25,7 +18,6 @@ from shipstation_integration.rates import get_rates_for_packing_slip
 
 @pytest.fixture
 def label_response():
-	"""Load the captured ShipEngine label response."""
 	fixtures_dir = Path(frappe.get_app_path("shipstation_integration", "tests", "fixtures"))
 	fixture_file = fixtures_dir / "label_response.json"
 	with open(fixture_file) as f:
@@ -35,11 +27,6 @@ def label_response():
 
 @pytest.fixture
 def packing_slip():
-	"""Get the draft Packing Slip created by test setup.
-
-	Filtering for docstatus=0 ensures we always get the setup-created draft
-	PS rather than any submitted PS produced by other test modules.
-	"""
 	ps = frappe.get_last_doc("Packing Slip", {"docstatus": 0})
 	ps.reload()
 
@@ -81,7 +68,6 @@ def packing_slip():
 
 @pytest.fixture
 def packing_slip_with_label(packing_slip):
-	"""Packing Slip with a tracking number already set on its first item row."""
 	row = packing_slip.items[0]
 	frappe.db.set_value(
 		"Packing Slip Item",
@@ -111,7 +97,6 @@ def packing_slip_with_label(packing_slip):
 
 
 def test_create_label_requires_shipping_address(packing_slip):
-	"""Test that shipping address is required."""
 	packing_slip.shipping_address_name = None
 	packing_slip.save()
 	with pytest.raises(frappe.ValidationError):
@@ -121,7 +106,6 @@ def test_create_label_requires_shipping_address(packing_slip):
 
 
 def test_create_label_requires_dispatch_address(packing_slip):
-	"""Test that dispatch (ship-from) address is required."""
 	packing_slip.dispatch_address_name = None
 	packing_slip.save()
 	with pytest.raises(frappe.ValidationError):
@@ -131,13 +115,11 @@ def test_create_label_requires_dispatch_address(packing_slip):
 
 
 def test_create_label_requires_carrier_or_rate(packing_slip):
-	"""Test that either rate_id or carrier_id+service_code is required."""
 	with pytest.raises(frappe.ValidationError):
 		create_label_for_packing_slip(packing_slip.name)
 
 
 def test_build_shipment_from_packing_slip(packing_slip):
-	"""Test building shipment data from real Packing Slip."""
 	from shipstation_integration.labels import build_shipment_from_packing_slip
 
 	shipment = build_shipment_from_packing_slip(packing_slip, "se-123", "usps_priority_mail", 1)
@@ -162,11 +144,10 @@ def test_build_shipment_from_packing_slip(packing_slip):
 
 
 def test_create_label_with_carrier_and_service(
-	packing_slip, label_response, mock_settings_with_client
+	packing_slip, label_response, shipstation_api_client_mock
 ):
-	"""Test label creation using carrier_id and service_code."""
-	mock_client = mock_settings_with_client.shipstation_api_client.return_value
-	mock_client.create_label_from_shipment.return_value = label_response
+	api_client = shipstation_api_client_mock
+	api_client.create_label_from_shipment.return_value = label_response
 
 	with patch("shipstation_integration.labels.download_and_attach_label") as mock_download:
 		mock_download.return_value = None
@@ -178,10 +159,9 @@ def test_create_label_with_carrier_and_service(
 		assert results[0]["carrier_code"] == "usps"
 
 
-def test_create_label_with_rate_id(packing_slip, label_response, mock_settings_with_client):
-	"""Test label creation using rate_id."""
-	mock_client = mock_settings_with_client.shipstation_api_client.return_value
-	mock_client.create_label_from_rate_id.return_value = label_response
+def test_create_label_with_rate_id(packing_slip, label_response, shipstation_api_client_mock):
+	api_client = shipstation_api_client_mock
+	api_client.create_label_from_rate_id.return_value = label_response
 	with patch("shipstation_integration.labels.download_and_attach_label") as mock_download:
 		mock_download.return_value = None
 		results = create_label_for_packing_slip(packing_slip.name, rate_id="se-rate-123")
@@ -189,10 +169,9 @@ def test_create_label_with_rate_id(packing_slip, label_response, mock_settings_w
 		assert results[0]["label_id"] == "se-test-label-123"
 
 
-def test_tracking_url_built_for_usps(packing_slip, label_response, mock_settings_with_client):
-	"""Test that tracking URL is written to items and is correct for USPS."""
-	mock_client = mock_settings_with_client.shipstation_api_client.return_value
-	mock_client.create_label_from_shipment.return_value = label_response
+def test_tracking_url_built_for_usps(packing_slip, label_response, shipstation_api_client_mock):
+	api_client = shipstation_api_client_mock
+	api_client.create_label_from_shipment.return_value = label_response
 	with patch("shipstation_integration.labels.download_and_attach_label") as mock_download:
 		mock_download.return_value = None
 		create_label_for_packing_slip(
@@ -205,8 +184,7 @@ def test_tracking_url_built_for_usps(packing_slip, label_response, mock_settings
 		assert "9400111899223100001234" in item.tracking_url
 
 
-def test_get_rates_for_packing_slip(packing_slip, mock_settings_with_client):
-	"""Test getting rates for a Packing Slip."""
+def test_get_rates_for_packing_slip(packing_slip, shipstation_api_client_mock):
 	rates_response = {
 		"rates": [
 			{
@@ -223,8 +201,8 @@ def test_get_rates_for_packing_slip(packing_slip, mock_settings_with_client):
 		]
 	}
 
-	mock_client = mock_settings_with_client.shipstation_api_client.return_value
-	mock_client.get_rates_from_shipment.return_value = rates_response
+	api_client = shipstation_api_client_mock
+	api_client.get_rates_from_shipment.return_value = rates_response
 	rates = get_rates_for_packing_slip(packing_slip.name)
 	assert len(rates) > 0
 	assert rates[0]["rate_id"] == "se-rate-1"
@@ -232,7 +210,6 @@ def test_get_rates_for_packing_slip(packing_slip, mock_settings_with_client):
 
 
 def test_get_rates_missing_parcel_number(packing_slip):
-	"""Test that rates require items with a parcel number set."""
 	for row in packing_slip.items:
 		row.parcel_number = 0
 	packing_slip.save()
@@ -241,7 +218,6 @@ def test_get_rates_missing_parcel_number(packing_slip):
 
 
 def test_get_package_from_packing_slip(packing_slip):
-	"""Test extracting package data from Packing Slip."""
 	package = get_package_from_packing_slip(packing_slip)
 	assert package is not None
 	assert "weight" in package
@@ -255,11 +231,7 @@ def test_get_package_from_packing_slip(packing_slip):
 	assert package["dimensions"]["unit"] in ("inch", "centimeter")
 
 
-# --- Idempotency tests ---
-
-
 def test_get_existing_label_info_returns_none_without_tracking(packing_slip):
-	"""No existing label info when no item rows have a tracking number."""
 	for row in packing_slip.items:
 		assert not row.tracking_number
 
@@ -267,7 +239,6 @@ def test_get_existing_label_info_returns_none_without_tracking(packing_slip):
 
 
 def test_get_existing_label_info_returns_data_when_tracking_exists(packing_slip_with_label):
-	"""Returns tracking number, URL, label URL, and carrier when label has been purchased."""
 	info = get_existing_label_info(packing_slip_with_label)
 
 	assert info is not None
@@ -279,7 +250,6 @@ def test_get_existing_label_info_returns_data_when_tracking_exists(packing_slip_
 
 
 def test_create_label_blocked_when_tracking_exists(packing_slip_with_label):
-	"""Creating a label is blocked by default if a tracking number already exists."""
 	with pytest.raises(frappe.DuplicateEntryError):
 		create_label_for_packing_slip(
 			packing_slip_with_label.name,
@@ -289,11 +259,10 @@ def test_create_label_blocked_when_tracking_exists(packing_slip_with_label):
 
 
 def test_create_label_force_repurchases_when_tracking_exists(
-	packing_slip_with_label, label_response, mock_settings_with_client
+	packing_slip_with_label, label_response, shipstation_api_client_mock
 ):
-	"""force=True bypasses the duplicate guard and purchases a new label."""
-	mock_client = mock_settings_with_client.shipstation_api_client.return_value
-	mock_client.create_label_from_shipment.return_value = label_response
+	api_client = shipstation_api_client_mock
+	api_client.create_label_from_shipment.return_value = label_response
 
 	with patch("shipstation_integration.labels.download_and_attach_label") as mock_download:
 		mock_download.return_value = None
@@ -306,4 +275,4 @@ def test_create_label_force_repurchases_when_tracking_exists(
 
 	assert results[0]["tracking_number"] == "9400111899223100001234"
 	assert results[0]["label_id"] == "se-test-label-123"
-	mock_client.create_label_from_shipment.assert_called_once()
+	api_client.create_label_from_shipment.assert_called_once()

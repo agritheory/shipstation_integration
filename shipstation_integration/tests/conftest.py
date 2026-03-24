@@ -1,4 +1,4 @@
-# Copyright (c) 2024, AgriTheory and contributors
+# Copyright (c) 2025, AgriTheory and contributors
 # For license information, please see license.txt
 
 import json
@@ -9,8 +9,12 @@ import frappe
 import pytest
 from frappe.utils import get_bench_path
 
+from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
+	ShipstationSettings,
+)
 
-def get_logger(*args, **kwargs):
+
+def _get_logger(*args, **kwargs):
 	from frappe.utils.logger import get_logger
 
 	return get_logger(
@@ -32,7 +36,7 @@ def monkeymodule():
 
 @pytest.fixture(scope="session", autouse=True)
 def db_instance():
-	frappe.logger = get_logger
+	frappe.logger = _get_logger
 
 	currentsite = "test_site"
 	sites = Path(get_bench_path()) / "sites"
@@ -42,57 +46,17 @@ def db_instance():
 	frappe.init(site=currentsite, sites_path=sites)
 	frappe.connect()
 	frappe.db.commit = MagicMock()
-
-	# Setup test data once per session
-	from shipstation_integration.tests.setup import create_test_data
-
-	create_test_data()
-
 	yield frappe.db
 
 
 @pytest.fixture
-def mock_shipstation_settings(monkeypatch):
-	"""Create a mocked ShipStation Settings document with API client."""
-	import json
+def shipstation_api_client_mock(monkeypatch):
+	client = MagicMock()
 
-	mock_settings = MagicMock()
-	mock_settings.name = "ShipStation Settings"
-	mock_settings.enabled = 1
-	mock_settings.enable_shipstation_api = 1
-	mock_settings.api_key = "test_api_key_12345"
+	def _patched_shipstation_api_client(self):
+		return client
 
-	# Mock the API client
-	mock_client = MagicMock()
-	mock_settings.shipstation_api_client.return_value = mock_client
-
-	# Set carrier data for rate requests
-	mock_settings.shipstation_api_carrier_data = json.dumps(
-		[
-			{"carrier_id": "se-123", "carrier_code": "usps"},
-			{"carrier_id": "se-456", "carrier_code": "fedex"},
-			{"carrier_id": "se-789", "carrier_code": "ups"},
-		]
-	)
-
-	# Patch all imports of get_shipstation_settings
 	monkeypatch.setattr(
-		"shipstation_integration.utils.get_shipstation_settings", lambda *args, **kwargs: mock_settings
+		ShipstationSettings, "shipstation_api_client", _patched_shipstation_api_client
 	)
-	monkeypatch.setattr(
-		"shipstation_integration.labels.get_shipstation_settings", lambda *args, **kwargs: mock_settings
-	)
-	monkeypatch.setattr(
-		"shipstation_integration.rates.get_shipstation_settings", lambda *args, **kwargs: mock_settings
-	)
-	monkeypatch.setattr(
-		"shipstation_integration.ltl.get_shipstation_settings", lambda *args, **kwargs: mock_settings
-	)
-
-	return mock_settings
-
-
-@pytest.fixture
-def mock_settings_with_client(mock_shipstation_settings):
-	"""Alias for backwards compatibility."""
-	return mock_shipstation_settings
+	return client

@@ -12,12 +12,10 @@ app_color = "grey"
 app_email = "support@agritheory.dev"
 app_license = "MIT"
 
-# Setup Wizard
-# ------------
+required_apps = ["erpnext", "beam"]
+
 # setup_wizard_stages = "shipstation_integration.setup.get_setup_stages"
 
-# Includes in <head>
-# ------------------
 extend_bootinfo = "shipstation_integration.shipstation_integration.boot.boot_session"
 
 # include js, css files in header of desk.html
@@ -49,9 +47,6 @@ doctype_list_js = {
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
-# Home Pages
-# ----------
-
 # application home page (will override Website Settings)
 # home_page = "login"
 
@@ -63,25 +58,16 @@ doctype_list_js = {
 # Website user home page (by function)
 # get_website_user_home_page = "shipstation_integration.utils.get_home_page"
 
-# Generators
-# ----------
-
 # automatically create page for each record of this doctype
 # website_generators = ["Web Page"]
 
-# Installation
-# ------------
 after_migrate = ["shipstation_integration.install.add_custom_queue"]
 after_install = "shipstation_integration.install.after_install"
 
-# Desk Notifications
-# ------------------
 # See frappe.core.notifications.get_notification_config
 
 # notification_config = "shipstation_integration.notifications.get_notification_config"
 
-# Permissions
-# -----------
 # Permissions evaluated in scripted ways
 
 # permission_query_conditions = {
@@ -92,8 +78,6 @@ after_install = "shipstation_integration.install.after_install"
 # 	"Event": "frappe.desk.doctype.event.event.has_permission",
 # }
 
-# Document Events
-# ---------------
 # Hook on document methods and events
 
 doc_events = {
@@ -107,9 +91,6 @@ doc_events = {
 	},
 }
 
-# Scheduled Tasks
-# ---------------
-
 scheduler_events = {
 	"all": [
 		"shipstation_integration.tags.queue_tags",
@@ -118,12 +99,6 @@ scheduler_events = {
 	]
 }
 
-# Testing
-# -------
-
-# Overriding Methods
-# ------------------------------
-#
 # override_whitelisted_methods = {
 # 	"frappe.desk.doctype.event.event.get_events": "shipstation_integration.event.get_events"
 # }

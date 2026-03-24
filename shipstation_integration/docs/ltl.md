@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # Less Than Truckload (LTL)
 
 <div class="byline">
-  Heather Kusmierz 2026-03-09
+  Heather Kusmierz 2026-03-20
 </div>
 
 
@@ -12,9 +12,26 @@ Shipstation Integration app integrates Shipstation's less-than-truckload (LTL) f
 
 ## Configuration
 
-Before starting, the company's Shipstation account that is used in ERPNext should be connected to any LTL carriers that the company expects to use.
+### LTL always uses Freight Carrier Settings
 
-Once LTL carriers are connected, the remaining configuration is done in the Shipstation Settings document. First, enable Shipstation API v2 and fill in the API key. The Base URL, Alternative Client ID, and Alternative Client Secret fields are there if the company wants to override Shipstation's LTL functionality with another shipping provider's API - see the "Override Shipstation's LTL with Another API" section for more information. If everything is connected properly, clicking the "Fetch LTL Carriers" button will collect and display summary information about each connected carrier.
+Every LTL HTTP call resolves the ShipEngine **Api-Key** and optional **Base URL** from **Freight Carrier Settings** for the shipment’s **company** + **Preferred Carrier** (transporter). The Shipstation Settings API key is **not** read for LTL requests.
+
+- One **Freight Carrier Settings** row per **Company** + **Supplier** (transporter).
+- **LTL API Key** — same kind of key as ShipStation API v2 / ShipEngine.
+- **Base URL** — optional; defaults to `https://api.shipengine.com`.
+- **Client ID** / **Client Secret** — optional; for OAuth or custom `BaseLTL` overrides.
+
+On the Shipment, set **Preferred Carrier** and ensure a **Company** is set on pickup or delivery when the party type is Company (or rely on the user default company).
+
+### ShipStation API v2 and automatic sync
+
+If you enable **ShipStation API v2** on **Shipstation Settings** and save an API key, the system **creates or updates Freight Carrier Settings** for every **Company** × **is_transporter** **Supplier** pair: it copies the API key into **LTL API Key** and sets **Base URL** on each row when that field is blank. Disabled Freight Carrier Settings rows are not updated.
+
+To run **Fetch LTL Carriers** from Shipstation Settings, select **Freight Carrier Settings for LTL fetch** — that record defines which company/supplier context (and thus which synced key) is used for the list call. Cached LTL JSON still stores on Shipstation Settings as before.
+
+You can run LTL **without** enabling ShipStation order sync: create Freight Carrier Settings manually and paste the LTL API key.
+
+Legacy **Alternative LTL Client ID/Secret** on Shipstation Settings remain deprecated (hidden); use Freight Carrier Settings (and the migrate patch where applicable).
 
 ## LTL Shipment Workflow
 

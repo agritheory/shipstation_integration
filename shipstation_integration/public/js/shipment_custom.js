@@ -110,6 +110,12 @@ async function get_ltl_carrier_id(frm) {
 		.xcall('shipstation_integration.shipstation_integration.overrides.shipment.get_carrier_id_for_supplier', {
 			supplier_name: frm.doc.preferred_carrier,
 			settings_name: null,
+			company:
+				frm.doc.pickup_from_type === 'Company'
+					? frm.doc.pickup_company
+					: frm.doc.delivery_to_type === 'Company'
+					  ? frm.doc.delivery_company
+					  : null,
 		})
 		.then(r => {
 			if (r) {
@@ -124,6 +130,7 @@ async function get_ltl_package_type_options(frm) {
 		.xcall('shipstation_integration.shipstation_integration.overrides.shipment.get_ltl_package_type_options', {
 			carrier_id: frm.doc.carrier_id,
 			settings_name: null,
+			shipment: frm.doc,
 		})
 		.then(options => {
 			// Populate the Shipment-level package_type_code dropdown with carrier-specific options

@@ -198,10 +198,6 @@ function sdn_split_selected_rows(frm) {
 	return false
 }
 
-// ---------------------------------------------------------------------------
-// Parcel details (computed dimension string)
-// ---------------------------------------------------------------------------
-
 const SDN_DIM_UOM_ABBR = {
 	Inch: '"',
 	Centimeter: 'cm',
@@ -272,10 +268,6 @@ function sdn_check_template_match(frm, cdt, cdn) {
 		},
 	})
 }
-
-// ---------------------------------------------------------------------------
-// Get Items from Delivery Notes dialog
-// ---------------------------------------------------------------------------
 
 function fetch_delivery_note_items(frm) {
 	const existing_dn_details = new Set((frm.doc.shipment_delivery_note || []).map(r => r.dn_detail).filter(Boolean))
@@ -352,10 +344,6 @@ function fetch_delivery_note_items(frm) {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// SSCC button
-// ---------------------------------------------------------------------------
-
 function sdn_setup_sscc_button(frm) {
 	if (!(frm.doc.shipment_delivery_note || []).some(r => r.parcel_number)) return
 
@@ -409,10 +397,6 @@ function sdn_generate_sscc(frm) {
 		},
 	})
 }
-
-// ---------------------------------------------------------------------------
-// Shipping actions (rates + labels)
-// ---------------------------------------------------------------------------
 
 function sdn_setup_shipping_actions(frm) {
 	if (frm.doc.freight_type !== 'LTL' && frm.doc.freight_type !== 'Small Parcel') return
@@ -569,10 +553,6 @@ function sdn_show_label_success(frm, results) {
 	})
 	frm.refresh_field('shipment_delivery_note')
 }
-
-// ---------------------------------------------------------------------------
-// Frappe form events
-// ---------------------------------------------------------------------------
 
 frappe.ui.form.on('Shipment', {
 	refresh: function (frm) {

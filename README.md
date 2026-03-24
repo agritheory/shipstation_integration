@@ -33,6 +33,8 @@ For license information, please see license.txt-->
   <ol>
     <li><a href="#about-the-project">About The Project</a></li>
     <li><a href="#installation">Installation</a></li>
+    <li><a href="#dependencies">Dependencies</a></li>
+    <li><a href="#running-tests">Running tests</a></li>
     <li><a href="#configuration">Configuration</a>
       <ul>
         <li><a href="#api-options">API Options</a></li>
@@ -98,6 +100,37 @@ ShipStation Integration connects your ERPNext instance with [ShipStation](https:
    ```bash
    bench --site your-site.localhost migrate
    ```
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Dependencies
+
+**BEAM** ([AgriTheory/beam](https://github.com/AgriTheory/beam)) is required. Packing slips, SSCC handling units, and pytest fixtures import BEAM. On a new site, install BEAM before or with this app so its `after_install` hook can create the Handling Unit Inventory Dimension:
+
+```bash
+bench get-app https://github.com/AgriTheory/beam
+bench --site your-site.localhost install-app beam
+bench --site your-site.localhost install-app shipstation_integration
+bench --site your-site.localhost migrate
+```
+
+`pyproject.toml` lists `beam` under `[tool.bench.frappe-dependencies]` and `hooks.py` sets `required_apps` so benches resolve the install order.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Running tests
+
+**Seed the site before pytest** (same as CI). Fixture data is not loaded from `conftest`; run `before_test` once per site or after a reinstall:
+
+```bash
+bench --site your-site.localhost execute shipstation_integration.tests.setup.before_test
+```
+
+If you use `bench use your-site.localhost`, you can run `bench execute shipstation_integration.tests.setup.before_test` instead.
+
+Pytest expects the same site to have **BEAM installed and migrated** (Stock Entry Detail must expose the `handling_unit` field from BEAM’s inventory dimension). The session `conftest` fails fast with a clear message if that is not true.
+
+If you see errors such as `No module named 'frappe.core.doctype.beam_settings'`, the **BEAM Settings** DocType row in the database has the wrong `module` (often `Core`). Set it to **BEAM** on the DocType record (or update `tabDocType`), then `bench --site <site> clear-cache` and migrate. Reinstalling BEAM on a clean site avoids this.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

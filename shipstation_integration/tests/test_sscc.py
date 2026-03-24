@@ -1,8 +1,6 @@
 # Copyright (c) 2026, AgriTheory and contributors
 # For license information, please see license.txt
 
-"""Tests for SSCC-18 / UCC-128 generation."""
-
 import frappe
 import pytest
 
@@ -14,11 +12,6 @@ from shipstation_integration.sscc import (
 
 ABBR = "CFC"
 TEST_PREFIX = "0614141"
-
-
-# ---------------------------------------------------------------------------
-# gs1_check_digit — pure function, no DB required
-# ---------------------------------------------------------------------------
 
 
 def test_gs1_check_digit():
@@ -35,11 +28,6 @@ def test_gs1_check_digit():
 		gs1_check_digit("0061414100000001")  # 16 chars
 	with pytest.raises(Exception):
 		gs1_check_digit("")
-
-
-# ---------------------------------------------------------------------------
-# generate_sscc — requires DB (tabSeries write)
-# ---------------------------------------------------------------------------
 
 
 def test_generate_sscc(db_instance):
@@ -70,18 +58,8 @@ def test_generate_sscc(db_instance):
 		generate_sscc("12345678901", ABBR)  # too long
 
 
-# ---------------------------------------------------------------------------
-# generate_packing_slip_sscc — integration, requires db_instance
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def packing_slip(db_instance):
-	"""Return the draft test Packing Slip with all SSCC values cleared.
-
-	Filtering for docstatus=0 ensures we always get the setup-created draft
-	PS rather than any submitted PS produced by other test modules.
-	"""
 	ps = frappe.get_last_doc("Packing Slip", {"docstatus": 0})
 	ps.reload()
 	for row in ps.items:

@@ -12,8 +12,10 @@ from shipengine import ShipEngine
 from shipstation import ShipStation
 from shipstation.models import ShipStationWebhook
 
+from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
+	sync_ltl_api_credentials_from_shipstation_settings,
+)
 from shipstation_integration.items import create_item
-from shipstation_integration.ltl import ShipstationLTL
 from shipstation_integration.orders import list_orders
 from shipstation_integration.shipments import list_shipments
 from shipstation_integration.tags import list_tags
@@ -60,10 +62,12 @@ class ShipstationSettings(Document):
 			self.update_warehouses()
 		if self.enabled:
 			self.add_webhooks()
+		sync_ltl_api_credentials_from_shipstation_settings(self)
 
 	def on_update(self):
 		if self.enabled:
 			self.add_webhooks()
+		sync_ltl_api_credentials_from_shipstation_settings(self)
 
 	@frappe.whitelist()
 	def get_orders(self):
@@ -106,12 +110,9 @@ class ShipstationSettings(Document):
 
 	def get_ltl_class(self):
 		"""Looks for an overriding LTL class via hooks, otherwise returns Shipstation LTL class"""
-		hook = frappe.get_hooks("override_shipstation")
-		if hook and hook.get("ltl"):
-			method_string = hook.get("ltl")[-1]
-			frappe.get_attr(method_string)()
-		else:
-			return ShipstationLTL()
+		from shipstation_integration.ltl import get_ltl_class_instance
+
+		return get_ltl_class_instance()
 
 	def get_base_url_and_headers(self):  # TODO: delete (moved to LTL classes)
 		"""
@@ -239,10 +240,17 @@ class ShipstationSettings(Document):
 	@frappe.whitelist()
 	def fetch_ltl_carriers(self):
 		"""Restructures LTL carrier list returned from API for Settings fields."""
+		if not self.ltl_fetch_freight_carrier_settings:
+			frappe.throw(_("Select Freight Carrier Settings for LTL fetch before fetching LTL carriers."))
+		fc = frappe.get_doc("Freight Carrier Settings", self.ltl_fetch_freight_carrier_settings)
+		if fc.disabled:
+			frappe.throw(_("Selected Freight Carrier Settings is disabled."))
 		ltl_class = self.get_ltl_class()
 		carriers = ltl_class.list_ltl_carriers(
-			self.name, create_transporters=False
-		)  # TODO: create transporters?
+			create_transporters=False,
+			company=fc.company,
+			supplier=fc.supplier,
+		)
 		self.shipstation_api_ltl_carrier_data = json.dumps(carriers)
 		self.save()
 		frappe.msgprint(
