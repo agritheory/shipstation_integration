@@ -10,6 +10,8 @@ from erpnext.stock.doctype.delivery_note.delivery_note import make_packing_slip
 from frappe.desk.page.setup_wizard.setup_wizard import setup_complete
 from frappe.utils import getdate
 
+MOCK_API_KEY = "mock_test_api_key_abc123"
+
 
 def read_json(name):
 	"""Read a fixture JSON file from the tests/fixtures directory."""
@@ -74,6 +76,8 @@ def create_test_data():
 	create_sales_order(settings)
 	create_delivery_note(settings)
 	create_packing_slip(settings)
+	create_seventeen_track_settings()
+	#create_test_tracking_numbers()
 
 
 def create_customer_group():
@@ -325,3 +329,55 @@ def create_packing_slip(settings):
 	)
 
 	ps.save()
+
+
+def create_seventeen_track_settings():
+	frappe.db.set_single_value("Seventeen Track", "add_updates_as_comments", 1)
+	frappe.db.set_single_value("Seventeen Track", "api_key", MOCK_API_KEY)
+	frappe.db.commit()
+
+
+def create_test_tracking_numbers():
+	"""Create 3 seed Tracking Number records without triggering real 17Track API calls."""
+	seed_item_1 = "Ambrosia Pie"
+	seed_item_2 = "Double Plum Pie"
+	seed_item_3 = "Gooseberry Pie"
+
+	# TN1 — primary webhook test target: submitted but subscription stopped
+	if not frappe.db.exists("Tracking Number", {"tracking_number": "1Z2617V10397725789"}):
+		tn = frappe.get_doc({"doctype": "Tracking Number", "tracking_number": "1Z2617V10397725789"})
+		tn.flags.ignore_validate = True
+		tn.insert(ignore_permissions=True)
+		frappe.db.set_value("Tracking Number", tn.name, "docstatus", 1)
+		frappe.db.set_value("Tracking Number", tn.name, "subscription_status", "Active")
+
+	# TN2 — single reference to an Item
+	if not frappe.db.exists("Tracking Number", {"tracking_number": "TRK-SEED-0000001"}):
+		tn = frappe.get_doc(
+			{
+				"doctype": "Tracking Number",
+				"tracking_number": "TRK-SEED-0000001",
+				"references": [{"reference_doctype": "Item", "document_name": seed_item_3}],
+			}
+		)
+		tn.flags.ignore_validate = True
+		tn.insert(ignore_permissions=True)
+		frappe.db.set_value("Tracking Number", tn.name, "docstatus", 1)
+		frappe.db.set_value("Tracking Number", tn.name, "subscription_status", "Active")
+
+	# TN3 — two references to Items
+	if not frappe.db.exists("Tracking Number", {"tracking_number": "TRK-SEED-0000002"}):
+		tn = frappe.get_doc(
+			{
+				"doctype": "Tracking Number",
+				"tracking_number": "TRK-SEED-0000002",
+				"references": [
+					{"reference_doctype": "Item", "document_name": seed_item_1},
+					{"reference_doctype": "Item", "document_name": seed_item_2},
+				],
+			}
+		)
+		tn.flags.ignore_validate = True
+		tn.insert(ignore_permissions=True)
+		frappe.db.set_value("Tracking Number", tn.name, "docstatus", 1)
+		frappe.db.set_value("Tracking Number", tn.name, "subscription_status", "Active")
