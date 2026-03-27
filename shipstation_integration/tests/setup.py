@@ -77,7 +77,7 @@ def create_test_data():
 	create_delivery_note(settings)
 	create_packing_slip(settings)
 	create_seventeen_track_settings()
-	#create_test_tracking_numbers()
+	# create_test_tracking_numbers()
 
 
 def create_customer_group():

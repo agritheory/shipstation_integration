@@ -17,7 +17,10 @@ from shipstation_integration.tests.setup import MOCK_API_KEY
 from shipstation_integration.tests.setup import create_seventeen_track_settings
 
 WEBHOOK_MOCK_PATH = (
-	Path(frappe.get_app_path("shipstation_integration")) / "tests" / "fixtures" / "mock_17track_webhook.json"
+	Path(frappe.get_app_path("shipstation_integration"))
+	/ "tests"
+	/ "fixtures"
+	/ "mock_17track_webhook.json"
 )
 
 
