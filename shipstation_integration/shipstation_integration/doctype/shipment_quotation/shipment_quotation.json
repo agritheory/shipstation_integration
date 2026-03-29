@@ -10,7 +10,6 @@
   "carrier_id",
   "carrier_scac",
   "column_break_tmop",
-  "accept_quote",
   "is_spot_quote",
   "includes_insurance",
   "quote_or_offer_id",
@@ -25,6 +24,9 @@
   "charges_detail_section",
   "charges",
   "grand_total",
+  "purchase_invoice",
+  "journal_entry",
+  "sales_invoice",
   "insurance_section",
   "certificate_number",
   "quote_valid_to",
@@ -33,6 +35,7 @@
   "deductible_amount",
   "insured_amount"
  ],
+ "is_submittable": 1,
  "fields": [
   {
    "fieldname": "shipment",
@@ -61,13 +64,6 @@
   {
    "fieldname": "column_break_tmop",
    "fieldtype": "Column Break"
-  },
-  {
-   "default": "0",
-   "fieldname": "accept_quote",
-   "fieldtype": "Check",
-   "in_list_view": 1,
-   "label": "Accept Quote"
   },
   {
    "fieldname": "quote_or_offer_id",
@@ -130,6 +126,27 @@
    "label": "Grand Total"
   },
   {
+   "fieldname": "purchase_invoice",
+   "fieldtype": "Link",
+   "label": "Purchase Invoice",
+   "options": "Purchase Invoice",
+   "read_only": 1
+  },
+  {
+   "fieldname": "journal_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "description": "Sales Invoice that includes the freight charge for this shipment. Set after the SI is created to link the freight accounting entry to the customer billing document.",
+   "fieldname": "sales_invoice",
+   "fieldtype": "Link",
+   "label": "Sales Invoice",
+   "options": "Sales Invoice"
+  },
+  {
    "default": "0",
    "fieldname": "is_spot_quote",
    "fieldtype": "Check",
@@ -188,6 +205,8 @@
  "owner": "Administrator",
  "permissions": [
   {
+   "amend": 1,
+   "cancel": 1,
    "create": 1,
    "delete": 1,
    "email": 1,
@@ -197,6 +216,7 @@
    "report": 1,
    "role": "System Manager",
    "share": 1,
+   "submit": 1,
    "write": 1
   }
  ],

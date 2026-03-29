@@ -52,6 +52,17 @@ def packing_slip():
 		for row in ps.items
 	]
 
+	for row in ps.items:
+		row.parcel_number = 1
+		row.parcel_length = 12
+		row.parcel_width = 9
+		row.parcel_height = 6
+		row.dimension_uom = "Inch"
+		row.parcel_weight = 3
+		row.parcel_weight_uom = "Pound"
+	ps.save()
+	ps.reload()
+
 	yield ps
 
 	ps.reload()
@@ -130,8 +141,8 @@ def test_build_shipment_from_packing_slip(packing_slip):
 	assert "ship_from" in shipment
 	assert "packages" in shipment
 	assert len(shipment["packages"]) == 1
-	assert shipment["ship_to"]["city_locality"] == "Portland"
-	assert shipment["ship_to"]["state_province"] == "ME"
+	assert shipment["ship_to"]["city_locality"] == "Boston"
+	assert shipment["ship_to"]["state_province"] == "MA"
 	assert shipment["ship_from"]["city_locality"] == "Chelsea"
 	assert shipment["ship_from"]["state_province"] == "MA"
 	pkg = shipment["packages"][0]

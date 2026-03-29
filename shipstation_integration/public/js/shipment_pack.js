@@ -284,6 +284,7 @@ function fetch_delivery_note_items(frm) {
 			read_only: 1,
 		})
 	}
+	// no customer pre-filter when using ad-hoc shipping_contact — leave picker open
 
 	const d = new frappe.ui.form.MultiSelectDialog({
 		doctype: 'Delivery Note',
@@ -567,6 +568,16 @@ frappe.ui.form.on('Shipment', {
 				filters.customer = frm.doc.delivery_customer
 			} else if (frm.doc.delivery_to_type === 'Company' && frm.doc.delivery_company) {
 				filters.customer = frm.doc.delivery_company
+			}
+			// no filter when neither party is set (ad-hoc shipment using shipping_contact)
+			return { filters }
+		})
+
+		frm.set_query('shipping_contact', function () {
+			const filters = {}
+			if (frm.doc.delivery_to_type === 'Customer' && frm.doc.delivery_customer) {
+				filters['link_doctype'] = 'Customer'
+				filters['link_name'] = frm.doc.delivery_customer
 			}
 			return { filters }
 		})

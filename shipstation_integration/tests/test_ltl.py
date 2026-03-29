@@ -5,6 +5,7 @@ import pytest
 import frappe
 
 from shipstation_integration.ltl import ShipstationLTL
+from shipstation_integration.tests.setup import get_draft_ltl_shipment_for_tests
 
 
 @pytest.fixture
@@ -14,26 +15,31 @@ def ltl():
 
 @pytest.fixture
 def ltl_shipment():
-	shipment = frappe.get_last_doc("Shipment", filters={"freight_type": "LTL", "docstatus": 0})
-	shipment.reload()
+	"""Return the seeded LTL Shipment configured with exactly two SDN rows in parcel 1.
 
+	Setup creates the Shipment with SDN rows across two parcels (one per DN).
+	This fixture reduces that to two rows in a single parcel so that individual
+	unit tests have a precise, predictable dataset for weight, density, and
+	dimension assertions.  The original rows are restored after each test.
+	"""
+	shipment = get_draft_ltl_shipment_for_tests()
 	original_package_type_code = shipment.package_type_code
 	original_sdn_rows = [row.as_dict() for row in shipment.shipment_delivery_note]
 
-	dn = frappe.get_all("Delivery Note", order_by="creation")  # get original DN from setup
+	# Derive the first DN from the existing SDN rows (avoids hard-coding DN ordering)
+	first_dn_name = shipment.shipment_delivery_note[0].delivery_note
 	dn_items = frappe.get_all(
 		"Delivery Note Item",
-		filters={"parent": dn[0].name},
+		filters={"parent": first_dn_name},
 		fields=["name", "item_code", "item_name", "qty", "stock_uom"],
-		limit=2,  # four items in BEAM-test data's SO - limit to 2 for simplicity
 	)
 
 	shipment.shipment_delivery_note = []
-	for item in dn_items:
+	for item in dn_items[:2]:
 		shipment.append(
 			"shipment_delivery_note",
 			{
-				"delivery_note": dn[0].name,
+				"delivery_note": first_dn_name,
 				"dn_detail": item.name,
 				"item_code": item.item_code,
 				"item_name": item.item_name,

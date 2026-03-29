@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import frappe
 from frappe import _
 from frappe.model.naming import getseries
+from shipstation_integration.utils import get_shipment_company_for_ltl
 
 if TYPE_CHECKING:
 	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
@@ -124,7 +125,8 @@ def generate_shipment_sscc(shipment: str) -> dict:
 	doc = frappe.get_doc("Shipment", shipment)
 	settings = get_sscc_settings()
 	prefix = settings.gs1_company_prefix
-	abbr = frappe.db.get_value("Company", doc.company, "abbr")
+	company = get_shipment_company_for_ltl(doc)
+	abbr = frappe.db.get_value("Company", company, "abbr")
 	parcels: dict[int, list] = {}
 	for row in doc.shipment_delivery_note or []:
 		if row.parcel_number:

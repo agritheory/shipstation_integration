@@ -602,14 +602,17 @@ class ShipstationLTL(BaseLTL):
 		pu_response = self.schedule_ltl_pickup_with_quote_id(doc, settings_name)
 		dt, dn = doc.doctype, doc.name
 		frappe.set_value(dt, dn, "carrier", doc.preferred_carrier)
-		sl, amt = frappe.get_value(
-			"Shipment Quotation", doc.accepted_quotation, ["service_level", "grand_total"]
+
+		accepted_sq = doc.accepted_quotation or frappe.db.get_value(
+			"Shipment Quotation", {"shipment": doc.name, "docstatus": 1}, "name"
 		)
-		frappe.set_value(dt, dn, "carrier_service", sl)
+		if accepted_sq:
+			sl = frappe.db.get_value("Shipment Quotation", accepted_sq, "service_level")
+			frappe.set_value(dt, dn, "carrier_service", sl)
+
 		frappe.set_value(dt, dn, "shipment_id", pu_response.get("shipment_id"))
 		frappe.set_value(dt, dn, "pickup_id", pu_response.get("pickup_id"))
 		frappe.set_value(dt, dn, "awb_number", pu_response.get("pro_number"))
-		frappe.set_value(dt, dn, "shipment_amount", amt)
 
 		# Attach generated documents to Shipment doc
 		docs_saved = False
@@ -1187,7 +1190,7 @@ class ShipstationLTL(BaseLTL):
 		quote_id = doc.quote_or_offer_id
 		if not quote_id:
 			frappe.throw(
-				f"{self.provider} requires a Quote ID to schedule an LTL pickup. Get LTL quotes then accept one of the generated Supplier Quotations."
+				f"{self.provider} requires a Quote ID to schedule an LTL pickup. Get LTL quotes then submit one of the generated Shipment Quotations to accept it."
 			)
 			return {}
 
@@ -1841,7 +1844,7 @@ class ShipstationLTL(BaseLTL):
 		}
 
 		shipment_object = {
-			"service_code": doc.get("carrier_service_level", "stnd"),
+			"service_code": doc.get("carrier_service_level") or "stnd",
 			"pickup_date": str(doc.pickup_date),  # string in YYYY-MM-DD format
 			"packages": packages,
 			"options": options,
@@ -1937,30 +1940,61 @@ class ShipstationLTL(BaseLTL):
 		"""
 		party_type_field = "pickup_from_type" if ship_from else "delivery_to_type"
 		party_type = doc.get(party_type_field)
+		address_name_field = "pickup_address_name" if ship_from else "delivery_address_name"
+		residential_flag_field = "residential_pickup" if ship_from else "residential_delivery"
+
 		party_name_field_map = {
 			"Company": "pickup_company" if ship_from else "delivery_company",
 			"Customer": "pickup_customer" if ship_from else "delivery_customer",
 			"Supplier": "pickup_supplier" if ship_from else "delivery_supplier",
+			# "Contact" has no party name field — the contact IS the addressee
 		}
-		party_name_field = party_name_field_map[party_type]
-		address_name_field = "pickup_address_name" if ship_from else "delivery_address_name"
-		residential_flag_field = "residential_pickup" if ship_from else "residential_delivery"
+		company_name = (
+			doc.get(party_name_field_map[party_type]) if party_type in party_name_field_map else None
+		)
 
 		if ship_from and party_type == "Company":
 			contact_field = "pickup_contact_person"
 			contact_dt = "User"
 			email_field = "email"
+		elif not ship_from and party_type == "Contact":
+			contact_field = "shipping_contact"
+			contact_dt = "Contact"
+			email_field = "email_id"
+		elif not ship_from:
+			# prefer shipping_contact when set; fall back to delivery_contact_name
+			contact_field = "shipping_contact" if doc.get("shipping_contact") else "delivery_contact_name"
+			contact_dt = "Contact"
+			email_field = "email_id"
 		else:
-			contact_field = "pickup_contact_name" if ship_from else "delivery_contact_name"
+			contact_field = "pickup_contact_name"
 			contact_dt = "Contact"
 			email_field = "email_id"
 
 		address = frappe.get_doc("Address", doc.get(address_name_field))
 		contact = frappe.get_doc(contact_dt, doc.get(contact_field))
 
+		side = _("pickup") if ship_from else _("delivery")
+		phone = contact.phone or address.phone
+		if not phone:
+			frappe.throw(
+				_(
+					"A phone number is required for the {0} contact. "
+					"Please add a phone number to <b>{1}</b> or the <b>{2}</b> address."
+				).format(side, contact.full_name or doc.get(contact_field), address.name)
+			)
+
+		email = contact.get(email_field)
+		if not email:
+			frappe.throw(
+				_(
+					"An email address is required for the {0} contact. " "Please add an email to <b>{1}</b>."
+				).format(side, contact.full_name or doc.get(contact_field))
+			)
+
 		return {
 			"address": {
-				"company_name": doc.get(party_name_field),
+				"company_name": company_name,
 				"address_line1": address.address_line1,
 				"address_line2": address.address_line2,
 				# "address_line3": None,
@@ -1974,8 +2008,8 @@ class ShipstationLTL(BaseLTL):
 			},
 			"contact": {
 				"name": contact.full_name,
-				"phone_number": contact.phone,
-				"email": contact.get(email_field),
+				"phone_number": phone,
+				"email": email,
 			},
 		}
 
