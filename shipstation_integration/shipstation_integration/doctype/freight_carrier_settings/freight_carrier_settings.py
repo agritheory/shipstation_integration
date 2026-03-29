@@ -69,6 +69,9 @@ def sync_ltl_api_credentials_from_shipstation_settings(ss) -> None:
 				fc.reload()
 
 			fc.set("ltl_api_key", api_key)
-			if not (fc.base_url or "").strip():
+			# Only apply ShipEngine base_url to providers that use ShipEngine (or Shipstation) APIs
+			if not (fc.base_url or "").strip() and any(
+				d in ss_base.lower() for d in ["shipengine.com", "shipstation.com"]
+			):
 				fc.base_url = ss_base
 			fc.save(ignore_permissions=True)

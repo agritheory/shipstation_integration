@@ -2,26 +2,30 @@
  "actions": [],
  "allow_rename": 1,
  "autoname": "format:{company}-{supplier}",
- "creation": "2026-03-23 12:00:00.000000",
+ "creation": "2026-03-23 12:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
- "field_order": [
-  "company",
-  "supplier",
-  "disabled",
-  "column_break_1",
-  "base_url",
-  "section_break_accounts",
-  "auto_create_accounting_entry",
-  "freight_item",
-  "freight_expense_account",
-  "freight_receivable_account",
-  "section_break_credentials",
-  "ltl_api_key",
-  "client_id",
-  "client_secret"
- ],
+  "field_order": [
+   "company",
+   "supplier",
+   "disabled",
+   "column_break_1",
+   "base_url",
+   "ltl_carrier_scac",
+   "section_break_credentials",
+   "ltl_api_key",
+   "client_id",
+   "column_break_lrov",
+   "client_secret",
+   "account_number",
+   "section_break_accounts",
+   "auto_create_accounting_entry",
+   "freight_item",
+   "column_break_lagr",
+   "freight_clearing_account",
+   "freight_expense_account"
+  ],
  "fields": [
   {
    "fieldname": "company",
@@ -59,6 +63,12 @@
    "label": "Base URL"
   },
   {
+   "description": "Standard Carrier Alpha Code (SCAC) for this LTL carrier. Used in BOL generation and tracking.",
+   "fieldname": "ltl_carrier_scac",
+   "fieldtype": "Data",
+   "label": "LTL Carrier SCAC"
+  },
+  {
    "fieldname": "section_break_accounts",
    "fieldtype": "Section Break",
    "label": "Accounts"
@@ -85,15 +95,15 @@
    "fieldtype": "Link",
    "label": "Freight Expense Account",
    "options": "Account"
-  },
-  {
-   "depends_on": "auto_create_accounting_entry",
-   "description": "Clearing account used when freight cost is charged back to a customer. Debited on Collect Purchase Invoices and credited on prepaid Journal Entries; cleared when the customer's Sales Invoice is raised.",
-   "fieldname": "freight_receivable_account",
-   "fieldtype": "Link",
-   "label": "Freight Receivable Account",
-   "options": "Account"
-  },
+   },
+   {
+    "depends_on": "auto_create_accounting_entry",
+    "description": "Clearing account used for both Collect Purchase Invoices and prepaid chargeback Journal Entries. Must be an Asset account with blank account_type to allow GL posting without party requirement.",
+    "fieldname": "freight_clearing_account",
+    "fieldtype": "Link",
+    "label": "Freight Clearing Account",
+    "options": "Account"
+   },
   {
    "fieldname": "section_break_credentials",
    "fieldtype": "Section Break",
@@ -116,15 +126,30 @@
    "fieldname": "client_secret",
    "fieldtype": "Password",
    "label": "Client Secret"
+  },
+  {
+   "description": "Shipper account number with the provider (WWEX account#, ODFL bill-to account code, Banyan clientRefNumber). Not used for ShipEngine.",
+   "fieldname": "account_number",
+   "fieldtype": "Data",
+   "label": "Account Number"
+  },
+  {
+   "fieldname": "column_break_lrov",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_lagr",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-23 12:00:00.000000",
+  "modified": "2026-03-29 14:52:00.000000",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Freight Carrier Settings",
+ "naming_rule": "Expression (old style)",
  "owner": "Administrator",
  "permissions": [
   {

@@ -83,9 +83,19 @@ def freight_expense_account():
 
 
 def freight_clearing_account():
+	"""Freight Clearing account used for both Collect PI and Prepaid JE chargeback."""
 	return frappe.db.get_value(
 		"Account",
 		{"account_name": "Freight Clearing", "company": COMPANY},
+		"name",
+	)
+
+
+def freight_receivable_account():
+	"""Freight Receivable account used for prepaid chargeback (Customer party)."""
+	return frappe.db.get_value(
+		"Account",
+		{"account_name": "Freight Receivable", "company": COMPANY},
 		"name",
 	)
 
@@ -113,7 +123,6 @@ def test_collect_billing_sq_submit_creates_purchase_invoice_with_clearing_accoun
 	| Freight Clearing |              | $474.38 |          |                  |
 	| Creditors        |              |         |  $474.38 | Test LTL Carrier |
 	"""
-	reset_ltl_shipment_quotation_test_state()
 
 	ltl_shipment = get_draft_ltl_shipment_for_tests()
 	original_payment_terms = ltl_shipment.payment_terms
@@ -149,7 +158,6 @@ def test_collect_billing_sq_submit_creates_purchase_invoice_with_clearing_accoun
 
 	sq.cancel()
 	frappe.db.set_value("Shipment", ltl_shipment.name, "payment_terms", original_payment_terms)
-	reset_ltl_shipment_quotation_test_state()
 
 
 @pytest.mark.order(21)
@@ -165,6 +173,7 @@ def test_prepaid_billing_with_customer_sq_submit_creates_journal_entry():
 	| Freight and Forwarding Charges |              | $474.38 |          |                   |
 	| Freight Clearing               |              |         |  $474.38 | Almacs Food Group |
 	"""
+	reset_ltl_shipment_quotation_test_state()
 	ltl_shipment = get_draft_ltl_shipment_for_tests()
 	assert ltl_shipment.billing_type == "Shipper"
 	assert ltl_shipment.payment_terms == "Prepaid"

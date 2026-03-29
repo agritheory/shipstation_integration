@@ -45,7 +45,6 @@ def before_test():
 	from beam.tests.setup import create_test_data as beam_create_test_data
 
 	beam_create_test_data()
-
 	create_test_data()
 
 	for modu in frappe.get_all("Module Onboarding"):
@@ -169,34 +168,59 @@ def create_freight_item(settings):
 
 
 def create_freight_clearing_account(settings):
-	"""Create a Freight Clearing account used as freight_receivable_account in tests.
+	"""Create Freight Clearing and Freight Receivable accounts for freight accounting.
 
-	This is a Current Asset clearing account that bridges carrier AP and customer AR
-	in chargeback and collect-billing freight scenarios.
+	Freight Clearing: Asset account used for Collect billing (no party required)
+	Freight Receivable: Receivable account used for Prepaid chargeback (with customer party)
 	"""
-	if frappe.db.exists("Account", {"account_name": "Freight Clearing", "company": settings.company}):
-		return
-
-	parent = frappe.db.get_value(
+	parent_asset = frappe.db.get_value(
 		"Account",
 		{"account_name": "Current Assets", "company": settings.company, "is_group": 1},
 		"name",
 	)
-	if not parent:
-		parent = frappe.db.get_value(
+	if not parent_asset:
+		parent_asset = frappe.db.get_value(
 			"Account",
 			{"root_type": "Asset", "is_group": 1, "company": settings.company},
 			"name",
 		)
 
-	account = frappe.new_doc("Account")
-	account.account_name = "Freight Clearing"
-	account.company = settings.company
-	account.parent_account = parent
-	account.account_type = "Receivable"
-	account.root_type = "Asset"
-	account.is_group = 0
-	account.save()
+	# Create Freight Clearing (no party requirement) for Collect billing
+	if not frappe.db.exists(
+		"Account", {"account_name": "Freight Clearing", "company": settings.company}
+	):
+		account = frappe.new_doc("Account")
+		account.account_name = "Freight Clearing"
+		account.company = settings.company
+		account.parent_account = parent_asset
+		account.account_type = ""  # Leave blank - it's a clearing account
+		account.root_type = "Asset"
+		account.is_group = 0
+		account.save()
+
+	# Create Freight Receivable (Receivable type) for Prepaid chargeback with customer
+	if not frappe.db.exists(
+		"Account", {"account_name": "Freight Receivable", "company": settings.company}
+	):
+		parent_receivable = frappe.db.get_value(
+			"Account",
+			{"account_name": "Accounts Receivable", "company": settings.company, "is_group": 1},
+			"name",
+		)
+		if not parent_receivable:
+			parent_receivable = frappe.db.get_value(
+				"Account",
+				{"root_type": "Asset", "is_group": 1, "company": settings.company},
+				"name",
+			)
+		account = frappe.new_doc("Account")
+		account.account_name = "Freight Receivable"
+		account.company = settings.company
+		account.parent_account = parent_receivable
+		account.account_type = "Receivable"
+		account.root_type = "Asset"
+		account.is_group = 0
+		account.save()
 
 
 def create_freight_carrier_settings_for_tests(settings):
@@ -233,8 +257,8 @@ def create_freight_carrier_settings_for_tests(settings):
 			{"account_name": "Freight and Forwarding Charges", "company": settings.company},
 			"name",
 		)
-	if not fc.freight_receivable_account:
-		fc.freight_receivable_account = frappe.db.get_value(
+	if not fc.freight_clearing_account:
+		fc.freight_clearing_account = frappe.db.get_value(
 			"Account",
 			{"account_name": "Freight Clearing", "company": settings.company},
 			"name",
@@ -246,9 +270,64 @@ def create_freight_carrier_settings_for_tests(settings):
 		ss.ltl_fetch_freight_carrier_settings = fc.name
 		ss.save()
 
+	# Create FCS for multi-provider LTL carriers (for provider_registry tests)
+	ltl_carriers = [
+		{"name": "ShipStation LTL", "base_url": "https://api.shipengine.com", "scac": "SHIP"},
+		{"name": "WWEX LTL", "base_url": "https://speedship.staging-wwex.com", "scac": "WWEX"},
+		{
+			"name": "Banyan LTL",
+			"base_url": "https://ws.integration.banyantechnology.com",
+			"scac": "BYAN",
+		},
+		{"name": "ODFL LTL", "base_url": "https://api.odfl.com", "scac": "ODFL"},
+	]
+
+	for carrier in ltl_carriers:
+		supplier = frappe.db.get_value(
+			"Supplier", {"supplier_name": carrier["name"], "is_transporter": 1}, "name"
+		)
+		if not supplier:
+			continue
+
+		existing = frappe.db.get_value(
+			"Freight Carrier Settings",
+			{"company": settings.company, "supplier": supplier},
+			"name",
+		)
+		if existing:
+			fc = frappe.get_doc("Freight Carrier Settings", existing)
+		else:
+			fc = frappe.new_doc("Freight Carrier Settings")
+			fc.company = settings.company
+			fc.supplier = supplier
+			fc.insert(ignore_permissions=True)
+			fc.reload()
+
+		fc.set("ltl_api_key", "test_ltl_api_key_for_ci")
+		fc.auto_create_accounting_entry = 1
+		if not (fc.base_url or "").strip():
+			fc.base_url = carrier["base_url"]
+		if not (fc.ltl_carrier_scac or "").strip():
+			fc.ltl_carrier_scac = carrier["scac"]
+		if not fc.freight_item and frappe.db.exists("Item", "Freight Service"):
+			fc.freight_item = "Freight Service"
+		if not fc.freight_expense_account:
+			fc.freight_expense_account = frappe.db.get_value(
+				"Account",
+				{"account_name": "Freight and Forwarding Charges", "company": settings.company},
+				"name",
+			)
+		if not fc.freight_clearing_account:
+			fc.freight_clearing_account = frappe.db.get_value(
+				"Account",
+				{"account_name": "Freight Clearing", "company": settings.company},
+				"name",
+			)
+		fc.save(ignore_permissions=True)
+
 
 def create_transporters():
-	"""Create transporter suppliers for FedEx, UPS, USPS, and a test LTL carrier."""
+	"""Create transporter suppliers for FedEx, UPS, USPS, test LTL carrier, and four multi-provider LTL carriers."""
 	default_supplier_group = frappe.get_value("Supplier Group", {"is_group": 0}, "name")
 
 	for carrier_name in ("FedEx", "UPS", "USPS"):
@@ -272,6 +351,31 @@ def create_transporters():
 			{
 				"ltl_carrier_id": "aa5d80c5-31db-40d2-b046-3450880e8b2e",
 				"ltl_carrier_scac": "TEST",
+			},
+		)
+
+	# Create multi-provider LTL carriers for provider_registry tests
+	ltl_carriers = [
+		{"name": "ShipStation LTL", "scac": "SHIP", "carrier_id": "se-shipstation-ltl"},
+		{"name": "WWEX LTL", "scac": "WWEX", "carrier_id": "wwex-carrier"},
+		{"name": "Banyan LTL", "scac": "BYAN", "carrier_id": "banyan-carrier"},
+		{"name": "ODFL LTL", "scac": "ODFL", "carrier_id": "odfl-carrier"},
+	]
+
+	for carrier in ltl_carriers:
+		if frappe.db.exists("Supplier", {"supplier_name": carrier["name"], "is_transporter": 1}):
+			continue
+		supplier = frappe.new_doc("Supplier")
+		supplier.supplier_name = carrier["name"]
+		supplier.supplier_group = default_supplier_group
+		supplier.is_transporter = 1
+		supplier.save()
+		frappe.db.set_value(
+			"Supplier",
+			supplier.name,
+			{
+				"ltl_carrier_id": carrier["carrier_id"],
+				"ltl_carrier_scac": carrier["scac"],
 			},
 		)
 
@@ -902,6 +1006,7 @@ _LTL_SHIPMENT_QUOTATION_RESET_FIELDS = (
 	"pickup_id",
 	"awb_number",
 	"shipment_id",
+	"payment_terms",
 )
 
 
@@ -919,6 +1024,9 @@ def reset_ltl_shipment_quotation_test_state() -> None:
 			sq_doc.flags.ignore_permissions = True
 			sq_doc.cancel()
 		frappe.delete_doc("Shipment Quotation", sq, force=True)
-	reset_values = {field: None for field in _LTL_SHIPMENT_QUOTATION_RESET_FIELDS}
+	# Create reset dict, excluding payment_terms which needs special handling
+	reset_fields = [f for f in _LTL_SHIPMENT_QUOTATION_RESET_FIELDS if f != "payment_terms"]
+	reset_values = {field: None for field in reset_fields}
 	reset_values["shipment_amount"] = 0
+	reset_values["payment_terms"] = "Prepaid"  # Reset to initial value, not None
 	frappe.db.set_value("Shipment", shipment.name, reset_values)

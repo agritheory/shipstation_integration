@@ -72,12 +72,12 @@ class ShipmentQuotation(Document):
 		Shipper billing, Prepaid, delivery_customer is set  (chargeback scenario)
 		  → Journal Entry
 		       DR  freight_expense_account    (cost recognised immediately)
-		       CR  freight_receivable_account (cleared when customer SI is raised;
+		       CR  freight_clearing_account   (cleared when customer SI is raised;
 		                                       link the SI via sq.sales_invoice)
 
 		Shipper billing, Collect  (carrier invoices after delivery; cost passed to customer)
-		  → Purchase Invoice, item expense_account = freight_receivable_account
-		       DR  freight_receivable_account (cleared when customer SI taxes-and-charges line posts)
+		  → Purchase Invoice, item expense_account = freight_clearing_account
+		       DR  freight_clearing_account   (cleared when customer SI taxes-and-charges line posts)
 		       CR  Accounts Payable — Carrier
 
 		Shipper billing, Prepaid, no delivery_customer  (company absorbs; e.g. freight terminal)
@@ -114,7 +114,7 @@ class ShipmentQuotation(Document):
 				shipment,
 				fc,
 				company,
-				expense_account=fc.freight_receivable_account or fc.freight_expense_account,
+				expense_account=fc.freight_clearing_account or fc.freight_expense_account,
 			)
 		else:
 			self.create_freight_purchase_invoice(
@@ -151,15 +151,27 @@ class ShipmentQuotation(Document):
 		self.db_set("purchase_invoice", pi.name)
 
 	def create_freight_journal_entry(self, shipment, fc, company) -> None:
-		if not fc.freight_expense_account or not fc.freight_receivable_account:
+		if not fc.freight_expense_account:
 			frappe.msgprint(
 				_(
-					"Both Freight Expense Account and Freight Receivable Account must be set in "
+					"Freight Expense Account must be set in "
 					"Freight Carrier Settings for {0} to create a chargeback Journal Entry."
 				).format(shipment.preferred_carrier),
 				alert=True,
 			)
 			return
+
+		if not fc.freight_clearing_account:
+			frappe.msgprint(
+				_(
+					"Freight Clearing Account must be set in "
+					"Freight Carrier Settings for {0} to create a chargeback Journal Entry."
+				).format(shipment.preferred_carrier),
+				alert=True,
+			)
+			return
+
+		clearing_account = fc.freight_clearing_account
 
 		remarks = _("Freight for Shipment {0} — {1} {2}").format(
 			self.shipment, self.carrier, self.service_level or ""
@@ -180,7 +192,7 @@ class ShipmentQuotation(Document):
 		jv.append(
 			"accounts",
 			{
-				"account": fc.freight_receivable_account,
+				"account": clearing_account,
 				"credit_in_account_currency": self.grand_total,
 				"party_type": "Customer",
 				"party": shipment.delivery_customer,

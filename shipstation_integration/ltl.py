@@ -2015,9 +2015,7 @@ class ShipstationLTL(BaseLTL):
 
 
 def get_ltl_class_instance() -> BaseLTL:
-	"""Return the LTL implementation from hooks or the default ShipstationLTL."""
-	hook = frappe.get_hooks("override_shipstation")
-	if hook and hook.get("ltl"):
-		method_string = hook.get("ltl")[-1]
-		return frappe.get_attr(method_string)()
-	return ShipstationLTL()
+	"""Return the LTL implementation. Delegates to provider_registry."""
+	from .provider_registry import get_ltl_provider
+
+	return get_ltl_provider()

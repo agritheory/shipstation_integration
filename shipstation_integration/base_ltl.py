@@ -6,6 +6,29 @@ from erpnext.stock.doctype.shipment.shipment import Shipment
 
 
 class BaseLTL:
+	def book_shipment(self, doc, settings_name: str | None = None) -> dict:
+		"""
+		Convert an accepted quote into a booked/dispatched shipment.
+		Returns dict with at minimum: pro_number, bol_number, and any generated document data.
+		For ShipEngine this wraps schedule_ltl_pickup. For brokers, this awards a quote and dispatches.
+		For direct carriers, this creates an eBOL.
+		"""
+		raise NotImplementedError
+
+	def cancel_shipment(self, doc, settings_name: str | None = None) -> str | None:
+		"""Cancel a booked shipment or scheduled pickup. Returns status message."""
+		raise NotImplementedError
+
+	def track_shipment(self, doc, settings_name: str | None = None) -> dict:
+		"""Returns tracking status for the shipment. Dict should contain at minimum: status (str), events (list of dicts)."""
+		raise NotImplementedError
+
+	def get_documents(self, doc, settings_name: str | None = None) -> list[dict]:
+		"""Returns list of available documents. Each dict has: type (str), image (base64 str), format (str)."""
+		raise NotImplementedError
+
+	# existing methods follow
+
 	def __init__(self):
 		"""
 		The self.provider value should be the name of the API service provider
