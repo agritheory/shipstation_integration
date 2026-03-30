@@ -1041,7 +1041,7 @@ def reset_ltl_shipment_quotation_test_state() -> None:
 		frappe.delete_doc("Shipment Quotation", sq, force=True)
 	# Create reset dict, excluding payment_terms which needs special handling
 	reset_fields = [f for f in _LTL_SHIPMENT_QUOTATION_RESET_FIELDS if f != "payment_terms"]
-	reset_values = {field: None for field in reset_fields}
+	reset_values: dict[str, object] = {field: None for field in reset_fields}
 	reset_values["shipment_amount"] = 0
 	reset_values["payment_terms"] = "Prepaid"  # Reset to initial value, not None
 	frappe.db.set_value("Shipment", shipment.name, reset_values)

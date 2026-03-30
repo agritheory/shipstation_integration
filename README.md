@@ -72,6 +72,14 @@ ShipStation Integration connects your ERPNext instance with [ShipStation](https:
 - Push fulfillment data back to connected marketplaces
 - Automatic tracking number updates
 
+**LTL Freight**
+- Request contracted rate quotes from LTL carriers directly from the Shipment document
+- Accept a quote and schedule pickup with a single button click
+- Bill of Lading automatically attached to the Shipment after booking
+- Track shipments and retrieve documents without leaving ERPNext
+- Built-in direct integrations for WWEX, Banyan Technology, and Old Dominion Freight Line (ODFL)
+- Extensible via the `ltl_providers` hook — add any carrier by subclassing `BaseLTL`
+
 **Webhooks**
 - v1 store-based webhooks for order and shipment events
 - v2 environment-based webhooks for batch completion and tracking updates

@@ -133,7 +133,7 @@ class ShipstationLTL(BaseLTL):
 		Returns:
 		List of carrier dicts with carrier_id, carrier_code, name, supplier, etc.
 		"""
-		_ = settings_name
+		del settings_name  # unused; FCS resolved via company+supplier
 		auth_doc = self._ltl_auth_doc(doc=doc, company=company, supplier=supplier)
 		base_url, headers = self.get_base_url_and_headers(auth_doc)
 		data: dict = {}
