@@ -44,16 +44,6 @@ Accounting document chosen at Shipment Quotation submit
     | Creditors                      |              |         |  $474.38 | Test LTL Carrier |
     Used for freight-terminal shipments where no specific customer is billed.
 
-  Scenario 3 — Pass-through; customer pays freight on Sales Invoice  (order 30 — TODO)
-    SI taxes-and-charges line clears Freight Clearing set up in scenarios above.
-    | Account          | Stock Ledger |   Debit |   Credit | Party             |
-    | ---------------- |:------------:| -------:| --------:| ----------------- |
-    | Debtors          |              | $474.38 |          | Almacs Food Group |
-    | Freight Clearing |              |         |  $474.38 |                   |
-    Net P&L: Freight Expense (from JE/PI) offset by Freight Clearing reversal = $0
-
-  Scenario 4 — Prepaid + chargeback, full cycle  (order 35 — TODO)
-    JE from scenario Prepaid+customer PLUS SI taxes-and-charges line.
 """
 
 import frappe
@@ -270,67 +260,6 @@ def test_prepaid_billing_cancel_sq_cancels_journal_entry():
 	assert not ltl_shipment.shipment_amount
 
 	reset_ltl_shipment_quotation_test_state()
-
-
-@pytest.mark.order(30)
-@pytest.mark.skip(
-	reason="TODO: implement Sales Invoice freight line creation and Consignee billing path"
-)
-def test_pass_through_freight_creates_sales_invoice_line():
-	"""
-	Scenario 3 — Customer pays freight; billed on their Sales Invoice.
-
-	The company adds a Freight Service line to the customer's SI at the quoted
-	rate.  Net P&L impact is zero: Freight Income offsets Freight Expense.
-
-	| Account                          | Stock Ledger |   Debit |   Credit | Party              |
-	| -------------------------------- |:------------:| -------:| --------:| ------------------ |
-	| Debtors                          |              | $474.38 |          | Almacs Food Group  |
-	| Freight Income                   |              |         |  $474.38 |                    |
-	| Freight and Forwarding Charges   |              | $474.38 |          |                    |
-	| Creditors                        |              |         |  $474.38 | Test LTL Carrier   |
-
-	Net freight P&L = Freight Income − Freight Expense = $0
-	"""
-
-
-@pytest.mark.order(31)
-@pytest.mark.skip(reason="TODO: implement Sales Invoice freight line creation")
-def test_pass_through_freight_income_offsets_expense_gl():
-	"""
-	Scenario 3 continued — verify that Freight Income and Freight Expense
-	accounts carry equal and opposite balances after the SI and PI post.
-
-	Expected net effect on P&L: $0 (complete pass-through).
-	"""
-
-
-@pytest.mark.order(35)
-@pytest.mark.skip(reason="TODO: implement after Scenarios 2 and 3 are fully wired up")
-def test_prepaid_with_chargeback_creates_pi_and_si_freight_line():
-	"""
-	Scenario 4 — Company pre-pays carrier, then recovers cost from customer.
-
-	Step 1: SQ submit → auto-PI (same as Scenario 2).
-	Step 2: Freight Service line added to customer's Sales Invoice.
-	Step 3: Net P&L = $0 after both documents post.
-
-	| Account                          | Stock Ledger |   Debit |   Credit | Party              |
-	| -------------------------------- |:------------:| -------:| --------:| ------------------ |
-	| Freight and Forwarding Charges   |              | $474.38 |          |                    | ← PI (auto)
-	| Creditors                        |              |         |  $474.38 | Test LTL Carrier   | ← PI (auto)
-	| Debtors                          |              | $474.38 |          | Almacs Food Group  | ← SI line
-	| Freight Income                   |              |         |  $474.38 |                    | ← SI line
-	"""
-
-
-@pytest.mark.order(36)
-@pytest.mark.skip(reason="TODO: implement after Scenario 4 is wired up")
-def test_prepaid_with_chargeback_net_freight_pl_is_zero():
-	"""
-	Scenario 4 continued — after PI and SI post, verify the net freight impact
-	on the P&L is zero: Freight Income $474.38 − Freight Expense $474.38 = $0.
-	"""
 
 
 @pytest.mark.order(40)

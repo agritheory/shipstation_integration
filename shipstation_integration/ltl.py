@@ -2014,8 +2014,35 @@ class ShipstationLTL(BaseLTL):
 		}
 
 
-def get_ltl_class_instance() -> BaseLTL:
-	"""Return the LTL implementation. Delegates to provider_registry."""
-	from .provider_registry import get_ltl_provider
+def get_ltl_provider(doc=None) -> BaseLTL:
+	"""Return the correct BaseLTL subclass instance for the given Shipment doc.
 
-	return get_ltl_provider()
+	Resolution uses the ``ltl_providers`` hook defined in hooks.py — a dict mapping
+	a base_url domain substring to a dotted import path (plain strings, no imports).
+	The Freight Carrier Settings record for the doc's company and preferred carrier
+	is looked up to obtain ``base_url``; the first matching entry in ``ltl_providers``
+	wins.  Falls back to ``ShipstationLTL`` when no doc is provided or no entry matches.
+
+	Example hooks.py entry::
+
+	    ltl_providers = {
+	        "wwex.com": "my_app.wwex_ltl.WwexLTL",
+	    }
+	"""
+	provider_map: dict[str, str] = frappe.get_hooks("ltl_providers") or {}
+
+	if doc is not None:
+		co = get_shipment_company_for_ltl(doc)
+		supplier = getattr(doc, "preferred_carrier", None)
+		fc = get_freight_carrier_settings(co, supplier) if co and supplier else None
+		base_url = (fc.base_url if fc else None) or ""
+		url = base_url.strip().lower()
+		for domain, dotted_path in provider_map.items():
+			if domain.lower() in url:
+				# frappe.get_hooks returns list values; take the last entry so that
+				# downstream apps can override by appending their own entry.
+				if isinstance(dotted_path, list):
+					dotted_path = dotted_path[-1]
+				return frappe.get_attr(dotted_path)()
+
+	return ShipstationLTL()

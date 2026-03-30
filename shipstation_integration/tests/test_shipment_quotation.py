@@ -1,8 +1,6 @@
 # Copyright (c) 2026, AgriTheory and contributors
 # For license information, please see license.txt
 
-from unittest.mock import patch
-
 import frappe
 import pytest
 
@@ -133,7 +131,7 @@ def test_cancel_quote_clears_shipment_fields():
 
 
 @pytest.mark.order(11)
-def test_schedule_pickup_attaches_bol():
+def test_schedule_pickup_attaches_bol(monkeypatch):
 	reset_ltl_shipment_quotation_test_state()
 	ltl_shipment = get_draft_ltl_shipment_for_tests()
 	pickup_fixture = ltl_pickup_response_for_tests()
@@ -147,10 +145,10 @@ def test_schedule_pickup_attaches_bol():
 
 	ltl_shipment.reload()
 
-	with patch.object(ltl, "schedule_ltl_pickup_with_quote_id", return_value=pickup_fixture):
-		with patch.object(ltl, "supports_scheduled_pickup", return_value={"supports_pickup": True}):
-			with patch.object(ltl, "validate_carrier_and_id"):
-				msg = ltl.schedule_ltl_pickup(ltl_shipment)
+	monkeypatch.setattr(ltl, "schedule_ltl_pickup_with_quote_id", lambda *a, **kw: pickup_fixture)
+	monkeypatch.setattr(ltl, "supports_scheduled_pickup", lambda *a, **kw: {"supports_pickup": True})
+	monkeypatch.setattr(ltl, "validate_carrier_and_id", lambda *a, **kw: None)
+	msg = ltl.schedule_ltl_pickup(ltl_shipment)
 
 	ltl_shipment.reload()
 	assert ltl_shipment.get("pickup_id") == pickup_fixture["pickup_id"]

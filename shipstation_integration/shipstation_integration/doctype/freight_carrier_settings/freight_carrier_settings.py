@@ -68,10 +68,15 @@ def sync_ltl_api_credentials_from_shipstation_settings(ss) -> None:
 				fc.insert(ignore_permissions=True)
 				fc.reload()
 
-			fc.set("ltl_api_key", api_key)
-			# Only apply ShipEngine base_url to providers that use ShipEngine (or Shipstation) APIs
-			if not (fc.base_url or "").strip() and any(
-				d in ss_base.lower() for d in ["shipengine.com", "shipstation.com"]
-			):
-				fc.base_url = ss_base
+			# Only sync the ShipEngine API key to FCS records that use ShipEngine/ShipStation.
+			# Records with a non-ShipEngine base_url (e.g. WWEX, Banyan, ODFL direct) manage their
+			# own credentials and must not have them overwritten by the ShipStation API key.
+			existing_base = (fc.base_url or "").strip().lower()
+			is_shipengine_provider = not existing_base or any(
+				d in existing_base for d in ["shipengine.com", "shipstation.com"]
+			)
+			if is_shipengine_provider:
+				fc.set("ltl_api_key", api_key)
+				if not existing_base:
+					fc.base_url = ss_base
 			fc.save(ignore_permissions=True)

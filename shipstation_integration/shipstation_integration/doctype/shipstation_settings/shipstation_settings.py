@@ -108,11 +108,11 @@ class ShipstationSettings(Document):
 		# Use longer timeout for rate requests (default is 5s which is too short)
 		return ShipEngine({"api_key": api_key, "timeout": 30})
 
-	def get_ltl_class(self):
-		"""Looks for an overriding LTL class via hooks, otherwise returns Shipstation LTL class"""
-		from shipstation_integration.ltl import get_ltl_class_instance
+	def get_ltl_class(self, doc=None):
+		"""Return the correct BaseLTL subclass for the given Shipment doc (or default ShipstationLTL)."""
+		from shipstation_integration.ltl import get_ltl_provider
 
-		return get_ltl_class_instance()
+		return get_ltl_provider(doc)
 
 	def get_base_url_and_headers(self):  # TODO: delete (moved to LTL classes)
 		"""
@@ -245,7 +245,10 @@ class ShipstationSettings(Document):
 		fc = frappe.get_doc("Freight Carrier Settings", self.ltl_fetch_freight_carrier_settings)
 		if fc.disabled:
 			frappe.throw(_("Selected Freight Carrier Settings is disabled."))
-		ltl_class = self.get_ltl_class()
+		ltl_doc = frappe._dict(
+			pickup_from_type="Company", pickup_company=fc.company, preferred_carrier=fc.supplier
+		)
+		ltl_class = self.get_ltl_class(ltl_doc)
 		carriers = ltl_class.list_ltl_carriers(
 			create_transporters=False,
 			company=fc.company,

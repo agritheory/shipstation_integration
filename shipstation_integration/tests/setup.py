@@ -64,6 +64,7 @@ def create_test_data():
 	create_freight_item(settings)
 	create_freight_clearing_account(settings)
 	create_shipstation_settings(settings)
+	ensure_administrator_has_phone()
 	create_freight_carrier_settings_for_tests(settings)
 	create_customer_addresses_and_contacts(settings)
 	create_inventory_with_handling_units(settings)
@@ -107,6 +108,13 @@ def create_inventory_with_handling_units(settings):
 		se.submit()
 
 
+def ensure_administrator_has_phone():
+	user = frappe.get_doc("User", "Administrator")
+	if not user.phone:
+		user.phone = "(508) 555-0100"
+		user.save(ignore_permissions=True)
+
+
 def create_shipstation_settings(settings):
 	"""Upsert a Shipstation Settings document with GS1 company prefix and carrier data."""
 	default_item_group = frappe.get_value("Item Group", {"is_group": 0}, "name")
@@ -121,6 +129,7 @@ def create_shipstation_settings(settings):
 	ss.enable_shipstation_api = 1
 	ss.default_item_group = default_item_group
 	ss.gs1_company_prefix = "0614141"
+	ss.shipstation_user = "Administrator"
 	ss.set("shipstation_api_key", "test_shipstation_api_key_for_ci")
 	ss.shipstation_api_carrier_data = json.dumps(
 		[
@@ -270,7 +279,7 @@ def create_freight_carrier_settings_for_tests(settings):
 		ss.ltl_fetch_freight_carrier_settings = fc.name
 		ss.save()
 
-	# Create FCS for multi-provider LTL carriers (for provider_registry tests)
+	# Create FCS for multi-provider LTL carriers
 	ltl_carriers = [
 		{"name": "ShipStation LTL", "base_url": "https://api.shipengine.com", "scac": "SHIP"},
 		{"name": "WWEX LTL", "base_url": "https://speedship.staging-wwex.com", "scac": "WWEX"},
@@ -300,13 +309,16 @@ def create_freight_carrier_settings_for_tests(settings):
 			fc = frappe.new_doc("Freight Carrier Settings")
 			fc.company = settings.company
 			fc.supplier = supplier
+			fc.base_url = carrier["base_url"]
 			fc.insert(ignore_permissions=True)
 			fc.reload()
 
 		fc.set("ltl_api_key", "test_ltl_api_key_for_ci")
+		if carrier["name"] == "ODFL LTL":
+			fc.client_id = "test_odfl_client_id"
+			fc.set("client_secret", "test_odfl_client_secret")
 		fc.auto_create_accounting_entry = 1
-		if not (fc.base_url or "").strip():
-			fc.base_url = carrier["base_url"]
+		fc.base_url = carrier["base_url"]
 		if not (fc.ltl_carrier_scac or "").strip():
 			fc.ltl_carrier_scac = carrier["scac"]
 		if not fc.freight_item and frappe.db.exists("Item", "Freight Service"):
@@ -354,7 +366,7 @@ def create_transporters():
 			},
 		)
 
-	# Create multi-provider LTL carriers for provider_registry tests
+	# Create multi-provider LTL carriers
 	ltl_carriers = [
 		{"name": "ShipStation LTL", "scac": "SHIP", "carrier_id": "se-shipstation-ltl"},
 		{"name": "WWEX LTL", "scac": "WWEX", "carrier_id": "wwex-carrier"},
@@ -693,6 +705,7 @@ def create_shipment_for_ltl(settings):
 	shipment.pickup_from_type = "Company"
 	shipment.pickup_company = settings.company
 	shipment.pickup_address_name = company_address
+	shipment.pickup_contact_person = "Administrator"
 	shipment.delivery_to_type = "Customer"
 	shipment.delivery_customer = customers[0]
 	shipment.delivery_address_name = customer_address
@@ -789,6 +802,7 @@ def create_shipment_for_small_parcel(settings):
 	shipment.pickup_from_type = "Company"
 	shipment.pickup_company = settings.company
 	shipment.pickup_address_name = company_address
+	shipment.pickup_contact_person = "Administrator"
 	shipment.delivery_to_type = "Customer"
 	shipment.delivery_customer = customers[1]
 	shipment.delivery_address_name = customer_address
@@ -889,6 +903,7 @@ def create_shipment_for_freight_terminal(settings):
 	shipment.pickup_from_type = "Company"
 	shipment.pickup_company = settings.company
 	shipment.pickup_address_name = company_address
+	shipment.pickup_contact_person = "Administrator"
 	shipment.delivery_to_type = "Contact"
 	shipment.delivery_address_name = terminal_address
 	shipment.shipping_contact = terminal_contact

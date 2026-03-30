@@ -116,3 +116,14 @@ override_doctype_class = {
 	"Shipment": "shipstation_integration.shipstation_integration.overrides.shipment.ShipStationShipment",
 	"Shipment Parcel Template": "shipstation_integration.shipstation_integration.overrides.shipment_parcel_template.ShipstationShipmentParcelTemplate",
 }
+
+# Maps a substring of Freight Carrier Settings.base_url to the dotted import path of
+# the BaseLTL subclass that handles that provider.  Entries are checked in definition
+# order; first match wins.  No imports belong here — plain strings only.
+ltl_providers = {
+	"shipengine.com": "shipstation_integration.ltl.ShipstationLTL",
+	"shipstation.com": "shipstation_integration.ltl.ShipstationLTL",
+	"wwex.com": "shipstation_integration.shipstation_integration.freight_providers.wwex_ltl.WwexLTL",
+	"banyantechnology.com": "shipstation_integration.shipstation_integration.freight_providers.banyan_ltl.BanyanLTL",
+	"odfl.com": "shipstation_integration.shipstation_integration.freight_providers.odfl_ltl.OdflLTL",
+}

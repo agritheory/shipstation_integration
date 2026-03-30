@@ -1,8 +1,6 @@
 # Copyright (c) 2026, AgriTheory and contributors
 # For license information, please see license.txt
 
-import pytest
-
 import frappe
 
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
@@ -22,8 +20,6 @@ def test_get_freight_carrier_settings_resolves_doc():
 	supplier_name = frappe.get_value(
 		"Supplier", {"supplier_name": "Test LTL Carrier", "is_transporter": 1}, "name"
 	)
-	if not supplier_name:
-		pytest.skip("Test LTL Carrier supplier missing")
 
 	existing = frappe.db.get_value(
 		"Freight Carrier Settings", {"company": company, "supplier": supplier_name}, "name"
@@ -56,8 +52,6 @@ def test_get_shipment_company_for_ltl_from_shipment():
 		order_by="creation desc",
 		limit_page_length=1,
 	)
-	if not names:
-		pytest.skip("No draft LTL Shipment in test DB")
 	shipment = frappe.get_doc("Shipment", names[0])
 
 	shipment.pickup_from_type = "Company"
