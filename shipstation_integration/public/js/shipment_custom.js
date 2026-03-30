@@ -114,8 +114,8 @@ async function get_ltl_carrier_id(frm) {
 				frm.doc.pickup_from_type === 'Company'
 					? frm.doc.pickup_company
 					: frm.doc.delivery_to_type === 'Company'
-					  ? frm.doc.delivery_company
-					  : null,
+						? frm.doc.delivery_company
+						: null,
 		})
 		.then(r => {
 			if (r) {
