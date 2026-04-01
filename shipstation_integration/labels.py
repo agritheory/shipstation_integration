@@ -62,6 +62,31 @@ def create_label(
 		return format_label_response(label_response)
 	except Exception as e:
 		error_msg = get_error_message(e)
+
+		# If the carrier rejected third-party billing, retry without it and warn.
+		# This allows label creation to proceed; the user can collect the shipping
+		# cost from the customer through other means.
+		if (
+			"advanced_options" in shipment_data
+			and "third party" in error_msg.lower()
+			and "bill to party" in error_msg.lower()
+		):
+			fallback_data = {k: v for k, v in shipment_data.items() if k != "advanced_options"}
+			try:
+				label_response = client.create_label_from_shipment({"shipment": fallback_data})
+				frappe.msgprint(
+					_(
+						"Warning: Third-party billing was rejected by the carrier ({0}). "
+						"The label was created and billed to your account instead. "
+						"You may need to collect the shipping cost from the customer separately."
+					).format(error_msg),
+					indicator="orange",
+					alert=False,
+				)
+				return format_label_response(label_response)
+			except Exception as e2:
+				error_msg = get_error_message(e2)
+
 		frappe.log_error(
 			title="Error creating shipping label",
 			message=f"Error: {error_msg}\n\nShipment data: {json.dumps(shipment_data, indent=2, default=str)}",
@@ -474,6 +499,68 @@ def format_label_response(label_response) -> dict:
 	return label_response
 
 
+def get_third_party_billing_options(ps) -> dict | None:
+	"""
+	Return ShipEngine advanced_options for third-party billing if the customer
+	linked to the Packing Slip's Delivery Note has a matching shipping account.
+
+	Matches on carrier: looks for an account whose carrier field equals the
+	carrier set on the Packing Slip, preferring default > enabled > first match.
+	Returns None if no qualifying account is found.
+	"""
+	if not ps.delivery_note or not ps.carrier:
+		return None
+
+	try:
+		dn = frappe.get_cached_doc("Delivery Note", ps.delivery_note)
+		if not dn.customer:
+			return None
+
+		customer = frappe.get_cached_doc("Customer", dn.customer)
+		accounts = [row for row in (customer.shipping_accounts or []) if row.carrier == ps.carrier]
+		if not accounts:
+			return None
+
+		account = (
+			next((a for a in accounts if a.default), None)
+			or next((a for a in accounts if a.enabled), None)
+			or accounts[0]
+		)
+
+		if not account.shipping_account_number:
+			return None
+
+		# Attempt to pull postal code / country from the customer's billing address
+		billing_address = frappe.db.get_value(
+			"Dynamic Link",
+			{"link_doctype": "Customer", "link_name": dn.customer, "parenttype": "Address"},
+			"parent",
+		)
+		postal_code = ""
+		country_code = "US"
+		if billing_address:
+			addr = frappe.get_cached_doc("Address", billing_address)
+			postal_code = addr.pincode or ""
+			country_code = (frappe.db.get_value("Country", addr.country, "code") or "US").upper()
+
+		options: dict = {
+			"bill_to_party": "third_party",
+			"bill_to_account": account.shipping_account_number,
+			"bill_to_country_code": country_code,
+		}
+		if postal_code:
+			options["bill_to_postal_code"] = postal_code
+
+		return options
+
+	except Exception:
+		frappe.log_error(
+			title="Error resolving third-party billing account",
+			message=frappe.get_traceback(),
+		)
+		return None
+
+
 def build_shipment_from_packing_slip(
 	ps, carrier_id: str, service_code: str, parcel_number: int
 ) -> dict:
@@ -515,7 +602,7 @@ def build_shipment_from_packing_slip(
 	ship_to_phone = ship_to_address.phone or "0000000000"
 	ship_from_phone = ship_from_address.phone or "0000000000"
 
-	return {
+	shipment: dict = {
 		"carrier_id": carrier_id,
 		"service_code": service_code,
 		"ship_to": {
@@ -540,6 +627,12 @@ def build_shipment_from_packing_slip(
 		},
 		"packages": [package],
 	}
+
+	third_party = get_third_party_billing_options(ps)
+	if third_party:
+		shipment["advanced_options"] = third_party
+
+	return shipment
 
 
 @frappe.whitelist()

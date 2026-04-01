@@ -43,7 +43,7 @@ class ShipstationSettings(Document):
 
 	def onload(self):
 		if self.carrier_data:
-			self.set_onload("carriers", self.carrier_data())
+			self.set_onload("carriers", self.get_carrier_data())
 		if self.shipstation_api_carrier_data:
 			self.set_onload("api_carriers", self.api_carrier_data())
 		if self.shipstation_api_ltl_carrier_data:
@@ -146,6 +146,20 @@ class ShipstationSettings(Document):
 			client = self.shipstation_api_client()
 			# ShipEngine returns a dict with 'carriers' key
 			response = client.list_carriers()
+			# Surface API errors instead of silently treating them as 0 carriers
+			if isinstance(response, dict) and response.get("errors"):
+				errors = response["errors"]
+				first_error = errors[0] if errors else {}
+				error_msg = first_error.get("message", "Unknown error")
+				error_code = first_error.get("error_code", "")
+				if error_code == "unauthorized":
+					frappe.throw(
+						_(
+							"ShipEngine API authentication failed: {0}. Please check the API key in Shipstation Settings."
+						).format(error_msg)
+					)
+				frappe.throw(_("ShipEngine API error: {0}").format(error_msg))
+
 			carriers = response.get("carriers", []) if isinstance(response, dict) else response
 
 			carrier_list = []
@@ -456,13 +470,13 @@ class ShipstationSettings(Document):
 
 		return f"{len(products.results)} product(s) imported successfully"
 
-	def carrier_data(self):
+	def get_carrier_data(self):
 		if not self.carrier_data:
 			return []
 		return json.loads(self.carrier_data)
 
 	def get_carrier_services(self, carrier):
-		carrier_data = self.carrier_data()
+		carrier_data = self.get_carrier_data()
 		if not carrier_data:
 			return ""
 		for ss_carrier in carrier_data:
@@ -472,7 +486,7 @@ class ShipstationSettings(Document):
 
 	def get_codes(self, carrier, service, package):
 		_carrier, _service, _package = None, None, "Package"
-		carrier_data = self.carrier_data()
+		carrier_data = self.get_carrier_data()
 		if not carrier_data:
 			return _carrier, _service, _package
 		for ss_carrier in carrier_data:

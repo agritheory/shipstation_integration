@@ -157,6 +157,21 @@ function fetch_delivery_note_defaults(frm) {
 			}
 
 			fetch_weight_from_delivery_note(frm, dn)
+
+			if (is_empty_or_null(frm.doc.carrier)) {
+				frappe.call({
+					method: 'shipstation_integration.carriers.get_shipping_accounts',
+					args: { delivery_note: frm.doc.delivery_note },
+					callback: function (r) {
+						const accounts = r.message || []
+						if (!accounts.length) return
+						const account = accounts.find(a => a.default) || accounts.find(a => a.enabled) || accounts[0]
+						if (account && account.carrier && is_empty_or_null(frm.doc.carrier)) {
+							frm.set_value('carrier', account.carrier)
+						}
+					},
+				})
+			}
 		},
 	})
 }
@@ -581,6 +596,8 @@ function setup_shipping_actions(frm) {
 
 				if (has_carrier && has_service) {
 					frm.add_custom_button(__('Create Label'), () => create_label_direct(frm), __('Shipping'))
+				} else if (has_carrier) {
+					frm.add_custom_button(__('Create Label'), () => create_label_pick_service(frm), __('Shipping'))
 				} else {
 					frm.add_custom_button(__('Create Label'), () => create_shipping_label(frm), __('Shipping'))
 				}
@@ -761,6 +778,54 @@ function show_label_success(frm, results) {
 	})
 
 	frm.refresh_field('items')
+}
+
+function create_label_pick_service(frm) {
+	const carrier_supplier = frm.doc.carrier || get_carrier_from_items(frm)
+
+	frappe.call({
+		method: 'shipstation_integration.carriers.resolve_carrier_for_label',
+		args: { supplier_name: carrier_supplier },
+		callback: function (r) {
+			const result = r.message || {}
+			if (!result.carrier_id) {
+				if (result.status === 'not_synced') {
+					frappe.msgprint(__('No carrier data found. Please sync carriers in Shipstation Settings first.'))
+				} else {
+					const available = (result.available || []).join(', ') || __('none')
+					frappe.msgprint(
+						__(
+							'{0} is not connected to your ShipEngine account. Available carriers: {1}. Please add {0} in your ShipStation/ShipEngine carrier settings.',
+							[carrier_supplier, available]
+						)
+					)
+				}
+				return
+			}
+			const carrier_id = result.carrier_id
+			const dialog = new frappe.ui.Dialog({
+				title: __('Select Service for {0}', [carrier_supplier]),
+				fields: [
+					{
+						fieldtype: 'Autocomplete',
+						fieldname: 'service_code',
+						label: __('Service'),
+						options: [],
+						reqd: 1,
+					},
+				],
+				primary_action_label: __('Create Label'),
+				primary_action: function () {
+					const service_label = dialog.get_value('service_code')
+					const service_code = dialog.service_code_map?.[service_label] || service_label
+					dialog.hide()
+					create_label_with_rate(frm, carrier_id, service_code)
+				},
+			})
+			load_services_for_dialog(dialog, carrier_id)
+			dialog.show()
+		},
+	})
 }
 
 function create_shipping_label(frm) {

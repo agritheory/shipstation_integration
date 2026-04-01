@@ -116,16 +116,16 @@
    "label": "LTL API Key"
   },
   {
-   "description": "OAuth or alternative client identifier when required by the integration.",
-   "fieldname": "client_id",
-   "fieldtype": "Password",
-   "label": "Client ID"
-  },
-  {
-   "description": "OAuth or alternative client secret when required by the integration.",
-   "fieldname": "client_secret",
-   "fieldtype": "Password",
-   "label": "Client Secret"
+   "description": "OAuth client identifier issued by the provider (Banyan client_id, WWEX client_id, etc.).",
+    "fieldname": "client_id",
+    "fieldtype": "Password",
+    "label": "Client ID"
+   },
+   {
+    "description": "OAuth client secret issued by the provider (Banyan client_secret, WWEX client_secret, etc.).",
+    "fieldname": "client_secret",
+    "fieldtype": "Password",
+    "label": "Client Secret"
   },
   {
    "description": "Shipper account number with the provider (WWEX account#, ODFL bill-to account code, Banyan clientRefNumber). Not used for ShipEngine.",

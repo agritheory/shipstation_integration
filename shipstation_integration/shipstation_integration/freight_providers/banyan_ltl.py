@@ -107,34 +107,61 @@ class BanyanLTL(BaseLTL):
 		return fc
 
 	def _get_token(self, fc) -> str:
-		"""Return a bearer token, refreshing via Connected App or returning ltl_api_key directly."""
-		# If a static API key is set, use it as-is
+		"""Return a bearer token via client_credentials grant.
+
+		Priority:
+		1. Static API key stored in ``ltl_api_key`` — returned as-is.
+		2. ``client_id`` / ``client_secret`` on FCS — client_credentials grant to
+		   ``/auth/connect/token``.
+		3. Connected App — uses its client_id/client_secret.
+		"""
 		static_key = (
 			fc.get_password("ltl_api_key") if hasattr(fc, "get_password") else (fc.ltl_api_key or "")
 		)
 		if static_key:
 			return static_key
 
-		# OAuth via Connected App
 		cache_key = f"banyan_token:{fc.name}"
 		cached = frappe.cache.get_value(cache_key)
 		if cached and cached.get("expires_at", 0) > time.time() + _TOKEN_REFRESH_BUFFER:
 			return cached["access_token"]
 
-		app = frappe.get_doc("Connected App", fc.connected_app)
-		with httpx.Client() as client:
-			resp = client.post(
-				app.token_uri,
-				data={
-					"grant_type": "client_credentials",
-					"client_id": app.client_id,
-					"client_secret": app.get_password("client_secret"),
-				},
-				timeout=30,
-			)
-		resp.raise_for_status()
-		payload = resp.json()
+		token_url = self._url(fc, "/auth/connect/token")
 
+		client_id = fc.get_password("client_id") if hasattr(fc, "get_password") else (fc.client_id or "")
+		client_secret = (
+			fc.get_password("client_secret") if hasattr(fc, "get_password") else (fc.client_secret or "")
+		)
+
+		if client_id and client_secret and not getattr(fc, "connected_app", None):
+			with httpx.Client() as client:
+				resp = client.post(
+					token_url,
+					data={
+						"grant_type": "client_credentials",
+						"client_id": client_id,
+						"client_secret": client_secret,
+					},
+					timeout=30,
+				)
+			resp.raise_for_status()
+
+		else:
+			app = frappe.get_doc("Connected App", fc.connected_app)
+			token_url = app.token_uri or token_url
+			with httpx.Client() as client:
+				resp = client.post(
+					token_url,
+					data={
+						"grant_type": "client_credentials",
+						"client_id": app.client_id,
+						"client_secret": app.get_password("client_secret"),
+					},
+					timeout=30,
+				)
+			resp.raise_for_status()
+
+		payload = resp.json()
 		access_token = payload.get("access_token") or payload.get("token")
 		expires_in = int(payload.get("expires_in", 3600))
 		frappe.cache.set_value(

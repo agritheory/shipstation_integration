@@ -284,7 +284,7 @@ def make_shipstation_order(doc: frappe._dict):
 def get_carrier_services(settings: str):
 	if settings:
 		shipstation_settings: "ShipstationSettings" = frappe.get_doc("Shipstation Settings", settings)
-		return shipstation_settings.carrier_data()
+		return shipstation_settings.get_carrier_data()
 
 
 @frappe.whitelist()

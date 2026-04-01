@@ -736,38 +736,45 @@ def get_carrier_id_for_supplier(
 
 	# Get cached carrier data
 	if not settings.shipstation_api_carrier_data:
-		frappe.throw(_("No carrier data found. Please sync carriers first."))
+		return None
 
 	carrier_data = json.loads(settings.shipstation_api_carrier_data)
 
-	# Look up by name (case-insensitive)
+	if not carrier_data:
+		return None
+
 	supplier_name_lower = supplier_name.lower()
+
+	def _valid_carrier_id(carrier_id: str | None, label: str) -> str | None:
+		if carrier_id and carrier_id.startswith("se-"):
+			return carrier_id
+		if carrier_id:
+			frappe.log_error(
+				title="Invalid carrier_id format",
+				message=f"Carrier '{label}' has invalid carrier_id: {carrier_id}",
+			)
+		return None
+
+	# Pass 1 — exact match on stored supplier name or carrier friendly name
 	for carrier in carrier_data:
-		carrier_name = carrier.get("name", "")
-		if carrier_name and carrier_name.lower() == supplier_name_lower:
-			carrier_id = carrier.get("carrier_id")
-			# Validate carrier_id format (should be like "se-123456")
-			if carrier_id and carrier_id.startswith("se-"):
-				return carrier_id
-			frappe.log_error(
-				title="Invalid carrier_id format",
-				message=f"Carrier '{carrier_name}' has invalid carrier_id: {carrier_id}",
-			)
-			return None
+		carrier_name = (carrier.get("name") or "").lower()
+		carrier_supplier = (carrier.get("supplier") or "").lower()
+		if supplier_name_lower in (carrier_name, carrier_supplier):
+			return _valid_carrier_id(carrier.get("carrier_id"), carrier.get("name", ""))
 
-		# Also check supplier field if it was stored
-		carrier_supplier = carrier.get("supplier", "")
-		if carrier_supplier and carrier_supplier.lower() == supplier_name_lower:
-			carrier_id = carrier.get("carrier_id")
-			if carrier_id and carrier_id.startswith("se-"):
-				return carrier_id
-			frappe.log_error(
-				title="Invalid carrier_id format",
-				message=f"Carrier with supplier '{carrier_supplier}' has invalid carrier_id: {carrier_id}",
-			)
-			return None
+	# Pass 2 — substring match: supplier name is contained in carrier name or vice-versa
+	# Handles cases like supplier="FedEx" matching ShipEngine carrier "FedEx Express"
+	for carrier in carrier_data:
+		carrier_name = (carrier.get("name") or "").lower()
+		carrier_supplier = (carrier.get("supplier") or "").lower()
+		if (
+			(carrier_name and supplier_name_lower in carrier_name)
+			or (carrier_supplier and supplier_name_lower in carrier_supplier)
+			or (carrier_name and carrier_name in supplier_name_lower)
+		):
+			return _valid_carrier_id(carrier.get("carrier_id"), carrier.get("name", ""))
 
-	# Not found - log for debugging
+	# Not found — log available carriers to help with debugging
 	available_carriers = [f"{c.get('name')} (supplier: {c.get('supplier')})" for c in carrier_data]
 	frappe.log_error(
 		title="Carrier not found for supplier",
@@ -775,6 +782,36 @@ def get_carrier_id_for_supplier(
 	)
 
 	return None
+
+
+@frappe.whitelist()
+def resolve_carrier_for_label(supplier_name: str, settings_name: str | None = None) -> dict:
+	"""
+	Richer carrier lookup for the label-creation UI.
+
+	Returns a dict with:
+	  - carrier_id: the ShipEngine carrier_id string, or None
+	  - status: "found" | "not_synced" | "not_connected"
+	  - available: list of carrier names currently in settings (when not_connected)
+	"""
+	if not supplier_name:
+		return {"carrier_id": None, "status": "not_connected", "available": []}
+
+	settings = get_shipstation_settings(settings_name)
+	raw = settings.shipstation_api_carrier_data or ""
+	if not raw:
+		return {"carrier_id": None, "status": "not_synced", "available": []}
+
+	carrier_data = json.loads(raw)
+	if not carrier_data:
+		return {"carrier_id": None, "status": "not_synced", "available": []}
+
+	carrier_id = get_carrier_id_for_supplier(supplier_name, settings_name)
+	if carrier_id:
+		return {"carrier_id": carrier_id, "status": "found", "available": []}
+
+	available = [c.get("name") for c in carrier_data if c.get("name")]
+	return {"carrier_id": None, "status": "not_connected", "available": available}
 
 
 @frappe.whitelist()
@@ -888,14 +925,24 @@ def get_shipping_accounts(delivery_note):
 		doc = frappe.get_doc("Customer", dn.customer)
 		for row in doc.shipping_accounts:  # child table fieldname
 			accounts.append(
-				{"shipping_account_number": row.shipping_account_number, "carrier": row.carrier}
+				{
+					"shipping_account_number": row.shipping_account_number,
+					"carrier": row.carrier,
+					"enabled": row.enabled,
+					"default": row.default,
+				}
 			)
 
 	elif dn.supplier:
 		doc = frappe.get_doc("Supplier", dn.supplier)
 		for row in doc.shipping_accounts:
 			accounts.append(
-				{"shipping_account_number": row.shipping_account_number, "carrier": row.carrier}
+				{
+					"shipping_account_number": row.shipping_account_number,
+					"carrier": row.carrier,
+					"enabled": row.enabled,
+					"default": row.default,
+				}
 			)
 
 	return accounts
