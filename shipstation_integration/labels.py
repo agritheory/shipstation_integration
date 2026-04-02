@@ -76,12 +76,12 @@ def create_label(
 				label_response = client.create_label_from_shipment({"shipment": fallback_data})
 				frappe.msgprint(
 					_(
-						"Warning: Third-party billing was rejected by the carrier ({0}). "
+						"Third-party billing was rejected by the carrier. "
 						"The label was created and billed to your account instead. "
 						"You may need to collect the shipping cost from the customer separately."
-					).format(error_msg),
+					),
+					title=_("Third-Party Billing Unavailable"),
 					indicator="orange",
-					alert=False,
 				)
 				return format_label_response(label_response)
 			except Exception as e2:
