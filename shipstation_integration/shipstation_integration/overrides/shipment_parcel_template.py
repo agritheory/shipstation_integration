@@ -18,12 +18,12 @@ class ShipstationShipmentParcelTemplate(ShipmentParcelTemplate):
 		return (user.dimension_uom or "Centimeter", user.weight_uom or "Kilogram")
 
 	def convert_to_dimension_uom(self, value_cm):
-		dimension_uom, _ = self.get_user_uoms()
+		dimension_uom = self.get_user_uoms()[0]
 		factor = get_conversion_factor("Centimeter", dimension_uom)
 		return value_cm * factor if value_cm else 0
 
 	def convert_to_weight_uom(self, value_kg):
-		_, weight_uom = self.get_user_uoms()
+		weight_uom = self.get_user_uoms()[1]
 		factor = get_conversion_factor("Kilogram", weight_uom)
 		return value_kg * factor if value_kg else 0
 

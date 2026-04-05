@@ -40,7 +40,7 @@ def before_test():
 
 	enable_all_roles_and_domains()
 	set_defaults_for_tests()
-	frappe.db.commit()
+	frappe.db.commit()  # test fixture setup requires explicit commit before dependent test data is created  # nosemgrep: frappe-manual-commit
 
 	from beam.tests.setup import create_test_data as beam_create_test_data
 
@@ -72,11 +72,6 @@ def create_test_data():
 	create_delivery_notes(settings)
 	create_packing_slips(settings)
 	create_shipments(settings)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Infrastructure
-# ──────────────────────────────────────────────────────────────────────────────
 
 
 def create_inventory_with_handling_units(settings):
@@ -426,20 +421,20 @@ def create_parcel_templates():
 # ──────────────────────────────────────────────────────────────────────────────
 
 # (city, state, zip, street, phone)
-_CUSTOMER_ADDRESS_DATA = {
+CUSTOMER_ADDRESS_DATA = {
 	customers[0]: ("Portland", "ME", "04101", "123 Ocean Avenue", "(207) 555-5678"),
 	customers[1]: ("Boston", "MA", "02101", "456 Beacon Street", "(617) 555-1234"),
 	customers[2]: ("Providence", "RI", "02903", "789 Westminster Street", "(401) 555-9876"),
 }
 
 # (first, last, email, phone, customer)
-_CUSTOMER_CONTACT_DATA = {
+CUSTOMER_CONTACT_DATA = {
 	customers[0]: ("Shipping", "Contact", "shipping@almacs.example.com", "(207) 555-1234"),
 	customers[1]: ("Bean", "Buyer", "orders@beansanddreams.example.com", "(617) 555-5678"),
 	customers[2]: ("Cafe", "Manager", "freight@cafe27.example.com", "(401) 555-3456"),
 }
 
-_FREIGHT_TERMINAL = {
+FREIGHT_TERMINAL = {
 	"address_title": "Northeast Freight Terminal",
 	"address_line1": "100 Terminal Drive",
 	"city": "Worcester",
@@ -455,7 +450,7 @@ _FREIGHT_TERMINAL = {
 
 def create_customer_addresses_and_contacts(settings):
 	"""Create ship-to addresses and shipping contacts for all test customers plus freight terminal."""
-	for customer_name, (city, state, pincode, street, phone) in _CUSTOMER_ADDRESS_DATA.items():
+	for customer_name, (city, state, pincode, street, phone) in CUSTOMER_ADDRESS_DATA.items():
 		address_title = f"{customer_name} - {city}"
 		if not frappe.db.exists("Address", {"address_title": address_title}):
 			addr = frappe.new_doc("Address")
@@ -470,7 +465,7 @@ def create_customer_addresses_and_contacts(settings):
 			addr.append("links", {"link_doctype": "Customer", "link_name": customer_name})
 			addr.save()
 
-	for customer_name, (first, last, email, phone) in _CUSTOMER_CONTACT_DATA.items():
+	for customer_name, (first, last, email, phone) in CUSTOMER_CONTACT_DATA.items():
 		if not frappe.db.exists("Contact", {"first_name": first, "last_name": last}):
 			contact = frappe.new_doc("Contact")
 			contact.first_name = first
@@ -480,7 +475,7 @@ def create_customer_addresses_and_contacts(settings):
 			contact.append("links", {"link_doctype": "Customer", "link_name": customer_name})
 			contact.save()
 
-	t = _FREIGHT_TERMINAL
+	t = FREIGHT_TERMINAL
 	if not frappe.db.exists("Address", {"address_title": t["address_title"]}):
 		addr = frappe.new_doc("Address")
 		addr.address_title = t["address_title"]
@@ -510,7 +505,7 @@ def create_customer_addresses_and_contacts(settings):
 
 # Each entry: (customer_index, [(item_code, qty), ...])
 # Two SOs for customers[0] so the LTL shipment can span multiple delivery notes.
-_SALES_ORDER_SPECS = [
+SALES_ORDER_SPECS = [
 	(0, [("Ambrosia Pie", 20), ("Gooseberry Pie", 10)]),  # LTL leg A
 	(0, [("Double Plum Pie", 20), ("Kaduka Key Lime Pie", 10)]),  # LTL leg B
 	(1, [("Ambrosia Pie", 5), ("Double Plum Pie", 5)]),  # small parcel
@@ -519,11 +514,11 @@ _SALES_ORDER_SPECS = [
 
 
 def create_sales_orders(settings):
-	"""Create one Sales Order per entry in _SALES_ORDER_SPECS (idempotent by item set)."""
-	for customer_idx, items in _SALES_ORDER_SPECS:
+	"""Create one Sales Order per entry in SALES_ORDER_SPECS (idempotent by item set)."""
+	for customer_idx, items in SALES_ORDER_SPECS:
 		customer = customers[customer_idx]
 		item_codes = [ic for ic, _ in items]
-		if _so_exists_with_items(customer, settings.company, item_codes):
+		if so_exists_with_items(customer, settings.company, item_codes):
 			continue
 		so = frappe.new_doc("Sales Order")
 		so.transaction_date = settings.day
@@ -546,7 +541,7 @@ def create_sales_orders(settings):
 		so.submit()
 
 
-def _so_exists_with_items(customer, company, item_codes):
+def so_exists_with_items(customer, company, item_codes):
 	"""Return True if a Sales Order for this customer already has exactly these item_codes."""
 	for so in frappe.get_all("Sales Order", filters={"customer": customer, "company": company}):
 		so_items = frappe.get_all("Sales Order Item", filters={"parent": so.name}, pluck="item_code")
@@ -562,10 +557,10 @@ def _so_exists_with_items(customer, company, item_codes):
 
 def create_delivery_notes(settings):
 	"""Create one Delivery Note per Sales Order (idempotent)."""
-	for customer_idx, items in _SALES_ORDER_SPECS:
+	for customer_idx, items in SALES_ORDER_SPECS:
 		customer = customers[customer_idx]
 		item_codes = [ic for ic, _ in items]
-		so_name = _get_so_with_items(customer, settings.company, item_codes)
+		so_name = get_so_with_items(customer, settings.company, item_codes)
 		if not so_name:
 			continue
 		if frappe.db.get_value(
@@ -576,7 +571,7 @@ def create_delivery_notes(settings):
 		dn.save()
 
 
-def _get_so_with_items(customer, company, item_codes):
+def get_so_with_items(customer, company, item_codes):
 	"""Return the name of the first SO for this customer that matches these item_codes."""
 	for so in frappe.get_all("Sales Order", filters={"customer": customer, "company": company}):
 		so_items = frappe.get_all("Sales Order Item", filters={"parent": so.name}, pluck="item_code")
@@ -593,7 +588,7 @@ def _get_so_with_items(customer, company, item_codes):
 def create_packing_slips(settings):
 	"""Create Packing Slips for the small-parcel Delivery Note (customers[1])."""
 	customer = customers[1]
-	so_name = _get_so_with_items(customer, settings.company, ["Ambrosia Pie", "Double Plum Pie"])
+	so_name = get_so_with_items(customer, settings.company, ["Ambrosia Pie", "Double Plum Pie"])
 	if not so_name:
 		return
 	dn_name = frappe.db.get_value(
@@ -648,7 +643,7 @@ def create_shipments(settings):
 	create_shipment_for_freight_terminal(settings)
 
 
-def _get_company_address(settings):
+def get_company_address(settings):
 	return frappe.db.get_value(
 		"Dynamic Link",
 		{"link_doctype": "Company", "link_name": settings.company, "parenttype": "Address"},
@@ -656,7 +651,7 @@ def _get_company_address(settings):
 	)
 
 
-def _get_ltl_carrier():
+def get_ltl_carrier():
 	return frappe.get_value(
 		"Supplier", {"supplier_name": "Test LTL Carrier", "is_transporter": 1}, "name"
 	)
@@ -673,18 +668,18 @@ def create_shipment_for_ltl(settings):
 	if frappe.db.exists("Shipment", {"freight_type": "LTL", "docstatus": 0}):
 		return
 
-	company_address = _get_company_address(settings)
-	ltl_carrier = _get_ltl_carrier()
+	company_address = get_company_address(settings)
+	ltl_carrier = get_ltl_carrier()
 	customer_address = frappe.get_value(
 		"Address", {"address_title": f"{customers[0]} - Portland"}, "name"
 	)
-	shipping_contact = frappe.get_value(
+	delivery_contact_name = frappe.get_value(
 		"Contact", {"first_name": "Shipping", "last_name": "Contact"}, "name"
 	)
 
 	# Both DNs for customers[0]
-	dn_a_so = _get_so_with_items(customers[0], settings.company, ["Ambrosia Pie", "Gooseberry Pie"])
-	dn_b_so = _get_so_with_items(
+	dn_a_so = get_so_with_items(customers[0], settings.company, ["Ambrosia Pie", "Gooseberry Pie"])
+	dn_b_so = get_so_with_items(
 		customers[0], settings.company, ["Double Plum Pie", "Kaduka Key Lime Pie"]
 	)
 	dns = []
@@ -709,7 +704,7 @@ def create_shipment_for_ltl(settings):
 	shipment.delivery_to_type = "Customer"
 	shipment.delivery_customer = customers[0]
 	shipment.delivery_address_name = customer_address
-	shipment.shipping_contact = shipping_contact
+	shipment.delivery_contact_name = delivery_contact_name
 	shipment.preferred_carrier = ltl_carrier
 	shipment.freight_type = "LTL"
 	shipment.value_of_goods = 1500.00
@@ -725,7 +720,7 @@ def create_shipment_for_ltl(settings):
 	shipment.total_number_of_packages_or_handling_units = 2
 
 	# Two pallets — one per DN — so shipment_parcel[0] has count=1 (clean density calculation)
-	for _ in dns:
+	for dn in dns:
 		shipment.append(
 			"shipment_parcel",
 			{
@@ -779,14 +774,14 @@ def create_shipment_for_small_parcel(settings):
 	if frappe.db.exists("Shipment", {"freight_type": "Small Parcel", "docstatus": 0}):
 		return
 
-	company_address = _get_company_address(settings)
+	company_address = get_company_address(settings)
 	customer_address = frappe.get_value(
 		"Address", {"address_title": f"{customers[1]} - Boston"}, "name"
 	)
-	shipping_contact = frappe.get_value(
+	delivery_contact_name = frappe.get_value(
 		"Contact", {"first_name": "Bean", "last_name": "Buyer"}, "name"
 	)
-	so_name = _get_so_with_items(customers[1], settings.company, ["Ambrosia Pie", "Double Plum Pie"])
+	so_name = get_so_with_items(customers[1], settings.company, ["Ambrosia Pie", "Double Plum Pie"])
 	dn_name = frappe.db.get_value(
 		"Delivery Note Item", {"against_sales_order": so_name, "docstatus": 0}, "parent"
 	)
@@ -806,7 +801,7 @@ def create_shipment_for_small_parcel(settings):
 	shipment.delivery_to_type = "Customer"
 	shipment.delivery_customer = customers[1]
 	shipment.delivery_address_name = customer_address
-	shipment.shipping_contact = shipping_contact
+	shipment.delivery_contact_name = delivery_contact_name
 	shipment.preferred_carrier = frappe.get_value(
 		"Supplier", {"supplier_name": "USPS", "is_transporter": 1}, "name"
 	)
@@ -872,20 +867,20 @@ def create_shipment_for_freight_terminal(settings):
 	):
 		return
 
-	company_address = _get_company_address(settings)
-	ltl_carrier = _get_ltl_carrier()
+	company_address = get_company_address(settings)
+	ltl_carrier = get_ltl_carrier()
 	terminal_address = frappe.get_value(
-		"Address", {"address_title": _FREIGHT_TERMINAL["address_title"]}, "name"
+		"Address", {"address_title": FREIGHT_TERMINAL["address_title"]}, "name"
 	)
-	terminal_contact = frappe.get_value(
+	delivery_contact_name = frappe.get_value(
 		"Contact",
 		{
-			"first_name": _FREIGHT_TERMINAL["contact_first"],
-			"last_name": _FREIGHT_TERMINAL["contact_last"],
+			"first_name": FREIGHT_TERMINAL["contact_first"],
+			"last_name": FREIGHT_TERMINAL["contact_last"],
 		},
 		"name",
 	)
-	so_name = _get_so_with_items(
+	so_name = get_so_with_items(
 		customers[2], settings.company, ["Gooseberry Pie", "Kaduka Key Lime Pie"]
 	)
 	dn_name = frappe.db.get_value(
@@ -906,7 +901,7 @@ def create_shipment_for_freight_terminal(settings):
 	shipment.pickup_contact_person = "Administrator"
 	shipment.delivery_to_type = "Contact"
 	shipment.delivery_address_name = terminal_address
-	shipment.shipping_contact = terminal_contact
+	shipment.delivery_contact_name = delivery_contact_name
 	shipment.preferred_carrier = ltl_carrier
 	shipment.freight_type = "LTL"
 	shipment.carrier_terminal_pickup = 1
@@ -1012,7 +1007,7 @@ def get_freight_terminal_shipment_for_tests():
 	return shipment
 
 
-_LTL_SHIPMENT_QUOTATION_RESET_FIELDS = (
+LTL_SHIPMENT_QUOTATION_RESET_FIELDS = (
 	"accepted_quotation",
 	"quote_or_offer_id",
 	"quote_or_offer_transaction_id",
@@ -1040,7 +1035,7 @@ def reset_ltl_shipment_quotation_test_state() -> None:
 			sq_doc.cancel()
 		frappe.delete_doc("Shipment Quotation", sq, force=True)
 	# Create reset dict, excluding payment_terms which needs special handling
-	reset_fields = [f for f in _LTL_SHIPMENT_QUOTATION_RESET_FIELDS if f != "payment_terms"]
+	reset_fields = [f for f in LTL_SHIPMENT_QUOTATION_RESET_FIELDS if f != "payment_terms"]
 	reset_values: dict[str, object] = {field: None for field in reset_fields}
 	reset_values["shipment_amount"] = 0
 	reset_values["payment_terms"] = "Prepaid"  # Reset to initial value, not None

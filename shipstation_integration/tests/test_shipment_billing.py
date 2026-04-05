@@ -282,9 +282,9 @@ def test_freight_terminal_shipment_contact_has_phone_and_email():
 	ShipEngine payload passes validation before the API call is made.
 	"""
 	shipment = get_freight_terminal_shipment_for_tests()
-	assert shipment.shipping_contact, "Terminal contact must be set on the shipment"
+	assert shipment.delivery_contact_name, "Terminal contact must be set on the shipment"
 
-	contact = frappe.get_doc("Contact", shipment.shipping_contact)
+	contact = frappe.get_doc("Contact", shipment.delivery_contact_name)
 	phones = [p.phone for p in contact.phone_nos if p.phone]
 	emails = [e.email_id for e in contact.email_ids if e.email_id]
 	assert phones, f"Contact {contact.name} must have at least one phone number"

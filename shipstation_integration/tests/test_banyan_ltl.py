@@ -43,26 +43,26 @@ class MockHttpxClient:
 	def __exit__(self, *args):
 		pass
 
-	def _next(self):
+	def next_response(self):
 		resp = self._responses[self._index % len(self._responses)]
 		self._index += 1
 		return resp
 
 	def post(self, *args, **kwargs):
-		return self._next()
+		return self.next_response()
 
 	def get(self, *args, **kwargs):
-		return self._next()
+		return self.next_response()
 
 	def delete(self, *args, **kwargs):
-		return self._next()
+		return self.next_response()
 
 
 # ---------------------------------------------------------------------------
 # Fixture response data
 # ---------------------------------------------------------------------------
 
-_SHIPMENTS_RESPONSE = MockResponse(
+SHIPMENTS_RESPONSE = MockResponse(
 	json_data={
 		"loadId": "load-banyan-001",
 		"quotes": [
@@ -78,17 +78,17 @@ _SHIPMENTS_RESPONSE = MockResponse(
 	}
 )
 
-_SHIPMENTS_NO_QUOTES_RESPONSE = MockResponse(json_data={"loadId": "load-banyan-002", "quotes": []})
+SHIPMENTS_NO_QUOTES_RESPONSE = MockResponse(json_data={"loadId": "load-banyan-002", "quotes": []})
 
-_BOOK_RESPONSE = MockResponse(json_data={"proNumber": "PRO-BAN-001", "bolNumber": "BOL-BAN-001"})
+BOOK_RESPONSE = MockResponse(json_data={"proNumber": "PRO-BAN-001", "bolNumber": "BOL-BAN-001"})
 
-_DOCUMENTS_RESPONSE = MockResponse(
+DOCUMENTS_RESPONSE = MockResponse(
 	json_data=[{"documentType": "BOL", "content": "JVBERi0=", "fileName": "bol_banyan.pdf"}]
 )
 
-_TRACKING_RESPONSE = MockResponse(json_data={"status": "DELIVERED", "loadId": "load-banyan-001"})
+TRACKING_RESPONSE = MockResponse(json_data={"status": "DELIVERED", "loadId": "load-banyan-001"})
 
-_CANCEL_RESPONSE = MockResponse(json_data={"confirmationNumber": "CANCEL-BAN-001"})
+CANCEL_RESPONSE = MockResponse(json_data={"confirmationNumber": "CANCEL-BAN-001"})
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ _CANCEL_RESPONSE = MockResponse(json_data={"confirmationNumber": "CANCEL-BAN-001
 # ---------------------------------------------------------------------------
 
 
-def _get_banyan_settings_name():
+def get_banyan_settings_name():
 	supplier = frappe.db.get_value(
 		"Supplier", {"supplier_name": "Banyan LTL", "is_transporter": 1}, "name"
 	)
@@ -109,7 +109,7 @@ def _get_banyan_settings_name():
 	)
 
 
-def _create_banyan_accepted_quotation(shipment, settings_name):
+def create_banyan_accepted_quotation(shipment, settings_name):
 	sq = frappe.new_doc("Shipment Quotation")
 	sq.shipment = shipment.name
 	sq.carrier = shipment.preferred_carrier or "Banyan LTL"
@@ -132,12 +132,12 @@ def _create_banyan_accepted_quotation(shipment, settings_name):
 
 @pytest.mark.order(200)
 def test_banyan_get_ltl_quotes_creates_shipment_quotations(monkeypatch):
-	settings_name = _get_banyan_settings_name()
+	settings_name = get_banyan_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SHIPMENTS_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SHIPMENTS_RESPONSE]))
 
 	provider = BanyanLTL()
 	provider.get_ltl_quotes(shipment, settings_name=settings_name)
@@ -154,12 +154,12 @@ def test_banyan_get_ltl_quotes_creates_shipment_quotations(monkeypatch):
 
 @pytest.mark.order(202)
 def test_banyan_get_ltl_quotes_returns_message(monkeypatch):
-	settings_name = _get_banyan_settings_name()
+	settings_name = get_banyan_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SHIPMENTS_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SHIPMENTS_RESPONSE]))
 
 	provider = BanyanLTL()
 	result = provider.get_ltl_quotes(shipment, settings_name=settings_name)
@@ -170,12 +170,12 @@ def test_banyan_get_ltl_quotes_returns_message(monkeypatch):
 
 @pytest.mark.order(204)
 def test_banyan_get_ltl_quotes_no_quotes_returns_none(monkeypatch):
-	settings_name = _get_banyan_settings_name()
+	settings_name = get_banyan_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SHIPMENTS_NO_QUOTES_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SHIPMENTS_NO_QUOTES_RESPONSE]))
 
 	provider = BanyanLTL()
 	result = provider.get_ltl_quotes(shipment, settings_name=settings_name)
@@ -190,13 +190,13 @@ def test_banyan_get_ltl_quotes_no_quotes_returns_none(monkeypatch):
 
 @pytest.mark.order(206)
 def test_banyan_schedule_ltl_pickup_sets_awb_number(monkeypatch):
-	settings_name = _get_banyan_settings_name()
+	settings_name = get_banyan_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_create_banyan_accepted_quotation(shipment, settings_name)
+	create_banyan_accepted_quotation(shipment, settings_name)
 
-	shared_client = MockHttpxClient([_BOOK_RESPONSE, _DOCUMENTS_RESPONSE])
+	shared_client = MockHttpxClient([BOOK_RESPONSE, DOCUMENTS_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 
 	BanyanLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
@@ -207,13 +207,13 @@ def test_banyan_schedule_ltl_pickup_sets_awb_number(monkeypatch):
 
 @pytest.mark.order(208)
 def test_banyan_schedule_ltl_pickup_sets_shipment_id(monkeypatch):
-	settings_name = _get_banyan_settings_name()
+	settings_name = get_banyan_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_create_banyan_accepted_quotation(shipment, settings_name)
+	create_banyan_accepted_quotation(shipment, settings_name)
 
-	shared_client = MockHttpxClient([_BOOK_RESPONSE, _DOCUMENTS_RESPONSE])
+	shared_client = MockHttpxClient([BOOK_RESPONSE, DOCUMENTS_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 
 	BanyanLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
@@ -224,13 +224,13 @@ def test_banyan_schedule_ltl_pickup_sets_shipment_id(monkeypatch):
 
 @pytest.mark.order(210)
 def test_banyan_schedule_ltl_pickup_attaches_bol(monkeypatch):
-	settings_name = _get_banyan_settings_name()
+	settings_name = get_banyan_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_create_banyan_accepted_quotation(shipment, settings_name)
+	create_banyan_accepted_quotation(shipment, settings_name)
 
-	shared_client = MockHttpxClient([_BOOK_RESPONSE, _DOCUMENTS_RESPONSE])
+	shared_client = MockHttpxClient([BOOK_RESPONSE, DOCUMENTS_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 
 	BanyanLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
@@ -250,13 +250,13 @@ def test_banyan_schedule_ltl_pickup_attaches_bol(monkeypatch):
 
 @pytest.mark.order(212)
 def test_banyan_cancel_shipment_returns_confirmation(monkeypatch):
-	settings_name = _get_banyan_settings_name()
+	settings_name = get_banyan_settings_name()
 
 	shipment = get_draft_ltl_shipment_for_tests()
 	frappe.db.set_value("Shipment", shipment.name, "shipment_id", "load-banyan-001")
 	shipment.reload()
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_CANCEL_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([CANCEL_RESPONSE]))
 
 	provider = BanyanLTL()
 	result = provider.cancel_shipment(shipment, settings_name=settings_name)
@@ -274,13 +274,13 @@ def test_banyan_cancel_shipment_returns_confirmation(monkeypatch):
 
 @pytest.mark.order(214)
 def test_banyan_track_shipment_returns_status(monkeypatch):
-	settings_name = _get_banyan_settings_name()
+	settings_name = get_banyan_settings_name()
 
 	shipment = get_draft_ltl_shipment_for_tests()
 	frappe.db.set_value("Shipment", shipment.name, "shipment_id", "load-banyan-001")
 	shipment.reload()
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_TRACKING_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([TRACKING_RESPONSE]))
 
 	provider = BanyanLTL()
 	result = provider.track_shipment(shipment, settings_name=settings_name)
@@ -297,13 +297,13 @@ def test_banyan_track_shipment_returns_status(monkeypatch):
 
 @pytest.mark.order(216)
 def test_banyan_get_documents_returns_list(monkeypatch):
-	settings_name = _get_banyan_settings_name()
+	settings_name = get_banyan_settings_name()
 
 	shipment = get_draft_ltl_shipment_for_tests()
 	frappe.db.set_value("Shipment", shipment.name, "shipment_id", "load-banyan-001")
 	shipment.reload()
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_DOCUMENTS_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([DOCUMENTS_RESPONSE]))
 
 	provider = BanyanLTL()
 	docs = provider.get_documents(shipment, settings_name=settings_name)
@@ -373,13 +373,13 @@ def test_banyan_full_story_customer_delivery_shipment(monkeypatch):
 	Verifies that the loadId written by get_ltl_quotes is the same value
 	consumed as shipment_id by schedule_ltl_pickup and cancel_shipment.
 	"""
-	settings_name = _get_banyan_settings_name()
+	settings_name = get_banyan_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
 
 	# Step 1: quote
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SHIPMENTS_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SHIPMENTS_RESPONSE]))
 	BanyanLTL().get_ltl_quotes(shipment, settings_name=settings_name)
 
 	saved = frappe.get_all(
@@ -395,7 +395,7 @@ def test_banyan_full_story_customer_delivery_shipment(monkeypatch):
 	frappe.db.set_value("Shipment", shipment.name, "accepted_quotation", saved[0]["name"])
 
 	# Step 3: schedule pickup
-	shared_client = MockHttpxClient([_BOOK_RESPONSE, _DOCUMENTS_RESPONSE])
+	shared_client = MockHttpxClient([BOOK_RESPONSE, DOCUMENTS_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 	BanyanLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
 
@@ -404,17 +404,17 @@ def test_banyan_full_story_customer_delivery_shipment(monkeypatch):
 	assert shipment.get("shipment_id") == "load-banyan-001"
 
 	# Step 4: track — uses shipment_id written by schedule
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_TRACKING_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([TRACKING_RESPONSE]))
 	track_result = BanyanLTL().track_shipment(shipment, settings_name=settings_name)
 	assert "DELIVERED" in str(track_result)
 
 	# Step 5: get documents — uses shipment_id written by schedule
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_DOCUMENTS_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([DOCUMENTS_RESPONSE]))
 	docs = BanyanLTL().get_documents(shipment, settings_name=settings_name)
 	assert len(docs) >= 1
 
 	# Step 6: cancel — uses shipment_id written by schedule
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_CANCEL_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([CANCEL_RESPONSE]))
 	cancel_result = BanyanLTL().cancel_shipment(shipment, settings_name=settings_name)
 	assert "CANCEL-BAN-001" in str(cancel_result)
 
@@ -428,7 +428,7 @@ def test_banyan_full_story_freight_terminal_shipment(monkeypatch):
 	(delivery_to_type="Contact"), which exercises the Contact address
 	resolution path through get_address_and_contact_info.
 	"""
-	settings_name = _get_banyan_settings_name()
+	settings_name = get_banyan_settings_name()
 
 	shipment = get_freight_terminal_shipment_for_tests()
 
@@ -446,7 +446,7 @@ def test_banyan_full_story_freight_terminal_shipment(monkeypatch):
 	shipment.reload()
 
 	# Step 1: quote
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SHIPMENTS_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SHIPMENTS_RESPONSE]))
 	BanyanLTL().get_ltl_quotes(shipment, settings_name=settings_name)
 
 	saved = frappe.get_all(
@@ -459,7 +459,7 @@ def test_banyan_full_story_freight_terminal_shipment(monkeypatch):
 	frappe.db.set_value("Shipment", shipment.name, "accepted_quotation", saved[0]["name"])
 
 	# Step 2: schedule pickup
-	shared_client = MockHttpxClient([_BOOK_RESPONSE, _DOCUMENTS_RESPONSE])
+	shared_client = MockHttpxClient([BOOK_RESPONSE, DOCUMENTS_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 	BanyanLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
 
@@ -467,7 +467,7 @@ def test_banyan_full_story_freight_terminal_shipment(monkeypatch):
 	assert shipment.get("awb_number") == "PRO-BAN-001"
 
 	# Step 3: cancel
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_CANCEL_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([CANCEL_RESPONSE]))
 	cancel_result = BanyanLTL().cancel_shipment(shipment, settings_name=settings_name)
 	assert "CANCEL-BAN-001" in str(cancel_result)
 

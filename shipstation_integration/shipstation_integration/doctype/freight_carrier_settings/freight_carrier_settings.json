@@ -110,28 +110,35 @@
    "label": "Credentials"
   },
   {
-   "description": "ShipEngine-style API key when not using Shipstation Settings (Api-Key header).",
+   "description": "ShipEngine: Api-Key. Banyan: optional static Bearer only if the carrier issues a token; when set, overrides Client ID/Secret OAuth for Banyan.",
    "fieldname": "ltl_api_key",
    "fieldtype": "Password",
    "label": "LTL API Key"
   },
   {
-   "description": "OAuth client identifier issued by the provider (Banyan client_id, WWEX client_id, etc.).",
+   "description": "Banyan: OAuth client_id (client_credentials). ODFL: API username. WWEX: use Connected App, not this field.",
     "fieldname": "client_id",
     "fieldtype": "Password",
     "label": "Client ID"
    },
    {
-    "description": "OAuth client secret issued by the provider (Banyan client_secret, WWEX client_secret, etc.).",
+    "description": "Banyan: OAuth client_secret. ODFL: API password. WWEX: use Connected App, not this field.",
     "fieldname": "client_secret",
     "fieldtype": "Password",
     "label": "Client Secret"
-  },
+   },
   {
    "description": "Shipper account number with the provider (WWEX account#, ODFL bill-to account code, Banyan clientRefNumber). Not used for ShipEngine.",
    "fieldname": "account_number",
    "fieldtype": "Data",
    "label": "Account Number"
+  },
+  {
+   "description": "Banyan only: use the /shipments/ezrate endpoint (zip-to-zip rating) instead of the full /shipments endpoint. Useful when full address validation is not required.",
+   "fieldname": "use_ez_rate",
+   "fieldtype": "Check",
+   "label": "Use EZ Rate (Banyan)",
+   "depends_on": "eval: doc.base_url && doc.base_url.includes('banyan')"
   },
   {
    "fieldname": "column_break_lrov",

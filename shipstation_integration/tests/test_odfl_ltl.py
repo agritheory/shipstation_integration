@@ -44,30 +44,30 @@ class MockHttpxClient:
 	def __exit__(self, *args):
 		pass
 
-	def _next(self):
+	def next_response(self):
 		resp = self._responses[self._index % len(self._responses)]
 		self._index += 1
 		return resp
 
 	def post(self, *args, **kwargs):
-		return self._next()
+		return self.next_response()
 
 	def get(self, *args, **kwargs):
-		return self._next()
+		return self.next_response()
 
 	def delete(self, *args, **kwargs):
-		return self._next()
+		return self.next_response()
 
 
 # ---------------------------------------------------------------------------
 # Fixture response data
 # ---------------------------------------------------------------------------
 
-_TOKEN_RESPONSE = MockResponse(
+TOKEN_RESPONSE = MockResponse(
 	json_data={"access_token": "odfl-bearer-token-001", "expires_in": 3600}
 )
 
-_SOAP_RATE_XML = """\
+SOAP_RATE_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
     xmlns:rate="http://www.odfl.com/ws/router/types/v4">
@@ -83,7 +83,7 @@ _SOAP_RATE_XML = """\
   </soapenv:Body>
 </soapenv:Envelope>"""
 
-_SOAP_RATE_NO_TOTAL_XML = """\
+SOAP_RATE_NO_TOTAL_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
     xmlns:rate="http://www.odfl.com/ws/router/types/v4">
@@ -94,10 +94,10 @@ _SOAP_RATE_NO_TOTAL_XML = """\
   </soapenv:Body>
 </soapenv:Envelope>"""
 
-_SOAP_RATE_RESPONSE = MockResponse(text=_SOAP_RATE_XML)
-_SOAP_RATE_NO_TOTAL_RESPONSE = MockResponse(text=_SOAP_RATE_NO_TOTAL_XML)
+SOAP_RATE_RESPONSE = MockResponse(text=SOAP_RATE_XML)
+SOAP_RATE_NO_TOTAL_RESPONSE = MockResponse(text=SOAP_RATE_NO_TOTAL_XML)
 
-_EBOL_RESPONSE = MockResponse(
+EBOL_RESPONSE = MockResponse(
 	json_data={
 		"proNumber": "PRO-ODFL-001",
 		"bolNumber": "BOL-ODFL-001",
@@ -105,15 +105,15 @@ _EBOL_RESPONSE = MockResponse(
 	}
 )
 
-_PICKUP_RESPONSE = MockResponse(json_data={"pickupConfirmationNumber": "PICKUP-ODFL-001"})
+PICKUP_RESPONSE = MockResponse(json_data={"pickupConfirmationNumber": "PICKUP-ODFL-001"})
 
-_TRACKING_RESPONSE = MockResponse(json_data={"proNumber": "PRO-ODFL-001", "status": "IN_TRANSIT"})
+TRACKING_RESPONSE = MockResponse(json_data={"proNumber": "PRO-ODFL-001", "status": "IN_TRANSIT"})
 
-_DOCUMENTS_RESPONSE = MockResponse(
+DOCUMENTS_RESPONSE = MockResponse(
 	json_data=[{"documentType": "BOL", "content": "JVBERi0=", "fileName": "odfl_bol.pdf"}]
 )
 
-_DELETE_OK_RESPONSE = MockResponse(json_data={"cancelled": True})
+DELETE_OK_RESPONSE = MockResponse(json_data={"cancelled": True})
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ _DELETE_OK_RESPONSE = MockResponse(json_data={"cancelled": True})
 # ---------------------------------------------------------------------------
 
 
-def _get_odfl_settings_name():
+def get_odfl_settings_name():
 	supplier = frappe.db.get_value(
 		"Supplier", {"supplier_name": "ODFL LTL", "is_transporter": 1}, "name"
 	)
@@ -134,7 +134,7 @@ def _get_odfl_settings_name():
 	)
 
 
-def _inject_odfl_token(fc_name):
+def inject_odfl_token(fc_name):
 	"""Pre-populate the session token cache so the auth GET is bypassed."""
 	frappe.cache.set_value(
 		f"odfl_token:{fc_name}",
@@ -142,7 +142,7 @@ def _inject_odfl_token(fc_name):
 	)
 
 
-def _create_odfl_accepted_quotation(shipment):
+def create_odfl_accepted_quotation(shipment):
 	sq = frappe.new_doc("Shipment Quotation")
 	sq.shipment = shipment.name
 	sq.carrier = shipment.preferred_carrier or "Old Dominion"
@@ -180,7 +180,7 @@ def test_odfl_iso3_country_unknown_defaults_to_usa():
 
 @pytest.mark.order(306)
 def test_odfl_parse_rate_response_extracts_fields():
-	result = OdflLTL._parse_rate_response(_SOAP_RATE_XML)
+	result = OdflLTL._parse_rate_response(SOAP_RATE_XML)
 	assert result.get("referenceNumber") == "REF-ODFL-001"
 	assert result.get("totalCharge") == "552.00"
 	assert result.get("transitDays") == "2"
@@ -199,14 +199,14 @@ def test_odfl_parse_rate_response_returns_empty_on_bad_xml():
 
 @pytest.mark.order(310)
 def test_odfl_get_ltl_quotes_creates_shipment_quotation(monkeypatch):
-	settings_name = _get_odfl_settings_name()
+	settings_name = get_odfl_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_odfl_token(settings_name)
+	inject_odfl_token(settings_name)
 
 	# Token already cached; only the SOAP POST is needed
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SOAP_RATE_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SOAP_RATE_RESPONSE]))
 
 	provider = OdflLTL()
 	provider.get_ltl_quotes(shipment, settings_name=settings_name)
@@ -224,13 +224,13 @@ def test_odfl_get_ltl_quotes_creates_shipment_quotation(monkeypatch):
 
 @pytest.mark.order(312)
 def test_odfl_get_ltl_quotes_returns_message(monkeypatch):
-	settings_name = _get_odfl_settings_name()
+	settings_name = get_odfl_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_odfl_token(settings_name)
+	inject_odfl_token(settings_name)
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SOAP_RATE_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SOAP_RATE_RESPONSE]))
 
 	provider = OdflLTL()
 	result = provider.get_ltl_quotes(shipment, settings_name=settings_name)
@@ -241,13 +241,13 @@ def test_odfl_get_ltl_quotes_returns_message(monkeypatch):
 
 @pytest.mark.order(314)
 def test_odfl_get_ltl_quotes_no_total_returns_none(monkeypatch):
-	settings_name = _get_odfl_settings_name()
+	settings_name = get_odfl_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_odfl_token(settings_name)
+	inject_odfl_token(settings_name)
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SOAP_RATE_NO_TOTAL_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SOAP_RATE_NO_TOTAL_RESPONSE]))
 
 	provider = OdflLTL()
 	result = provider.get_ltl_quotes(shipment, settings_name=settings_name)
@@ -262,14 +262,14 @@ def test_odfl_get_ltl_quotes_no_total_returns_none(monkeypatch):
 
 @pytest.mark.order(316)
 def test_odfl_schedule_ltl_pickup_sets_awb_number(monkeypatch):
-	settings_name = _get_odfl_settings_name()
+	settings_name = get_odfl_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_odfl_token(settings_name)
-	_create_odfl_accepted_quotation(shipment)
+	inject_odfl_token(settings_name)
+	create_odfl_accepted_quotation(shipment)
 
-	shared_client = MockHttpxClient([_EBOL_RESPONSE, _PICKUP_RESPONSE])
+	shared_client = MockHttpxClient([EBOL_RESPONSE, PICKUP_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 
 	OdflLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
@@ -280,14 +280,14 @@ def test_odfl_schedule_ltl_pickup_sets_awb_number(monkeypatch):
 
 @pytest.mark.order(318)
 def test_odfl_schedule_ltl_pickup_sets_pickup_id(monkeypatch):
-	settings_name = _get_odfl_settings_name()
+	settings_name = get_odfl_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_odfl_token(settings_name)
-	_create_odfl_accepted_quotation(shipment)
+	inject_odfl_token(settings_name)
+	create_odfl_accepted_quotation(shipment)
 
-	shared_client = MockHttpxClient([_EBOL_RESPONSE, _PICKUP_RESPONSE])
+	shared_client = MockHttpxClient([EBOL_RESPONSE, PICKUP_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 
 	OdflLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
@@ -298,14 +298,14 @@ def test_odfl_schedule_ltl_pickup_sets_pickup_id(monkeypatch):
 
 @pytest.mark.order(320)
 def test_odfl_schedule_ltl_pickup_attaches_bol(monkeypatch):
-	settings_name = _get_odfl_settings_name()
+	settings_name = get_odfl_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_odfl_token(settings_name)
-	_create_odfl_accepted_quotation(shipment)
+	inject_odfl_token(settings_name)
+	create_odfl_accepted_quotation(shipment)
 
-	shared_client = MockHttpxClient([_EBOL_RESPONSE, _PICKUP_RESPONSE])
+	shared_client = MockHttpxClient([EBOL_RESPONSE, PICKUP_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 
 	OdflLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
@@ -325,17 +325,17 @@ def test_odfl_schedule_ltl_pickup_attaches_bol(monkeypatch):
 
 @pytest.mark.order(322)
 def test_odfl_cancel_shipment_cancels_pickup_and_bol(monkeypatch):
-	settings_name = _get_odfl_settings_name()
+	settings_name = get_odfl_settings_name()
 
 	shipment = get_draft_ltl_shipment_for_tests()
 	frappe.db.set_value("Shipment", shipment.name, "awb_number", "PRO-ODFL-001")
 	frappe.db.set_value("Shipment", shipment.name, "pickup_id", "PICKUP-ODFL-001")
 	shipment.reload()
-	_inject_odfl_token(settings_name)
+	inject_odfl_token(settings_name)
 
 	monkeypatch.setattr(
 		"httpx.Client",
-		lambda: MockHttpxClient([_DELETE_OK_RESPONSE, _DELETE_OK_RESPONSE]),
+		lambda: MockHttpxClient([DELETE_OK_RESPONSE, DELETE_OK_RESPONSE]),
 	)
 
 	provider = OdflLTL()
@@ -355,14 +355,14 @@ def test_odfl_cancel_shipment_cancels_pickup_and_bol(monkeypatch):
 
 @pytest.mark.order(324)
 def test_odfl_track_shipment_returns_status(monkeypatch):
-	settings_name = _get_odfl_settings_name()
+	settings_name = get_odfl_settings_name()
 
 	shipment = get_draft_ltl_shipment_for_tests()
 	frappe.db.set_value("Shipment", shipment.name, "awb_number", "PRO-ODFL-001")
 	shipment.reload()
-	_inject_odfl_token(settings_name)
+	inject_odfl_token(settings_name)
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_TRACKING_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([TRACKING_RESPONSE]))
 
 	provider = OdflLTL()
 	result = provider.track_shipment(shipment, settings_name=settings_name)
@@ -379,14 +379,14 @@ def test_odfl_track_shipment_returns_status(monkeypatch):
 
 @pytest.mark.order(326)
 def test_odfl_get_documents_returns_list(monkeypatch):
-	settings_name = _get_odfl_settings_name()
+	settings_name = get_odfl_settings_name()
 
 	shipment = get_draft_ltl_shipment_for_tests()
 	frappe.db.set_value("Shipment", shipment.name, "awb_number", "PRO-ODFL-001")
 	shipment.reload()
-	_inject_odfl_token(settings_name)
+	inject_odfl_token(settings_name)
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_DOCUMENTS_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([DOCUMENTS_RESPONSE]))
 
 	provider = OdflLTL()
 	docs = provider.get_documents(shipment, settings_name=settings_name)
@@ -453,14 +453,14 @@ def test_odfl_full_story_customer_delivery_shipment(monkeypatch):
 	passed to schedule_ltl_pickup, and that awb_number / pickup_id written
 	there are consumed correctly by track, get_documents, and cancel.
 	"""
-	settings_name = _get_odfl_settings_name()
+	settings_name = get_odfl_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_odfl_token(settings_name)
+	inject_odfl_token(settings_name)
 
 	# Step 1: quote
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SOAP_RATE_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SOAP_RATE_RESPONSE]))
 	OdflLTL().get_ltl_quotes(shipment, settings_name=settings_name)
 
 	saved = frappe.get_all(
@@ -475,10 +475,10 @@ def test_odfl_full_story_customer_delivery_shipment(monkeypatch):
 	# Step 2: accept — submit the SQ (dispatcher action) and record it
 	frappe.get_doc("Shipment Quotation", saved[0]["name"]).submit()
 	frappe.db.set_value("Shipment", shipment.name, "accepted_quotation", saved[0]["name"])
-	_inject_odfl_token(settings_name)
+	inject_odfl_token(settings_name)
 
 	# Step 3: schedule pickup
-	shared_client = MockHttpxClient([_EBOL_RESPONSE, _PICKUP_RESPONSE])
+	shared_client = MockHttpxClient([EBOL_RESPONSE, PICKUP_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 	OdflLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
 
@@ -487,20 +487,20 @@ def test_odfl_full_story_customer_delivery_shipment(monkeypatch):
 	assert shipment.get("pickup_id") == "PICKUP-ODFL-001"
 
 	# Step 4: track — uses awb_number written by schedule
-	_inject_odfl_token(settings_name)
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_TRACKING_RESPONSE]))
+	inject_odfl_token(settings_name)
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([TRACKING_RESPONSE]))
 	track_result = OdflLTL().track_shipment(shipment, settings_name=settings_name)
 	assert "IN_TRANSIT" in str(track_result)
 
 	# Step 5: get documents — uses awb_number written by schedule
-	_inject_odfl_token(settings_name)
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_DOCUMENTS_RESPONSE]))
+	inject_odfl_token(settings_name)
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([DOCUMENTS_RESPONSE]))
 	docs = OdflLTL().get_documents(shipment, settings_name=settings_name)
 	assert len(docs) >= 1
 
 	# Step 6: cancel — uses awb_number and pickup_id written by schedule
-	_inject_odfl_token(settings_name)
-	shared_cancel = MockHttpxClient([_DELETE_OK_RESPONSE, _DELETE_OK_RESPONSE])
+	inject_odfl_token(settings_name)
+	shared_cancel = MockHttpxClient([DELETE_OK_RESPONSE, DELETE_OK_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_cancel)
 	cancel_result = OdflLTL().cancel_shipment(shipment, settings_name=settings_name)
 	assert cancel_result is not None
@@ -515,7 +515,7 @@ def test_odfl_full_story_freight_terminal_shipment(monkeypatch):
 	(delivery_to_type="Contact"), which exercises the Contact address
 	resolution path through get_address_and_contact_info.
 	"""
-	settings_name = _get_odfl_settings_name()
+	settings_name = get_odfl_settings_name()
 
 	shipment = get_freight_terminal_shipment_for_tests()
 
@@ -531,10 +531,10 @@ def test_odfl_full_story_freight_terminal_shipment(monkeypatch):
 		{"awb_number": None, "pickup_id": None, "accepted_quotation": None},
 	)
 	shipment.reload()
-	_inject_odfl_token(settings_name)
+	inject_odfl_token(settings_name)
 
 	# Step 1: quote
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SOAP_RATE_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SOAP_RATE_RESPONSE]))
 	OdflLTL().get_ltl_quotes(shipment, settings_name=settings_name)
 
 	saved = frappe.get_all(
@@ -545,10 +545,10 @@ def test_odfl_full_story_freight_terminal_shipment(monkeypatch):
 	assert len(saved) == 1
 	frappe.get_doc("Shipment Quotation", saved[0]["name"]).submit()
 	frappe.db.set_value("Shipment", shipment.name, "accepted_quotation", saved[0]["name"])
-	_inject_odfl_token(settings_name)
+	inject_odfl_token(settings_name)
 
 	# Step 2: schedule pickup
-	shared_client = MockHttpxClient([_EBOL_RESPONSE, _PICKUP_RESPONSE])
+	shared_client = MockHttpxClient([EBOL_RESPONSE, PICKUP_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 	OdflLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
 
@@ -556,8 +556,8 @@ def test_odfl_full_story_freight_terminal_shipment(monkeypatch):
 	assert shipment.get("awb_number") == "PRO-ODFL-001"
 
 	# Step 3: cancel
-	_inject_odfl_token(settings_name)
-	shared_cancel = MockHttpxClient([_DELETE_OK_RESPONSE, _DELETE_OK_RESPONSE])
+	inject_odfl_token(settings_name)
+	shared_cancel = MockHttpxClient([DELETE_OK_RESPONSE, DELETE_OK_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_cancel)
 	cancel_result = OdflLTL().cancel_shipment(shipment, settings_name=settings_name)
 	assert cancel_result is not None

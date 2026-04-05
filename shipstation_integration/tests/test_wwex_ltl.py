@@ -46,26 +46,26 @@ class MockHttpxClient:
 	def __exit__(self, *args):
 		pass
 
-	def _next(self):
+	def next_response(self):
 		resp = self._responses[self._index % len(self._responses)]
 		self._index += 1
 		return resp
 
 	def post(self, *args, **kwargs):
-		return self._next()
+		return self.next_response()
 
 	def get(self, *args, **kwargs):
-		return self._next()
+		return self.next_response()
 
 	def delete(self, *args, **kwargs):
-		return self._next()
+		return self.next_response()
 
 
 # ---------------------------------------------------------------------------
 # Fixture response data
 # ---------------------------------------------------------------------------
 
-_SHOP_FLOW_RESPONSE = MockResponse(
+SHOP_FLOW_RESPONSE = MockResponse(
 	json_data={
 		"response": {
 			"shipmentProductTransactionId": "txn-wwex-001",
@@ -83,11 +83,11 @@ _SHOP_FLOW_RESPONSE = MockResponse(
 	}
 )
 
-_SHOP_FLOW_EMPTY_RESPONSE = MockResponse(
+SHOP_FLOW_EMPTY_RESPONSE = MockResponse(
 	json_data={"response": {"shipmentProductTransactionId": "txn-wwex-002", "shipmentOfferList": []}}
 )
 
-_QUOTE_ORDER_FLOW_RESPONSE = MockResponse(
+QUOTE_ORDER_FLOW_RESPONSE = MockResponse(
 	json_data={
 		"response": {
 			"bolNumber": "BOL-WWEX-001",
@@ -97,7 +97,7 @@ _QUOTE_ORDER_FLOW_RESPONSE = MockResponse(
 	}
 )
 
-_DOCUMENT_DOWNLOAD_FLOW_RESPONSE = MockResponse(
+DOCUMENT_DOWNLOAD_FLOW_RESPONSE = MockResponse(
 	json_data={
 		"response": {
 			"documents": [{"documentType": "BILL_OF_LADING", "content": "JVBERi0=", "fileName": "bol.pdf"}]
@@ -105,11 +105,11 @@ _DOCUMENT_DOWNLOAD_FLOW_RESPONSE = MockResponse(
 	}
 )
 
-_SEARCH_SHIPMENTS_RESPONSE = MockResponse(
+SEARCH_SHIPMENTS_RESPONSE = MockResponse(
 	json_data={"response": {"status": "IN_TRANSIT", "proNumber": "PRO-WWEX-001"}}
 )
 
-_CANCEL_FLOW_RESPONSE = MockResponse(
+CANCEL_FLOW_RESPONSE = MockResponse(
 	json_data={"response": {"confirmationNumber": "CANCEL-WWEX-001"}}
 )
 
@@ -119,12 +119,12 @@ _CANCEL_FLOW_RESPONSE = MockResponse(
 # ---------------------------------------------------------------------------
 
 
-def _get_wwex_fcs_name():
+def get_wwex_fcs_name():
 	return frappe.db.get_value("Supplier", {"supplier_name": "WWEX LTL", "is_transporter": 1}, "name")
 
 
-def _get_wwex_settings_name():
-	supplier = _get_wwex_fcs_name()
+def get_wwex_settings_name():
+	supplier = get_wwex_fcs_name()
 	if not supplier:
 		return None
 	return frappe.db.get_value(
@@ -134,7 +134,7 @@ def _get_wwex_settings_name():
 	)
 
 
-def _inject_wwex_token(fc_name):
+def inject_wwex_token(fc_name):
 	"""Inject a valid cached token so OAuth is never called during tests."""
 	frappe.cache.set_value(
 		f"wwex_token:{fc_name}",
@@ -149,13 +149,13 @@ def _inject_wwex_token(fc_name):
 
 @pytest.mark.order(100)
 def test_wwex_get_ltl_quotes_creates_shipment_quotations(monkeypatch):
-	settings_name = _get_wwex_settings_name()
+	settings_name = get_wwex_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_wwex_token(settings_name)
+	inject_wwex_token(settings_name)
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SHOP_FLOW_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SHOP_FLOW_RESPONSE]))
 
 	provider = WwexLTL()
 	provider.get_ltl_quotes(shipment, settings_name=settings_name)
@@ -172,13 +172,13 @@ def test_wwex_get_ltl_quotes_creates_shipment_quotations(monkeypatch):
 
 @pytest.mark.order(102)
 def test_wwex_get_ltl_quotes_returns_message(monkeypatch):
-	settings_name = _get_wwex_settings_name()
+	settings_name = get_wwex_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_wwex_token(settings_name)
+	inject_wwex_token(settings_name)
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SHOP_FLOW_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SHOP_FLOW_RESPONSE]))
 
 	provider = WwexLTL()
 	result = provider.get_ltl_quotes(shipment, settings_name=settings_name)
@@ -189,13 +189,13 @@ def test_wwex_get_ltl_quotes_returns_message(monkeypatch):
 
 @pytest.mark.order(104)
 def test_wwex_get_ltl_quotes_no_offers_returns_none(monkeypatch):
-	settings_name = _get_wwex_settings_name()
+	settings_name = get_wwex_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_wwex_token(settings_name)
+	inject_wwex_token(settings_name)
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SHOP_FLOW_EMPTY_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SHOP_FLOW_EMPTY_RESPONSE]))
 
 	provider = WwexLTL()
 	result = provider.get_ltl_quotes(shipment, settings_name=settings_name)
@@ -208,7 +208,7 @@ def test_wwex_get_ltl_quotes_no_offers_returns_none(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _create_wwex_accepted_quotation(shipment, settings_name):
+def create_wwex_accepted_quotation(shipment, settings_name):
 	"""Insert and submit a Shipment Quotation with WWEX IDs."""
 	sq = frappe.new_doc("Shipment Quotation")
 	sq.shipment = shipment.name
@@ -227,14 +227,14 @@ def _create_wwex_accepted_quotation(shipment, settings_name):
 
 @pytest.mark.order(106)
 def test_wwex_schedule_ltl_pickup_sets_awb_number(monkeypatch):
-	settings_name = _get_wwex_settings_name()
+	settings_name = get_wwex_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_wwex_token(settings_name)
-	_create_wwex_accepted_quotation(shipment, settings_name)
+	inject_wwex_token(settings_name)
+	create_wwex_accepted_quotation(shipment, settings_name)
 
-	shared_client = MockHttpxClient([_QUOTE_ORDER_FLOW_RESPONSE, _DOCUMENT_DOWNLOAD_FLOW_RESPONSE])
+	shared_client = MockHttpxClient([QUOTE_ORDER_FLOW_RESPONSE, DOCUMENT_DOWNLOAD_FLOW_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 
 	WwexLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
@@ -245,14 +245,14 @@ def test_wwex_schedule_ltl_pickup_sets_awb_number(monkeypatch):
 
 @pytest.mark.order(108)
 def test_wwex_schedule_ltl_pickup_sets_shipment_id(monkeypatch):
-	settings_name = _get_wwex_settings_name()
+	settings_name = get_wwex_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_wwex_token(settings_name)
-	_create_wwex_accepted_quotation(shipment, settings_name)
+	inject_wwex_token(settings_name)
+	create_wwex_accepted_quotation(shipment, settings_name)
 
-	shared_client = MockHttpxClient([_QUOTE_ORDER_FLOW_RESPONSE, _DOCUMENT_DOWNLOAD_FLOW_RESPONSE])
+	shared_client = MockHttpxClient([QUOTE_ORDER_FLOW_RESPONSE, DOCUMENT_DOWNLOAD_FLOW_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 
 	WwexLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
@@ -263,14 +263,14 @@ def test_wwex_schedule_ltl_pickup_sets_shipment_id(monkeypatch):
 
 @pytest.mark.order(110)
 def test_wwex_schedule_ltl_pickup_attaches_bol(monkeypatch):
-	settings_name = _get_wwex_settings_name()
+	settings_name = get_wwex_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_wwex_token(settings_name)
-	_create_wwex_accepted_quotation(shipment, settings_name)
+	inject_wwex_token(settings_name)
+	create_wwex_accepted_quotation(shipment, settings_name)
 
-	shared_client = MockHttpxClient([_QUOTE_ORDER_FLOW_RESPONSE, _DOCUMENT_DOWNLOAD_FLOW_RESPONSE])
+	shared_client = MockHttpxClient([QUOTE_ORDER_FLOW_RESPONSE, DOCUMENT_DOWNLOAD_FLOW_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 
 	WwexLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
@@ -290,14 +290,14 @@ def test_wwex_schedule_ltl_pickup_attaches_bol(monkeypatch):
 
 @pytest.mark.order(112)
 def test_wwex_cancel_shipment_returns_confirmation(monkeypatch):
-	settings_name = _get_wwex_settings_name()
+	settings_name = get_wwex_settings_name()
 
 	shipment = get_draft_ltl_shipment_for_tests()
 	frappe.db.set_value("Shipment", shipment.name, "shipment_id", "txn-wwex-001")
 	shipment.reload()
-	_inject_wwex_token(settings_name)
+	inject_wwex_token(settings_name)
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_CANCEL_FLOW_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([CANCEL_FLOW_RESPONSE]))
 
 	provider = WwexLTL()
 	result = provider.cancel_shipment(shipment, settings_name=settings_name)
@@ -315,14 +315,14 @@ def test_wwex_cancel_shipment_returns_confirmation(monkeypatch):
 
 @pytest.mark.order(114)
 def test_wwex_track_shipment_calls_search_flow(monkeypatch):
-	settings_name = _get_wwex_settings_name()
+	settings_name = get_wwex_settings_name()
 
 	shipment = get_draft_ltl_shipment_for_tests()
 	frappe.db.set_value("Shipment", shipment.name, "awb_number", "PRO-WWEX-001")
 	shipment.reload()
-	_inject_wwex_token(settings_name)
+	inject_wwex_token(settings_name)
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SEARCH_SHIPMENTS_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SEARCH_SHIPMENTS_RESPONSE]))
 
 	provider = WwexLTL()
 	result = provider.track_shipment(shipment, settings_name=settings_name)
@@ -339,14 +339,14 @@ def test_wwex_track_shipment_calls_search_flow(monkeypatch):
 
 @pytest.mark.order(116)
 def test_wwex_get_documents_returns_list(monkeypatch):
-	settings_name = _get_wwex_settings_name()
+	settings_name = get_wwex_settings_name()
 
 	shipment = get_draft_ltl_shipment_for_tests()
 	frappe.db.set_value("Shipment", shipment.name, "shipment_id", "txn-wwex-001")
 	shipment.reload()
-	_inject_wwex_token(settings_name)
+	inject_wwex_token(settings_name)
 
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_DOCUMENT_DOWNLOAD_FLOW_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([DOCUMENT_DOWNLOAD_FLOW_RESPONSE]))
 
 	provider = WwexLTL()
 	docs = provider.get_documents(shipment, settings_name=settings_name)
@@ -423,14 +423,14 @@ def test_wwex_full_story_customer_delivery_shipment(monkeypatch):
 	Verifies that the IDs written by each step are the values consumed by the
 	next, catching any field-name mismatches between provider methods.
 	"""
-	settings_name = _get_wwex_settings_name()
+	settings_name = get_wwex_settings_name()
 
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
-	_inject_wwex_token(settings_name)
+	inject_wwex_token(settings_name)
 
 	# Step 1: quote
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SHOP_FLOW_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SHOP_FLOW_RESPONSE]))
 	WwexLTL().get_ltl_quotes(shipment, settings_name=settings_name)
 
 	saved = frappe.get_all(
@@ -445,10 +445,10 @@ def test_wwex_full_story_customer_delivery_shipment(monkeypatch):
 	# Step 2: accept — submit the SQ (dispatcher action) and record it
 	frappe.get_doc("Shipment Quotation", sq_name).submit()
 	frappe.db.set_value("Shipment", shipment.name, "accepted_quotation", sq_name)
-	_inject_wwex_token(settings_name)
+	inject_wwex_token(settings_name)
 
 	# Step 3: schedule pickup
-	shared_client = MockHttpxClient([_QUOTE_ORDER_FLOW_RESPONSE, _DOCUMENT_DOWNLOAD_FLOW_RESPONSE])
+	shared_client = MockHttpxClient([QUOTE_ORDER_FLOW_RESPONSE, DOCUMENT_DOWNLOAD_FLOW_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 	WwexLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
 
@@ -457,20 +457,20 @@ def test_wwex_full_story_customer_delivery_shipment(monkeypatch):
 	assert shipment.get("shipment_id") == "txn-wwex-001"
 
 	# Step 4: track — uses awb_number written by schedule
-	_inject_wwex_token(settings_name)
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SEARCH_SHIPMENTS_RESPONSE]))
+	inject_wwex_token(settings_name)
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SEARCH_SHIPMENTS_RESPONSE]))
 	track_result = WwexLTL().track_shipment(shipment, settings_name=settings_name)
 	assert "IN_TRANSIT" in str(track_result)
 
 	# Step 5: get documents — uses shipment_id written by schedule
-	_inject_wwex_token(settings_name)
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_DOCUMENT_DOWNLOAD_FLOW_RESPONSE]))
+	inject_wwex_token(settings_name)
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([DOCUMENT_DOWNLOAD_FLOW_RESPONSE]))
 	docs = WwexLTL().get_documents(shipment, settings_name=settings_name)
 	assert len(docs) >= 1
 
 	# Step 6: cancel — uses shipment_id written by schedule
-	_inject_wwex_token(settings_name)
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_CANCEL_FLOW_RESPONSE]))
+	inject_wwex_token(settings_name)
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([CANCEL_FLOW_RESPONSE]))
 	cancel_result = WwexLTL().cancel_shipment(shipment, settings_name=settings_name)
 	assert "CANCEL-WWEX-001" in str(cancel_result)
 
@@ -484,7 +484,7 @@ def test_wwex_full_story_freight_terminal_shipment(monkeypatch):
 	(delivery_to_type="Contact"), which exercises the Contact address
 	resolution path through get_address_and_contact_info.
 	"""
-	settings_name = _get_wwex_settings_name()
+	settings_name = get_wwex_settings_name()
 
 	shipment = get_freight_terminal_shipment_for_tests()
 
@@ -502,10 +502,10 @@ def test_wwex_full_story_freight_terminal_shipment(monkeypatch):
 	)
 	shipment.reload()
 
-	_inject_wwex_token(settings_name)
+	inject_wwex_token(settings_name)
 
 	# Step 1: quote
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_SHOP_FLOW_RESPONSE]))
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SHOP_FLOW_RESPONSE]))
 	WwexLTL().get_ltl_quotes(shipment, settings_name=settings_name)
 
 	saved = frappe.get_all(
@@ -516,10 +516,10 @@ def test_wwex_full_story_freight_terminal_shipment(monkeypatch):
 	assert len(saved) == 1
 	frappe.get_doc("Shipment Quotation", saved[0]["name"]).submit()
 	frappe.db.set_value("Shipment", shipment.name, "accepted_quotation", saved[0]["name"])
-	_inject_wwex_token(settings_name)
+	inject_wwex_token(settings_name)
 
 	# Step 2: schedule pickup
-	shared_client = MockHttpxClient([_QUOTE_ORDER_FLOW_RESPONSE, _DOCUMENT_DOWNLOAD_FLOW_RESPONSE])
+	shared_client = MockHttpxClient([QUOTE_ORDER_FLOW_RESPONSE, DOCUMENT_DOWNLOAD_FLOW_RESPONSE])
 	monkeypatch.setattr("httpx.Client", lambda: shared_client)
 	WwexLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
 
@@ -527,8 +527,8 @@ def test_wwex_full_story_freight_terminal_shipment(monkeypatch):
 	assert shipment.get("awb_number") == "PRO-WWEX-001"
 
 	# Step 3: cancel
-	_inject_wwex_token(settings_name)
-	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([_CANCEL_FLOW_RESPONSE]))
+	inject_wwex_token(settings_name)
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([CANCEL_FLOW_RESPONSE]))
 	cancel_result = WwexLTL().cancel_shipment(shipment, settings_name=settings_name)
 	assert "CANCEL-WWEX-001" in str(cancel_result)
 

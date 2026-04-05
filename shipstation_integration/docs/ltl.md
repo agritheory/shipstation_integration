@@ -18,9 +18,9 @@ Every LTL HTTP call resolves credentials and the base URL from **Freight Carrier
 
 - One **Freight Carrier Settings** row per **Company** + **Supplier** (transporter).
 - **Base URL** — determines which provider class handles the shipment (see Provider Selection below). Defaults to `https://api.shipengine.com` when blank.
-- **LTL API Key** — Bearer token / ShipEngine API key.
-- **Connected App** — Frappe Connected App used for OAuth 2.0 client-credentials flows (WWEX, Banyan OAuth).
-- **Client ID** / **Client Secret** — username/password pair used for ODFL's session-token auth and SOAP rate requests.
+- **Client ID** / **Client Secret** — meaning depends on provider: **Banyan** OAuth client credentials; **ODFL** API username/password; not used for **WWEX** (Connected App) or **ShipEngine** (LTL API Key).
+- **LTL API Key** — **ShipEngine** `Api-Key` header. **Banyan** only: optional static Bearer token if the carrier issues one; if this field is set, it is used **instead of** Client ID/Secret OAuth (do not fill both unless you intend to override with the static token).
+- **Connected App** — **WWEX** OAuth 2.0 client-credentials (required for WWEX in the current implementation). Optional for **Banyan** if you prefer Centralized OAuth config over FCS Client ID/Secret.
 
 On the Shipment, set **Preferred Carrier** and ensure a **Company** is resolvable (set directly on pickup/delivery when party type is Company, or rely on the user default company).
 
@@ -88,15 +88,16 @@ Not all carriers support every action through the API. The interface only shows 
 
 ### Banyan Technology (LIVE Connect v3)
 
-**Base URL:** `https://ws.integration.banyantechnology.com` (integration) or the production equivalent.
+**Base URL:** `https://ws.integration.banyantechnology.com/api/v3` (integration; include `/api/v3` so API paths resolve correctly) or the production equivalent.
 
-**Authentication:** Two options:
-- **OAuth 2.0** via a Frappe **Connected App** (set **Connected App** on the FCS record). The token endpoint is derived from the Connected App's configuration.
-- **Static Bearer token** — paste the API key directly into **LTL API Key** on the Freight Carrier Settings record. The key is sent as a `Bearer` token on every request.
+**Authentication** (first match wins in code):
+1. **LTL API Key** — if set, used as a static `Bearer` token on every request (skip token endpoint). Use only when Banyan gives you a long-lived token instead of OAuth client credentials.
+2. **Client ID** + **Client Secret** on Freight Carrier Settings — **usual RIM/Banyan setup**: OAuth 2.0 `client_credentials` grant to `{host}/auth/connect/token` (host is derived from the Base URL; token is not under `/api/v3`).
+3. **Connected App** — if the FCS record references one, its client ID/secret and `token_uri` are used for the token request instead of the FCS password fields.
 
 **Freight Carrier Settings fields required:**
-- **Base URL** — Banyan LIVE Connect endpoint
-- **Connected App** (OAuth) or **LTL API Key** (static token)
+- **Base URL** — must contain `banyantechnology.com` (see Provider Selection)
+- **Client ID** and **Client Secret** — default integration path; **or** **LTL API Key** alone for static Bearer; **or** **Connected App** if you wire Banyan through it
 
 **Workflow mapping:**
 

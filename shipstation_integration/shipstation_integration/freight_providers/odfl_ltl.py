@@ -61,10 +61,10 @@ from shipstation_integration.utils import get_shipment_company_for_ltl
 if TYPE_CHECKING:
 	from erpnext.stock.doctype.shipment.shipment import Shipment
 
-_TOKEN_REFRESH_BUFFER = 120  # ODFL tokens are 1 hour; refresh 2 min early
+TOKEN_REFRESH_BUFFER = 120  # ODFL tokens are 1 hour; refresh 2 min early
 
 # ISO 3166-1 alpha-2 → alpha-3 mapping (ODFL-relevant subset)
-_ISO2_TO_ISO3: dict[str, str] = {
+ISO2_TO_ISO3: dict[str, str] = {
 	"US": "USA",
 	"CA": "CAN",
 	"MX": "MEX",
@@ -94,7 +94,7 @@ ODFL_ACCESSORIAL_CODES: dict[str, str] = {
 }
 
 # SOAP rate service envelope template
-_RATE_SOAP_ENVELOPE = """\
+RATE_SOAP_ENVELOPE = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope
     xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
@@ -125,14 +125,14 @@ _RATE_SOAP_ENVELOPE = """\
 </soapenv:Envelope>
 """
 
-_COMMODITY_TEMPLATE = """\
+COMMODITY_TEMPLATE = """\
       <rate:commodityInfo>
         <rate:freightClass>{freight_class}</rate:freightClass>
         <rate:weight>{weight}</rate:weight>
         <rate:pieces>{pieces}</rate:pieces>
       </rate:commodityInfo>"""
 
-_ACCESSORIAL_TEMPLATE = """\
+ACCESSORIAL_TEMPLATE = """\
       <rate:accessorialList>
         <rate:accessorialCode>{code}</rate:accessorialCode>
       </rate:accessorialList>"""
@@ -148,8 +148,8 @@ class OdflLTL(BaseLTL):
 	# Auth / request helpers
 	# ------------------------------------------------------------------
 
-	def _get_fcs(self, doc: Shipment | None, settings_name: str | None):
-		if settings_name:
+	def get_fcs(self, doc: Shipment | None, settings_name: str | None):
+		if settings_name and frappe.db.exists("Freight Carrier Settings", settings_name):
 			return frappe.get_doc("Freight Carrier Settings", settings_name)
 		co = get_shipment_company_for_ltl(doc)
 		supplier = getattr(doc, "preferred_carrier", None)
@@ -162,7 +162,7 @@ class OdflLTL(BaseLTL):
 			)
 		return fc
 
-	def _credentials(self, fc) -> tuple[str, str]:
+	def credentials(self, fc) -> tuple[str, str]:
 		"""Return (username, password) from FCS client_id / client_secret."""
 		username = fc.client_id or ""
 		password = fc.get_password("client_secret") if hasattr(fc, "get_password") else ""
@@ -174,17 +174,17 @@ class OdflLTL(BaseLTL):
 			)
 		return username, password
 
-	def _get_bearer_token(self, fc) -> str:
+	def get_bearer_token(self, fc) -> str:
 		"""Obtain a REST session token from /auth/v1.0/token (Basic auth)."""
 		cache_key = f"odfl_token:{fc.name}"
 		cached = frappe.cache.get_value(cache_key)
-		if cached and cached.get("expires_at", 0) > time.time() + _TOKEN_REFRESH_BUFFER:
+		if cached and cached.get("expires_at", 0) > time.time() + TOKEN_REFRESH_BUFFER:
 			return cached["access_token"]
 
-		username, password = self._credentials(fc)
+		username, password = self.credentials(fc)
 		with httpx.Client() as client:
 			resp = client.get(
-				self._url(fc, "/auth/v1.0/token"),
+				self.url(fc, "/auth/v1.0/token"),
 				auth=(username, password),
 				timeout=30,
 			)
@@ -200,27 +200,27 @@ class OdflLTL(BaseLTL):
 		)
 		return token
 
-	def _rest_headers(self, fc) -> dict:
+	def rest_headers(self, fc) -> dict:
 		return {
-			"Authorization": f"Bearer {self._get_bearer_token(fc)}",
+			"Authorization": f"Bearer {self.get_bearer_token(fc)}",
 			"Content-Type": "application/json",
 			"Accept": "application/json",
 		}
 
-	def _url(self, fc, path: str) -> str:
+	def url(self, fc, path: str) -> str:
 		base = (fc.base_url or "https://api.odfl.com").rstrip("/")
 		return f"{base}/{path.lstrip('/')}"
 
 	@staticmethod
-	def _iso3_country(two_letter: str) -> str:
-		return _ISO2_TO_ISO3.get((two_letter or "").upper(), "USA")
+	def iso3_country(two_letter: str) -> str:
+		return ISO2_TO_ISO3.get((two_letter or "").upper(), "USA")
 
 	# ------------------------------------------------------------------
 	# Address helpers
 	# ------------------------------------------------------------------
 
 	@staticmethod
-	def _odfl_address(info: dict) -> dict:
+	def odfl_address(info: dict) -> dict:
 		"""Convert ShipstationLTL.get_address_and_contact_info output → ODFL address block."""
 		addr = info["address"]
 		contact = info["contact"]
@@ -237,7 +237,7 @@ class OdflLTL(BaseLTL):
 			"city": addr["city_locality"],
 			"stateProvince": addr["state_province"],
 			"postalCode": addr["postal_code"],
-			"country": OdflLTL._iso3_country(addr["country_code"]),
+			"country": OdflLTL.iso3_country(addr["country_code"]),
 			"name": addr.get("company_name") or "",
 			"contact": {
 				"name": contact["name"] or "",
@@ -250,9 +250,9 @@ class OdflLTL(BaseLTL):
 	# Rate estimate (SOAP)
 	# ------------------------------------------------------------------
 
-	def _build_rate_soap(self, doc: Shipment, fc) -> str:
+	def build_rate_soap(self, doc: Shipment, fc) -> str:
 		"""Build the ODFL SOAP rate request XML."""
-		username, password = self._credentials(fc)
+		username, password = self.credentials(fc)
 		ltl = ShipstationLTL()
 		origin_info = ltl.get_address_and_contact_info(doc, ship_from=True)
 		dest_info = ltl.get_address_and_contact_info(doc, ship_from=False)
@@ -262,7 +262,7 @@ class OdflLTL(BaseLTL):
 
 		packages = ltl.build_packages_from_sdn(doc)
 		commodity_xml = "\n".join(
-			_COMMODITY_TEMPLATE.format(
+			COMMODITY_TEMPLATE.format(
 				freight_class=str(p.get("freight_class", "50")),
 				weight=int(p["weight"]["value"]),
 				pieces=int(p.get("quantity", 1)),
@@ -271,26 +271,24 @@ class OdflLTL(BaseLTL):
 		)
 
 		accessorial_codes = [code for field, code in ODFL_ACCESSORIAL_CODES.items() if doc.get(field)]
-		accessorial_xml = "\n".join(
-			_ACCESSORIAL_TEMPLATE.format(code=code) for code in accessorial_codes
-		)
+		accessorial_xml = "\n".join(ACCESSORIAL_TEMPLATE.format(code=code) for code in accessorial_codes)
 
 		billing_type = doc.get("billing_type") or "Shipper"
 		payment_terms_map = {"Shipper": "PPD", "Consignee": "CC", "Third Party": "TP"}
 		payment_terms = payment_terms_map.get(billing_type, "PPD")
 
-		return _RATE_SOAP_ENVELOPE.format(
+		return RATE_SOAP_ENVELOPE.format(
 			username=username,
 			password=password,
 			pickup_date=str(doc.get("pickup_date") or ""),
 			origin_city=o["city_locality"],
 			origin_state=o["state_province"],
 			origin_zip=o["postal_code"],
-			origin_country=self._iso3_country(o["country_code"]),
+			origin_country=self.iso3_country(o["country_code"]),
 			dest_city=d["city_locality"],
 			dest_state=d["state_province"],
 			dest_zip=d["postal_code"],
-			dest_country=self._iso3_country(d["country_code"]),
+			dest_country=self.iso3_country(d["country_code"]),
 			bill_to_account=fc.account_number or "",
 			payment_terms=payment_terms,
 			commodity_xml=commodity_xml,
@@ -298,7 +296,7 @@ class OdflLTL(BaseLTL):
 		)
 
 	@staticmethod
-	def _parse_rate_response(xml_text: str) -> dict:
+	def parse_rate_response(xml_text: str) -> dict:
 		"""Parse the SOAP rate response XML into a normalised dict."""
 		import xml.etree.ElementTree as ET
 
@@ -333,7 +331,7 @@ class OdflLTL(BaseLTL):
 	# eBOL payload builder
 	# ------------------------------------------------------------------
 
-	def _build_ebol_payload(self, doc: Shipment, fc, reference_number: str = "") -> dict:
+	def build_ebol_payload(self, doc: Shipment, fc, reference_number: str = "") -> dict:
 		"""Build the REST eBOL creation payload."""
 		ltl = ShipstationLTL()
 		origin_info = ltl.get_address_and_contact_info(doc, ship_from=True)
@@ -365,8 +363,8 @@ class OdflLTL(BaseLTL):
 			line_items.append(item)
 
 		payload: dict = {
-			"shipper": self._odfl_address(origin_info),
-			"consignee": self._odfl_address(dest_info),
+			"shipper": self.odfl_address(origin_info),
+			"consignee": self.odfl_address(dest_info),
 			"payment": {
 				"terms": payment_map.get(billing_type, "PPD"),
 				"account": fc.account_number or "",
@@ -400,8 +398,8 @@ class OdflLTL(BaseLTL):
 
 	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Call ODFL SOAP rate service and save one Shipment Quotation."""
-		fc = self._get_fcs(doc, settings_name)
-		soap_xml = self._build_rate_soap(doc, fc)
+		fc = self.get_fcs(doc, settings_name)
+		soap_xml = self.build_rate_soap(doc, fc)
 		soap_url = "https://www.odfl.com/wsRate_v6/RateService"
 
 		with httpx.Client() as client:
@@ -415,7 +413,7 @@ class OdflLTL(BaseLTL):
 				timeout=60,
 			)
 		resp.raise_for_status()
-		rate = self._parse_rate_response(resp.text)
+		rate = self.parse_rate_response(resp.text)
 
 		if not rate.get("totalCharge"):
 			frappe.msgprint(_("ODFL returned no rate estimate for this shipment."))
@@ -440,13 +438,12 @@ class OdflLTL(BaseLTL):
 		if transit_days:
 			sq.estimated_delivery_days = transit_days
 		sq.insert(ignore_permissions=True)
-		frappe.db.commit()
 
 		return _("ODFL rate estimate saved as Shipment Quotation. Total: {0}").format(grand_total)
 
 	def schedule_ltl_pickup(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Create eBOL (gets PRO) then schedule pickup."""
-		fc = self._get_fcs(doc, settings_name)
+		fc = self.get_fcs(doc, settings_name)
 
 		accepted_sq_name = doc.accepted_quotation or frappe.db.get_value(
 			"Shipment Quotation", {"shipment": doc.name, "docstatus": 1}, "name"
@@ -458,12 +455,12 @@ class OdflLTL(BaseLTL):
 			)
 
 		# Step 1: Create eBOL
-		bol_payload = self._build_ebol_payload(doc, fc, reference_number=reference_number)
+		bol_payload = self.build_ebol_payload(doc, fc, reference_number=reference_number)
 		with httpx.Client() as client:
 			bol_resp = client.post(
-				self._url(fc, "/BOL/v3.1/eBOL/bol-external-per-standards"),
+				self.url(fc, "/BOL/v3.1/eBOL/bol-external-per-standards"),
 				json=bol_payload,
-				headers=self._rest_headers(fc),
+				headers=self.rest_headers(fc),
 				timeout=60,
 			)
 		bol_resp.raise_for_status()
@@ -509,15 +506,15 @@ class OdflLTL(BaseLTL):
 				"pickupDate": str(doc.get("pickup_date") or ""),
 				"readyTime": "08:00",
 				"closeTime": "17:00",
-				"pickupAddress": self._odfl_address(origin_info),
+				"pickupAddress": self.odfl_address(origin_info),
 				"shipments": [{"proNumber": pro_number, "bolNumber": bol_number}],
 				"specialInstructions": doc.get("description_of_content") or "",
 			}
 			with httpx.Client() as client:
 				pickup_resp = client.post(
-					self._url(fc, "/pickup/v3.0/create"),
+					self.url(fc, "/pickup/v3.0/create"),
 					json=pickup_payload,
-					headers=self._rest_headers(fc),
+					headers=self.rest_headers(fc),
 					timeout=30,
 				)
 			pickup_resp.raise_for_status()
@@ -544,7 +541,7 @@ class OdflLTL(BaseLTL):
 
 	def cancel_shipment(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Cancel pickup and delete eBOL."""
-		fc = self._get_fcs(doc, settings_name)
+		fc = self.get_fcs(doc, settings_name)
 		pro_number = doc.get("awb_number") or doc.get("shipment_id") or ""
 		pickup_id = doc.get("pickup_id") or ""
 
@@ -555,8 +552,8 @@ class OdflLTL(BaseLTL):
 			try:
 				with httpx.Client() as client:
 					resp = client.delete(
-						self._url(fc, f"/pickup/v3.0/cancel?pickupConfirmationNumber={pickup_id}"),
-						headers=self._rest_headers(fc),
+						self.url(fc, f"/pickup/v3.0/cancel?pickupConfirmationNumber={pickup_id}"),
+						headers=self.rest_headers(fc),
 						timeout=30,
 					)
 				resp.raise_for_status()
@@ -574,8 +571,8 @@ class OdflLTL(BaseLTL):
 			try:
 				with httpx.Client() as client:
 					resp = client.delete(
-						self._url(fc, f"/BOL/v3.1/eBOL/deleteBolPro?proNumber={pro_number}"),
-						headers=self._rest_headers(fc),
+						self.url(fc, f"/BOL/v3.1/eBOL/deleteBolPro?proNumber={pro_number}"),
+						headers=self.rest_headers(fc),
 						timeout=30,
 					)
 				resp.raise_for_status()
@@ -592,16 +589,16 @@ class OdflLTL(BaseLTL):
 
 	def track_shipment(self, doc: Shipment, settings_name: str | None = None) -> dict:
 		"""GET /tracking/v2.0/shipment.track by PRO number."""
-		fc = self._get_fcs(doc, settings_name)
+		fc = self.get_fcs(doc, settings_name)
 		pro = doc.get("awb_number") or doc.get("shipment_id") or ""
 		if not pro:
 			return {}
 
 		with httpx.Client() as client:
 			resp = client.get(
-				self._url(fc, "/tracking/v2.0/shipment.track"),
+				self.url(fc, "/tracking/v2.0/shipment.track"),
 				params={"proNumber": pro},
-				headers=self._rest_headers(fc),
+				headers=self.rest_headers(fc),
 				timeout=30,
 			)
 		resp.raise_for_status()
@@ -609,16 +606,16 @@ class OdflLTL(BaseLTL):
 
 	def get_documents(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
 		"""GET /document-retrieval-api/v1.0/getDocument by PRO number."""
-		fc = self._get_fcs(doc, settings_name)
+		fc = self.get_fcs(doc, settings_name)
 		pro = doc.get("awb_number") or doc.get("shipment_id") or ""
 		if not pro:
 			return []
 
 		with httpx.Client() as client:
 			resp = client.get(
-				self._url(fc, "/document-retrieval-api/v1.0/getDocument"),
+				self.url(fc, "/document-retrieval-api/v1.0/getDocument"),
 				params={"proNumber": pro, "documentType": "BOL"},
-				headers=self._rest_headers(fc),
+				headers=self.rest_headers(fc),
 				timeout=30,
 			)
 		resp.raise_for_status()

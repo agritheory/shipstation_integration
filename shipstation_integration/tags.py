@@ -49,4 +49,4 @@ def list_tags(settings: Any = None):
 				}
 			)
 			tag_doc.save()
-		frappe.db.commit()
+		frappe.db.commit()  # background tag-sync job; commit per settings doc isolates failures  # nosemgrep: frappe-manual-commit

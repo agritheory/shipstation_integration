@@ -284,7 +284,7 @@ function fetch_delivery_note_items(frm) {
 			read_only: 1,
 		})
 	}
-	// no customer pre-filter when using ad-hoc shipping_contact — leave picker open
+	// no customer pre-filter when using ad-hoc delivery contact — leave picker open
 
 	const d = new frappe.ui.form.MultiSelectDialog({
 		doctype: 'Delivery Note',
@@ -556,6 +556,14 @@ function sdn_show_label_success(frm, results) {
 }
 
 frappe.ui.form.on('Shipment', {
+	delivery_to_type: function (frm) {
+		frm.refresh_field('delivery_contact_name')
+	},
+	delivery_customer: function (frm) {
+		if (frm.doc.delivery_to_type === 'Customer') {
+			frm.refresh_field('delivery_contact_name')
+		}
+	},
 	refresh: function (frm) {
 		// Override ERPNext's base set_query (registered in its setup handler) which
 		// restricts delivery_note to docstatus == 1. Shipments are planned before
@@ -569,11 +577,11 @@ frappe.ui.form.on('Shipment', {
 			} else if (frm.doc.delivery_to_type === 'Company' && frm.doc.delivery_company) {
 				filters.customer = frm.doc.delivery_company
 			}
-			// no filter when neither party is set (ad-hoc shipment using shipping_contact)
+			// no filter when neither party is set (ad-hoc delivery contact)
 			return { filters }
 		})
 
-		frm.set_query('shipping_contact', function () {
+		frm.set_query('delivery_contact_name', function () {
 			const filters = {}
 			if (frm.doc.delivery_to_type === 'Customer' && frm.doc.delivery_customer) {
 				filters['link_doctype'] = 'Customer'

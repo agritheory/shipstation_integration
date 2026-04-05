@@ -55,7 +55,7 @@ class ShipstationLTL(BaseLTL):
 
 		# Maps ERPNext UOMs (and all aliases from rates.WEIGHT/DIMENSION_UOM_MAP) to the
 		# plural forms the ShipEngine LTL API expects.
-		_singular_to_plural = {
+		singular_to_plural = {
 			"inch": "inches",
 			"centimeter": "centimeters",
 			"pound": "pounds",
@@ -64,8 +64,8 @@ class ShipstationLTL(BaseLTL):
 			"ounce": "ounces",
 		}
 		self.uom_map = {
-			"length": {k: _singular_to_plural.get(v, v) for k, v in DIMENSION_UOM_MAP.items()},
-			"weight": {k: _singular_to_plural.get(v, v) for k, v in WEIGHT_UOM_MAP.items()},
+			"length": {k: singular_to_plural.get(v, v) for k, v in DIMENSION_UOM_MAP.items()},
+			"weight": {k: singular_to_plural.get(v, v) for k, v in WEIGHT_UOM_MAP.items()},
 			"density": {"Pound/Cubic Foot": "lb/ft3"},
 		}
 
@@ -134,7 +134,7 @@ class ShipstationLTL(BaseLTL):
 		List of carrier dicts with carrier_id, carrier_code, name, supplier, etc.
 		"""
 		del settings_name  # unused; FCS resolved via company+supplier
-		auth_doc = self._ltl_auth_doc(doc=doc, company=company, supplier=supplier)
+		auth_doc = self.ltl_auth_doc(doc=doc, company=company, supplier=supplier)
 		base_url, headers = self.get_base_url_and_headers(auth_doc)
 		data: dict = {}
 		try:
@@ -639,7 +639,7 @@ class ShipstationLTL(BaseLTL):
 	##### CLASS HELPER FUNCTIONS TO SUPPORT BASE CLASS FUNCTIONALITY #####
 	DEFAULT_BASE_URL = "https://api.shipengine.com"
 
-	def _ltl_auth_doc(
+	def ltl_auth_doc(
 		self,
 		doc: Shipment | None = None,
 		company: str | None = None,
@@ -920,7 +920,7 @@ class ShipstationLTL(BaseLTL):
 		Returns:
 		Dict mapping carrier_id to list of package types
 		"""
-		auth = self._ltl_auth_doc(doc=doc, company=company, supplier=supplier)
+		auth = self.ltl_auth_doc(doc=doc, company=company, supplier=supplier)
 		if auth is None:
 			frappe.throw(
 				_(
@@ -1943,6 +1943,12 @@ class ShipstationLTL(BaseLTL):
 		address_name_field = "pickup_address_name" if ship_from else "delivery_address_name"
 		residential_flag_field = "residential_pickup" if ship_from else "residential_delivery"
 
+		if not ship_from and doc.get("freight_type") == "LTL" and not doc.get("delivery_contact_name"):
+			frappe.throw(
+				_("Delivery Contact is required for LTL shipments."),
+				title=_("Delivery contact required"),
+			)
+
 		party_name_field_map = {
 			"Company": "pickup_company" if ship_from else "delivery_company",
 			"Customer": "pickup_customer" if ship_from else "delivery_customer",
@@ -1957,13 +1963,8 @@ class ShipstationLTL(BaseLTL):
 			contact_field = "pickup_contact_person"
 			contact_dt = "User"
 			email_field = "email"
-		elif not ship_from and party_type == "Contact":
-			contact_field = "shipping_contact"
-			contact_dt = "Contact"
-			email_field = "email_id"
 		elif not ship_from:
-			# prefer shipping_contact when set; fall back to delivery_contact_name
-			contact_field = "shipping_contact" if doc.get("shipping_contact") else "delivery_contact_name"
+			contact_field = "delivery_contact_name"
 			contact_dt = "Contact"
 			email_field = "email_id"
 		else:

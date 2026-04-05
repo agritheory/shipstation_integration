@@ -296,12 +296,12 @@ def create_erpnext_order(
 			so.save()
 	if so:
 		so.submit()
-		frappe.db.commit()
+		frappe.db.commit()  # background order-sync job; commit per order preserves progress if a later order fails  # nosemgrep: frappe-manual-commit
 
 	after_submit_hook = frappe.get_hooks("update_shipstation_order_after_submit")
 	if before_submit_hook:
 		frappe.get_attr(after_submit_hook[0])(store, so, order)
-		frappe.db.commit()
+		frappe.db.commit()  # background order-sync job; commit after hook preserves hook side-effects  # nosemgrep: frappe-manual-commit
 
 	if order.tag_ids:
 		for tag_id in order.tag_ids:

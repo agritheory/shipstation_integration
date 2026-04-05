@@ -745,7 +745,7 @@ def get_carrier_id_for_supplier(
 
 	supplier_name_lower = supplier_name.lower()
 
-	def _valid_carrier_id(carrier_id: str | None, label: str) -> str | None:
+	def valid_carrier_id(carrier_id: str | None, label: str) -> str | None:
 		if carrier_id and carrier_id.startswith("se-"):
 			return carrier_id
 		if carrier_id:
@@ -760,7 +760,7 @@ def get_carrier_id_for_supplier(
 		carrier_name = (carrier.get("name") or "").lower()
 		carrier_supplier = (carrier.get("supplier") or "").lower()
 		if supplier_name_lower in (carrier_name, carrier_supplier):
-			return _valid_carrier_id(carrier.get("carrier_id"), carrier.get("name", ""))
+			return valid_carrier_id(carrier.get("carrier_id"), carrier.get("name", ""))
 
 	# Pass 2 — substring match: supplier name is contained in carrier name or vice-versa
 	# Handles cases like supplier="FedEx" matching ShipEngine carrier "FedEx Express"
@@ -772,7 +772,7 @@ def get_carrier_id_for_supplier(
 			or (carrier_supplier and supplier_name_lower in carrier_supplier)
 			or (carrier_name and carrier_name in supplier_name_lower)
 		):
-			return _valid_carrier_id(carrier.get("carrier_id"), carrier.get("name", ""))
+			return valid_carrier_id(carrier.get("carrier_id"), carrier.get("name", ""))
 
 	# Not found — log available carriers to help with debugging
 	available_carriers = [f"{c.get('name')} (supplier: {c.get('supplier')})" for c in carrier_data]

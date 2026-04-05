@@ -22,7 +22,7 @@ from shipstation_integration.tags import list_tags
 from shipstation_integration.utils import get_marketplace
 
 
-class ShipstationSettings(Document):
+class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comitting-other-method
 	@property
 	def store_ids(self):
 		stores = json.loads(self.store_data)
@@ -286,26 +286,26 @@ class ShipstationSettings(Document):
 
 	def get_api_carrier_codes(self, carrier_name, service_name, package_name=None):
 		"""Get carrier, service, and package codes from API carrier data."""
-		_carrier_id, _service_code, _package_code = None, None, None
+		carrier_id, service_code, package_code = None, None, None
 
 		for carrier in self.api_carrier_data():
 			if carrier_name in [carrier.get("name"), carrier.get("carrier_code")]:
-				_carrier_id = carrier.get("carrier_id")
+				carrier_id = carrier.get("carrier_id")
 
 				for service in carrier.get("services", []):
 					if service.get("name") == service_name:
-						_service_code = service.get("service_code")
+						service_code = service.get("service_code")
 						break
 
 				if package_name:
 					for package in carrier.get("packages", []):
 						if package.get("name") == package_name:
-							_package_code = package.get("package_code")
+							package_code = package.get("package_code")
 							break
 
 				break
 
-		return _carrier_id, _service_code, _package_code
+		return carrier_id, service_code, package_code
 
 	def validate_label_generation(self):
 		if not self.enabled and self.enable_label_generation:
@@ -485,23 +485,23 @@ class ShipstationSettings(Document):
 		return ""
 
 	def get_codes(self, carrier, service, package):
-		_carrier, _service, _package = None, None, "Package"
+		carrier_code, service_code, package_code = None, None, "Package"
 		carrier_data = self.get_carrier_data()
 		if not carrier_data:
-			return _carrier, _service, _package
+			return carrier_code, service_code, package_code
 		for ss_carrier in carrier_data:
 			if carrier in [ss_carrier.get("name"), ss_carrier.get("nickname")]:
-				_carrier = ss_carrier.get("code")
+				carrier_code = ss_carrier.get("code")
 
 				for serv in ss_carrier.get("services", []):
 					if serv.get("name") == service:
-						_service = serv.get("code")
+						service_code = serv.get("code")
 
 				for pack in ss_carrier.get("packages", []):
 					if pack.get("name") == package:
-						_package = pack.get("code")
+						package_code = pack.get("code")
 
-		return _carrier, _service, _package
+		return carrier_code, service_code, package_code
 
 	def add_webhooks(self):
 		if not self.enabled:
@@ -521,14 +521,13 @@ class ShipstationSettings(Document):
 
 			for store in self.shipstation_stores:
 				for webhook_type in WEBHOOK_TYPES:
-					filtered_webhook = list(
-						filter(
-							lambda webhook: webhook.store_id == store.store_id
-							and webhook.hook_type == webhook_type
-							and webhook.url == WEBHOOK_RECEIVER_URL,
-							existing_webhooks,
-						)
-					)
+					filtered_webhook = [
+						webhook
+						for webhook in existing_webhooks
+						if webhook.store_id == store.store_id
+						and webhook.hook_type == webhook_type
+						and webhook.url == WEBHOOK_RECEIVER_URL
+					]
 					if not filtered_webhook:
 						webhook = ShipStationWebhook(
 							active=True,

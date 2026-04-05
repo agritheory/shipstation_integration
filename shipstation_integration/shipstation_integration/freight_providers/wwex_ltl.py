@@ -54,7 +54,7 @@ from shipstation_integration.utils import get_shipment_company_for_ltl
 if TYPE_CHECKING:
 	from erpnext.stock.doctype.shipment.shipment import Shipment
 
-_TOKEN_REFRESH_BUFFER = 60  # refresh token this many seconds before expiry
+TOKEN_REFRESH_BUFFER = 60  # refresh token this many seconds before expiry
 
 
 # ---------------------------------------------------------------------------
@@ -98,8 +98,8 @@ class WwexLTL(BaseLTL):
 	# Auth / request helpers
 	# ------------------------------------------------------------------
 
-	def _get_fcs(self, doc: Shipment | None, settings_name: str | None):
-		if settings_name:
+	def get_fcs(self, doc: Shipment | None, settings_name: str | None):
+		if settings_name and frappe.db.exists("Freight Carrier Settings", settings_name):
 			return frappe.get_doc("Freight Carrier Settings", settings_name)
 		co = get_shipment_company_for_ltl(doc)
 		supplier = getattr(doc, "preferred_carrier", None)
@@ -112,10 +112,10 @@ class WwexLTL(BaseLTL):
 			)
 		return fc
 
-	def _get_token(self, fc) -> str:
+	def get_token(self, fc) -> str:
 		cache_key = f"wwex_token:{fc.name}"
 		cached = frappe.cache.get_value(cache_key)
-		if cached and cached.get("expires_at", 0) > time.time() + _TOKEN_REFRESH_BUFFER:
+		if cached and cached.get("expires_at", 0) > time.time() + TOKEN_REFRESH_BUFFER:
 			return cached["access_token"]
 
 		app = frappe.get_doc("Connected App", fc.connected_app)
@@ -142,17 +142,17 @@ class WwexLTL(BaseLTL):
 		)
 		return access_token
 
-	def _headers(self, fc) -> dict:
+	def headers(self, fc) -> dict:
 		return {
-			"Authorization": f"Bearer {self._get_token(fc)}",
+			"Authorization": f"Bearer {self.get_token(fc)}",
 			"Content-Type": "application/json",
 			"Accept": "application/json",
 		}
 
-	def _url(self, fc, path: str) -> str:
+	def url(self, fc, path: str) -> str:
 		return f"{(fc.base_url or '').rstrip('/')}/{path.lstrip('/')}"
 
-	def _post(self, fc, path: str, payload: dict) -> dict:
+	def post(self, fc, path: str, payload: dict) -> dict:
 		"""Wrap payload in the standard WWEX envelope and POST."""
 		body = {
 			"request": payload,
@@ -160,9 +160,9 @@ class WwexLTL(BaseLTL):
 		}
 		with httpx.Client() as client:
 			resp = client.post(
-				self._url(fc, path),
+				self.url(fc, path),
 				json=body,
-				headers=self._headers(fc),
+				headers=self.headers(fc),
 				timeout=60,
 			)
 		resp.raise_for_status()
@@ -173,7 +173,7 @@ class WwexLTL(BaseLTL):
 	# ------------------------------------------------------------------
 
 	@staticmethod
-	def _wwex_address(info: dict) -> dict:
+	def wwex_address(info: dict) -> dict:
 		"""Convert ShipstationLTL.get_address_and_contact_info output → WWEX address block."""
 		addr = info["address"]
 		contact = info["contact"]
@@ -202,7 +202,7 @@ class WwexLTL(BaseLTL):
 	# Payload builders
 	# ------------------------------------------------------------------
 
-	def _build_handling_units(self, doc: Shipment) -> list[dict]:
+	def build_handling_units(self, doc: Shipment) -> list[dict]:
 		"""Build WWEX handlingUnitList from Shipment parcel groups."""
 		# Reuse ShipstationLTL's parcel grouping logic
 		ltl = ShipstationLTL()
@@ -247,7 +247,7 @@ class WwexLTL(BaseLTL):
 			units.append(unit)
 		return units
 
-	def _build_accessorial_flags(self, doc: Shipment) -> dict:
+	def build_accessorial_flags(self, doc: Shipment) -> dict:
 		"""Return a dict of WWEX boolean accessorial flags from Shipment fields."""
 		flags: dict = {}
 		for field, wwex_key in WWEX_ACCESSORIAL_FLAGS.items():
@@ -265,14 +265,14 @@ class WwexLTL(BaseLTL):
 			}
 		return flags
 
-	def _build_shop_payload(self, doc: Shipment) -> dict:
+	def build_shop_payload(self, doc: Shipment) -> dict:
 		"""Build a shopFlow LTL request payload from the Shipment doc."""
 		ltl = ShipstationLTL()
 		origin_info = ltl.get_address_and_contact_info(doc, ship_from=True)
 		dest_info = ltl.get_address_and_contact_info(doc, ship_from=False)
 
-		origin = self._wwex_address(origin_info)
-		dest = self._wwex_address(dest_info)
+		origin = self.wwex_address(origin_info)
+		dest = self.wwex_address(dest_info)
 		# Fix contactType for consignee
 		for c in dest["address"]["contactList"]:
 			c["contactType"] = "RECEIVER"
@@ -283,17 +283,17 @@ class WwexLTL(BaseLTL):
 				"shipmentDate": str(doc.get("pickup_date") or ""),
 				"originAddress": origin,
 				"destinationAddress": dest,
-				"handlingUnitList": self._build_handling_units(doc),
+				"handlingUnitList": self.build_handling_units(doc),
 				"totalWeight": {
 					"value": sum(p["weight"]["value"] for p in ShipstationLTL().build_packages_from_sdn(doc)),
 					"unit": "LB",
 				},
-				"totalHandlingUnitCount": len(self._build_handling_units(doc)),
+				"totalHandlingUnitCount": len(self.build_handling_units(doc)),
 				"pickupSpecialInstructions": doc.get("description_of_content") or "",
 				"deliverySpecialInstructions": "",
 			},
 		}
-		payload["shipment"].update(self._build_accessorial_flags(doc))
+		payload["shipment"].update(self.build_accessorial_flags(doc))
 		return payload
 
 	# ------------------------------------------------------------------
@@ -302,8 +302,8 @@ class WwexLTL(BaseLTL):
 
 	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Call shopFlow and create one Shipment Quotation per carrier offer returned."""
-		fc = self._get_fcs(doc, settings_name)
-		response = self._post(fc, "/svc/shopFlow", self._build_shop_payload(doc))
+		fc = self.get_fcs(doc, settings_name)
+		response = self.post(fc, "/svc/shopFlow", self.build_shop_payload(doc))
 
 		offers = response.get("response", {}).get("shipmentOfferList", [])
 		if not offers:
@@ -342,12 +342,11 @@ class WwexLTL(BaseLTL):
 			sq.insert(ignore_permissions=True)
 			saved += 1
 
-		frappe.db.commit()
 		return _("{0} WWEX carrier offer(s) saved as Shipment Quotation(s).").format(saved)
 
 	def schedule_ltl_pickup(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Book the accepted offer via quoteOrderFlow and attach the BOL."""
-		fc = self._get_fcs(doc, settings_name)
+		fc = self.get_fcs(doc, settings_name)
 
 		accepted_sq_name = doc.accepted_quotation or frappe.db.get_value(
 			"Shipment Quotation", {"shipment": doc.name, "docstatus": 1}, "name"
@@ -366,8 +365,8 @@ class WwexLTL(BaseLTL):
 		origin_info = ltl.get_address_and_contact_info(doc, ship_from=True)
 		dest_info = ltl.get_address_and_contact_info(doc, ship_from=False)
 
-		origin = self._wwex_address(origin_info)
-		dest = self._wwex_address(dest_info)
+		origin = self.wwex_address(origin_info)
+		dest = self.wwex_address(dest_info)
 		for c in dest["address"]["contactList"]:
 			c["contactType"] = "RECEIVER"
 
@@ -389,7 +388,7 @@ class WwexLTL(BaseLTL):
 			"deliverySpecialInstructions": "",
 		}
 
-		response = self._post(fc, "/svc/quoteOrderFlow", payload)
+		response = self.post(fc, "/svc/quoteOrderFlow", payload)
 		result = response.get("response") or response
 
 		bol_number = result.get("bolNumber") or result.get("proNumber") or ""
@@ -435,7 +434,7 @@ class WwexLTL(BaseLTL):
 
 	def cancel_shipment(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Cancel via integratedCancelFlow using the stored transaction IDs."""
-		fc = self._get_fcs(doc, settings_name)
+		fc = self.get_fcs(doc, settings_name)
 
 		shipment_txn_id = doc.get("shipment_id") or ""
 		pickup_txn_id = doc.get("pickup_id") or ""
@@ -449,13 +448,13 @@ class WwexLTL(BaseLTL):
 		if not cancel_list:
 			frappe.throw(_("No WWEX transaction IDs found on this Shipment to cancel."))
 
-		response = self._post(fc, "/svc/integratedCancelFlow", {"cancelRQList": cancel_list})
+		response = self.post(fc, "/svc/integratedCancelFlow", {"cancelRQList": cancel_list})
 		result = response.get("response") or response
 		return result.get("confirmationNumber") or result.get("cancellationId") or "cancelled"
 
 	def track_shipment(self, doc: Shipment, settings_name: str | None = None) -> dict:
 		"""Track via searchShipmentsFlow using the BOL/PRO number."""
-		fc = self._get_fcs(doc, settings_name)
+		fc = self.get_fcs(doc, settings_name)
 		bol = doc.get("awb_number") or doc.get("shipment_id") or doc.name
 
 		# Try to find the SCAC from the accepted quotation
@@ -473,12 +472,12 @@ class WwexLTL(BaseLTL):
 		if scac:
 			payload["scac"] = scac
 
-		response = self._post(fc, "/svc/searchShipmentsFlow", payload)
+		response = self.post(fc, "/svc/searchShipmentsFlow", payload)
 		return response.get("response") or response
 
 	def get_documents(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
 		"""Download BOL and related documents via documentDownloadFlow."""
-		fc = self._get_fcs(doc, settings_name)
+		fc = self.get_fcs(doc, settings_name)
 		txn_id = doc.get("shipment_id") or ""
 		if not txn_id:
 			return []
@@ -492,7 +491,7 @@ class WwexLTL(BaseLTL):
 			},
 		}
 
-		response = self._post(fc, "/svc/documentDownloadFlow", payload)
+		response = self.post(fc, "/svc/documentDownloadFlow", payload)
 		result = response.get("response") or response
 		raw_docs = result.get("documents") or result.get("documentList") or []
 

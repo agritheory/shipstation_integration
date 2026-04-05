@@ -14,7 +14,7 @@ from shipstation_integration.shipstation_integration.doctype.shipstation_setting
 )
 
 
-def _get_logger(*args, **kwargs):
+def get_logger(*args, **kwargs):
 	from frappe.utils.logger import get_logger
 
 	return get_logger(
@@ -36,7 +36,7 @@ def monkeymodule():
 
 @pytest.fixture(scope="session", autouse=True)
 def db_instance():
-	frappe.logger = _get_logger
+	frappe.logger = get_logger
 
 	currentsite = "test_site"
 	sites = Path(get_bench_path()) / "sites"
@@ -53,10 +53,8 @@ def db_instance():
 def shipstation_api_client_mock(monkeypatch):
 	client = MagicMock()
 
-	def _patched_shipstation_api_client(self):
+	def patched_shipstation_api_client(self):
 		return client
 
-	monkeypatch.setattr(
-		ShipstationSettings, "shipstation_api_client", _patched_shipstation_api_client
-	)
+	monkeypatch.setattr(ShipstationSettings, "shipstation_api_client", patched_shipstation_api_client)
 	return client

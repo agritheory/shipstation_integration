@@ -24,11 +24,19 @@ Workflow
 Authentication
 --------------
 OAuth 2.0 client-credentials flow via Frappe Connected App.
-Token endpoint: ``https://ws.integration.banyantechnology.com/api/v3/auth/token``
-(or the URL stored in ``app.token_uri``).
+Token endpoint: ``https://ws.integration.banyantechnology.com/auth/connect/token``
+(sibling to ``/api/v3``, not inside it; or the URL stored in ``app.token_uri``).
 
-Credentials can alternatively be stored as a Bearer token directly in
-``Freight Carrier Settings.ltl_api_key`` (for static API keys).
+**Primary (RIM / Banyan):** ``client_id`` and ``client_secret`` on Freight Carrier
+Settings → OAuth 2.0 client-credentials POST to ``/auth/connect/token``.
+
+**Alternate:** If Banyan issues a long-lived Bearer string, store it in
+``ltl_api_key`` instead; it is sent as-is and skips the token endpoint. Only
+one path is used: ``ltl_api_key`` wins when set (non-empty).
+
+**Connected App:** Optional; if ``connected_app`` is set on the FCS record,
+its client credentials and ``token_uri`` override the direct FCS fields for
+the token request.
 """
 from __future__ import annotations
 
@@ -52,7 +60,7 @@ from shipstation_integration.utils import get_shipment_company_for_ltl
 if TYPE_CHECKING:
 	from erpnext.stock.doctype.shipment.shipment import Shipment
 
-_TOKEN_REFRESH_BUFFER = 60
+TOKEN_REFRESH_BUFFER = 60
 
 # Banyan accessorial code cross-reference (canonical field → Banyan code)
 BANYAN_ACCESSORIAL_CODES: dict[str, str] = {
@@ -92,8 +100,8 @@ class BanyanLTL(BaseLTL):
 	# Auth / request helpers
 	# ------------------------------------------------------------------
 
-	def _get_fcs(self, doc: Shipment | None, settings_name: str | None):
-		if settings_name:
+	def get_fcs(self, doc: Shipment | None, settings_name: str | None):
+		if settings_name and frappe.db.exists("Freight Carrier Settings", settings_name):
 			return frappe.get_doc("Freight Carrier Settings", settings_name)
 		co = get_shipment_company_for_ltl(doc)
 		supplier = getattr(doc, "preferred_carrier", None)
@@ -106,7 +114,7 @@ class BanyanLTL(BaseLTL):
 			)
 		return fc
 
-	def _get_token(self, fc) -> str:
+	def get_token(self, fc) -> str:
 		"""Return a bearer token via client_credentials grant.
 
 		Priority:
@@ -115,18 +123,19 @@ class BanyanLTL(BaseLTL):
 		   ``/auth/connect/token``.
 		3. Connected App — uses its client_id/client_secret.
 		"""
-		static_key = (
-			fc.get_password("ltl_api_key") if hasattr(fc, "get_password") else (fc.ltl_api_key or "")
-		)
+		if hasattr(fc, "get_password"):
+			static_key = fc.get_password("ltl_api_key", raise_exception=False) or ""
+		else:
+			static_key = fc.ltl_api_key or ""
 		if static_key:
 			return static_key
 
 		cache_key = f"banyan_token:{fc.name}"
 		cached = frappe.cache.get_value(cache_key)
-		if cached and cached.get("expires_at", 0) > time.time() + _TOKEN_REFRESH_BUFFER:
+		if cached and cached.get("expires_at", 0) > time.time() + TOKEN_REFRESH_BUFFER:
 			return cached["access_token"]
 
-		token_url = self._url(fc, "/auth/connect/token")
+		token_url = self.oauth_token_url(fc)
 
 		client_id = fc.get_password("client_id") if hasattr(fc, "get_password") else (fc.client_id or "")
 		client_secret = (
@@ -144,7 +153,7 @@ class BanyanLTL(BaseLTL):
 					},
 					timeout=30,
 				)
-			resp.raise_for_status()
+			self.raise_for_status(resp, "token")
 
 		else:
 			app = frappe.get_doc("Connected App", fc.connected_app)
@@ -159,7 +168,7 @@ class BanyanLTL(BaseLTL):
 					},
 					timeout=30,
 				)
-			resp.raise_for_status()
+			self.raise_for_status(resp, "token (connected app)")
 
 		payload = resp.json()
 		access_token = payload.get("access_token") or payload.get("token")
@@ -171,43 +180,83 @@ class BanyanLTL(BaseLTL):
 		)
 		return access_token
 
-	def _headers(self, fc) -> dict:
+	def headers(self, fc) -> dict:
 		return {
-			"Authorization": f"Bearer {self._get_token(fc)}",
+			"Authorization": f"Bearer {self.get_token(fc)}",
 			"Content-Type": "application/json",
 			"Accept": "application/json",
 		}
 
-	def _url(self, fc, path: str) -> str:
+	def api_base(self, fc) -> str:
+		"""REST base including ``/api/v3``. Host-only URLs (common in desk) get ``/api/v3`` appended."""
 		base = (fc.base_url or "https://ws.integration.banyantechnology.com/api/v3").rstrip("/")
-		return f"{base}/{path.lstrip('/')}"
+		if "banyantechnology.com" in base and "/api/v3" not in base:
+			base = f"{base}/api/v3"
+		return base
+
+	def oauth_token_url(self, fc) -> str:
+		"""Banyan issues tokens at ``{host}/auth/connect/token``, not under ``/api/v3``."""
+		api = self.api_base(fc)
+		root = api[: -len("/api/v3")] if api.endswith("/api/v3") else api
+		return f"{root.rstrip('/')}/auth/connect/token"
+
+	def url(self, fc, path: str) -> str:
+		return f"{self.api_base(fc)}/{path.lstrip('/')}"
+
+	def raise_for_status(self, resp: httpx.Response, context: str = "") -> None:
+		"""Raise with Banyan's error body surfaced in the UI and error log."""
+		if resp.is_error:
+			try:
+				body = resp.json()
+			except Exception:
+				body = resp.text
+			detail = body if isinstance(body, str) else frappe.as_json(body, indent=2)
+			label = f" ({context})" if context else ""
+			# Include Allow header for 405 so we know which methods the endpoint accepts
+			if resp.status_code == 405 and resp.headers.get("allow"):
+				detail = f"Allowed methods: {resp.headers['allow']}\n\n{detail}"
+			frappe.log_error(
+				title=f"Banyan LTL {resp.status_code}{label}",
+				message=detail,
+			)
+			frappe.throw(
+				_("Banyan API error {0}{1}:\n{2}").format(resp.status_code, label, detail),
+				title=_("Banyan LTL Error"),
+			)
 
 	# ------------------------------------------------------------------
 	# Address helpers
 	# ------------------------------------------------------------------
 
 	@staticmethod
-	def _banyan_location(info: dict, is_shipper: bool = True) -> dict:
-		"""Convert ShipstationLTL.get_address_and_contact_info output → Banyan location block."""
+	def banyan_location(info: dict) -> dict:
+		"""Convert get_address_and_contact_info output → Banyan PascalCase location block.
+
+		Banyan requires both CompanyName and LocationName (separate from Address).
+		ContactPerson firstName/lastName are split from the full name.
+		"""
 		addr = info["address"]
 		contact = info["contact"]
+		company = addr.get("company_name") or ""
+		name_parts = (contact["name"] or "").split(" ", 1)
 		return {
-			"companyName": addr.get("company_name") or "",
-			"address": {
-				"address1": addr["address_line1"] or "",
-				"address2": addr.get("address_line2") or "",
-				"city": addr["city_locality"],
-				"stateOrProvince": addr["state_province"],
-				"zipCode": addr["postal_code"],
-				"country": "United States",  # Banyan expects full country name
+			"CompanyName": company,
+			"LocationName": company,
+			"Address": {
+				"LineOne": addr.get("address_line1") or "",
+				"LineTwo": addr.get("address_line2") or "",
+				"City": addr.get("city_locality") or "",
+				"StateOrProvince": addr.get("state_province") or "",
+				"ZipCode": addr.get("postal_code") or "",
+				"Country": "United States",
 			},
-			"contactPerson": {
-				"firstName": (contact["name"] or "").split(" ")[0],
-				"lastName": " ".join((contact["name"] or "").split(" ")[1:]) or "",
+			"ContactPerson": {
+				"FirstName": name_parts[0] if name_parts else "",
+				"LastName": name_parts[1] if len(name_parts) > 1 else "",
 			},
-			"contactMethods": {
-				"phoneNumber": contact["phone_number"],
-				"email": contact["email"],
+			"ContactMethods": {
+				"PhoneNumber": contact.get("phone_number") or "",
+				"Email": contact.get("email") or "",
 			},
 		}
 
@@ -215,67 +264,161 @@ class BanyanLTL(BaseLTL):
 	# Payload builders
 	# ------------------------------------------------------------------
 
-	def _build_handling_units(self, doc: Shipment) -> list[dict]:
-		"""Build Banyan handlingUnits[] from Shipment parcel groups."""
+	SHIP_TYPE_MAP = {
+		"Shipper": "Shipper",
+		"Consignee": "Consignee",
+		"Third Party": "ThirdParty",
+	}
+	PAY_TYPE_MAP = {
+		"Prepaid": "Prepaid",
+		"Collect": "Collect",
+		"Third Party": "ThirdParty",
+	}
+
+	def validate_pickup_date(self, doc: Shipment) -> str:
+		"""Return pickup_date as a string, throwing user-friendly errors if missing or past."""
+		from frappe.utils import getdate, today
+
+		pickup_date = doc.get("pickup_date")
+		if not pickup_date:
+			frappe.throw(_("Pickup Date is required for LTL shipments."), title=_("Missing Pickup Date"))
+		if getdate(pickup_date) < getdate(today()):
+			frappe.throw(
+				_("Pickup Date {0} is in the past. Please update it to today or a future date.").format(
+					pickup_date
+				),
+				title=_("Invalid Pickup Date"),
+			)
+		return str(pickup_date)
+
+	def build_handling_units(self, doc: Shipment) -> list[dict]:
+		"""Build Banyan HandlingUnits[] (PascalCase) from Shipment Delivery Note rows."""
 		ltl = ShipstationLTL()
 		packages = ltl.build_packages_from_sdn(doc)
 		units = []
 		for pkg in packages:
 			dims = pkg.get("dimensions", {})
-			unit_dims = {
-				"length": dims.get("length", 0),
-				"width": dims.get("width", 0),
-				"height": dims.get("height", 0),
-				"unitOfMeasurement": "IN",
-			}
+			# Banyan dim UOM: "IN" or "CM" — SDN stores inches by default
+			dim_uom = "IN" if (dims.get("unit") or "inches").startswith("inch") else "CM"
+			# Banyan weight UOM: "LBS" or "KGS"
+			wt_uom = "KGS" if (pkg["weight"].get("unit") or "pounds").startswith("kilo") else "LBS"
+
 			product = {
-				"description": pkg.get("description") or "",
-				"class": str(pkg.get("freight_class", "50")),
-				"weight": pkg["weight"]["value"],
-				"weightUnitOfMeasurement": "LBS",
-				"dimensions": unit_dims,
-				"quantity": int(pkg.get("quantity", 1)),
+				"PackageType": pkg.get("code") or "Pallets",
+				"Description": pkg.get("description") or "",
+				"Class": str(int(pkg.get("freight_class") or 50)),
+				"Weight": float(pkg["weight"]["value"]),
+				"WeightUnitOfMeasurement": wt_uom,
+				"Dimensions": {
+					"Length": float(dims.get("length", 0)),
+					"Width": float(dims.get("width", 0)),
+					"Height": float(dims.get("height", 0)),
+					"UnitOfMeasurement": dim_uom,
+				},
+				"Quantity": int(pkg.get("quantity", 1)),
 			}
 			if pkg.get("nmfc_code"):
-				product["nmfc"] = pkg["nmfc_code"]
+				product["Nmfc"] = pkg["nmfc_code"]
 
 			units.append(
 				{
-					"packageType": pkg.get("code") or "Pallets",
-					"quantity": int(pkg.get("quantity", 1)),
-					"products": [product],
+					"PackageType": pkg.get("code") or "Pallets",
+					"Quantity": int(pkg.get("quantity", 1)),
+					"Products": [product],
 				}
 			)
 		return units
 
-	def _build_accessorial_list(self, doc: Shipment) -> list[str]:
-		return [code for field, code in BANYAN_ACCESSORIAL_CODES.items() if doc.get(field)]
+	def build_ez_rate_payload(self, doc: Shipment, fc) -> dict:
+		"""Build the simpler Banyan POST /shipments/ezrate payload (zip-to-zip rating).
 
-	def _build_shipment_payload(self, doc: Shipment, fc) -> dict:
+		EZ Rate skips full address, company name, location name, and BillTo validation.
+		Only origin/destination postal codes, handling units, and service mode are required.
+		"""
+		pickup_date = self.validate_pickup_date(doc)
 		ltl = ShipstationLTL()
 		origin_info = ltl.get_address_and_contact_info(doc, ship_from=True)
 		dest_info = ltl.get_address_and_contact_info(doc, ship_from=False)
 
-		# Billing
-		billing_type = doc.get("billing_type") or "Shipper"
-		banyan_pay_type_map = {
-			"Shipper": "Prepaid",
-			"Consignee": "Collect",
-			"Third Party": "ThirdParty",
+		return {
+			"ImportAsStatus": "Pending",
+			"shouldRunRates": True,
+			"waitForRates": True,
+			"ShipmentData": {
+				"ShipType": self.SHIP_TYPE_MAP.get(doc.get("billing_type") or "Shipper", "Shipper"),
+				"PayType": self.PAY_TYPE_MAP.get(doc.get("payment_terms") or "Prepaid", "Prepaid"),
+				"PickupDate": pickup_date,
+				"ShipperLocation": {"Address": {"ZipCode": origin_info["address"].get("postal_code") or ""}},
+				"ConsigneeLocation": {"Address": {"ZipCode": dest_info["address"].get("postal_code") or ""}},
+				"HandlingUnits": self.build_handling_units(doc),
+				"Accessorials": self.build_accessorial_list(doc),
+				"ShipmentServices": [{"ServiceMode": "LTL", "Quantity": 1}],
+				"ReferenceNumber": doc.name,
+			},
 		}
 
+	def build_accessorial_list(self, doc: Shipment) -> list[str]:
+		return [code for field, code in BANYAN_ACCESSORIAL_CODES.items() if doc.get(field)]
+
+	def build_shipment_payload(self, doc: Shipment, fc) -> dict:
+		"""Build the full Banyan POST /shipments payload.
+
+		Banyan v3 wraps everything in ``ShipmentData`` with PascalCase field names.
+		``ImportAsStatus`` = "Pending" requests rate retrieval without booking.
+		``ShipType``  ← billing_type  (Shipper / Consignee / ThirdParty)
+		``PayType``   ← payment_terms (Prepaid / Collect)
+		``ShipmentServices`` must contain at least one entry; we always include "LTL".
+		"""
+		pickup_date = self.validate_pickup_date(doc)
+		ltl = ShipstationLTL()
+		origin_info = ltl.get_address_and_contact_info(doc, ship_from=True)
+		dest_info = ltl.get_address_and_contact_info(doc, ship_from=False)
+
+		billing_type = doc.get("billing_type") or "Shipper"
+		payment_terms = doc.get("payment_terms") or "Prepaid"
+
+		# BillTo: use shipper info for prepaid, consignee for collect
+		bill_info = origin_info if billing_type != "Consignee" else dest_info
+		bill_addr = bill_info["address"]
+		bill_contact = bill_info["contact"]
+		bill_to = {
+			"CompanyName": bill_addr.get("company_name") or "",
+			"Address": {
+				"LineOne": bill_addr.get("address_line1") or "",
+				"LineTwo": bill_addr.get("address_line2") or "",
+				"City": bill_addr.get("city_locality") or "",
+				"StateOrProvince": bill_addr.get("state_province") or "",
+				"ZipCode": bill_addr.get("postal_code") or "",
+				"Country": "United States",
+			},
+			"ContactMethods": {
+				"PhoneNumber": bill_contact.get("phone_number") or "",
+				"Email": bill_contact.get("email") or "",
+			},
+		}
+		if fc.account_number:
+			bill_to["AccountNumber"] = fc.account_number
+
+		shipment_data = {
+			"ShipType": self.SHIP_TYPE_MAP.get(billing_type, "Shipper"),
+			"PayType": self.PAY_TYPE_MAP.get(payment_terms, "Prepaid"),
+			"PickupDate": str(pickup_date),
+			"ShipperLocation": self.banyan_location(origin_info),
+			"ConsigneeLocation": self.banyan_location(dest_info),
+			"BillTo": bill_to,
+			"HandlingUnits": self.build_handling_units(doc),
+			"Accessorials": self.build_accessorial_list(doc),
+			# At least one ShipmentServiceDto is required; Quantity must be > 0
+			"ShipmentServices": [{"ServiceMode": "LTL", "Quantity": 1}],
+			"ReferenceNumber": doc.name,
+		}
+
+		# shouldRunRates / waitForRates are top-level flags (not inside ShipmentData)
 		return {
-			"shipperLocation": self._banyan_location(origin_info, is_shipper=True),
-			"consigneeLocation": self._banyan_location(dest_info, is_shipper=False),
-			"shipType": banyan_pay_type_map.get(billing_type, "Prepaid"),
-			"pickupDate": str(doc.get("pickup_date") or ""),
-			"handlingUnits": self._build_handling_units(doc),
-			"accessorials": self._build_accessorial_list(doc),
-			"referenceNumber": doc.name,
-			"clientRefNumber": fc.account_number or "",
-			# Rate retrieval mode: synchronous
-			"waitForRates": True,
+			"ImportAsStatus": "Pending",
 			"shouldRunRates": True,
+			"waitForRates": True,
+			"ShipmentData": shipment_data,
 		}
 
 	# ------------------------------------------------------------------
@@ -283,18 +426,20 @@ class BanyanLTL(BaseLTL):
 	# ------------------------------------------------------------------
 
 	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
-		"""POST /shipments and save one Shipment Quotation per quote returned."""
-		fc = self._get_fcs(doc, settings_name)
-		payload = self._build_shipment_payload(doc, fc)
+		"""POST /shipments (or /shipments/ezrate) and save one Shipment Quotation per quote."""
+		fc = self.get_fcs(doc, settings_name)
+		use_ez = bool(getattr(fc, "use_ez_rate", False))
+		endpoint = "/shipments/ezrate" if use_ez else "/shipments"
+		payload = self.build_ez_rate_payload(doc, fc) if use_ez else self.build_shipment_payload(doc, fc)
 
 		with httpx.Client() as client:
 			resp = client.post(
-				self._url(fc, "/shipments"),
+				self.url(fc, endpoint),
 				json=payload,
-				headers=self._headers(fc),
+				headers=self.headers(fc),
 				timeout=120,  # waitForRates can be slow
 			)
-		resp.raise_for_status()
+		self.raise_for_status(resp, f"get_ltl_quotes POST {endpoint}")
 		data = resp.json()
 
 		load_id = data.get("loadId") or data.get("id") or ""
@@ -334,12 +479,11 @@ class BanyanLTL(BaseLTL):
 			sq.insert(ignore_permissions=True)
 			saved += 1
 
-		frappe.db.commit()
 		return _("{0} Banyan carrier quote(s) saved as Shipment Quotation(s).").format(saved)
 
 	def schedule_ltl_pickup(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Book the accepted quote via POST /shipments/{loadId}/book."""
-		fc = self._get_fcs(doc, settings_name)
+		fc = self.get_fcs(doc, settings_name)
 
 		accepted_sq_name = doc.accepted_quotation or frappe.db.get_value(
 			"Shipment Quotation", {"shipment": doc.name, "docstatus": 1}, "name"
@@ -356,12 +500,12 @@ class BanyanLTL(BaseLTL):
 
 		with httpx.Client() as client:
 			resp = client.post(
-				self._url(fc, f"/shipments/{load_id}/book"),
+				self.url(fc, f"/shipments/{load_id}/book"),
 				json={"quoteId": int(quote_id)},
-				headers=self._headers(fc),
+				headers=self.headers(fc),
 				timeout=60,
 			)
-		resp.raise_for_status()
+		self.raise_for_status(resp, "schedule_ltl_pickup POST /book")
 		data = resp.json()
 
 		pro_number = data.get("proNumber") or data.get("bolNumber") or ""
@@ -400,19 +544,19 @@ class BanyanLTL(BaseLTL):
 
 	def cancel_shipment(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""POST /shipments/{loadId}/cancel."""
-		fc = self._get_fcs(doc, settings_name)
+		fc = self.get_fcs(doc, settings_name)
 		load_id = doc.get("shipment_id") or ""
 		if not load_id:
 			frappe.throw(_("No Banyan loadId (shipment_id) found on this Shipment."))
 
 		with httpx.Client() as client:
 			resp = client.post(
-				self._url(fc, f"/shipments/{load_id}/cancel"),
+				self.url(fc, f"/shipments/{load_id}/cancel"),
 				json={},
-				headers=self._headers(fc),
+				headers=self.headers(fc),
 				timeout=30,
 			)
-		resp.raise_for_status()
+		self.raise_for_status(resp, "cancel_shipment POST /cancel")
 		try:
 			data = resp.json()
 			return data.get("confirmationNumber") or data.get("cancellationId") or "cancelled"
@@ -421,35 +565,35 @@ class BanyanLTL(BaseLTL):
 
 	def track_shipment(self, doc: Shipment, settings_name: str | None = None) -> dict:
 		"""GET /tracking/statuses?loadId=..."""
-		fc = self._get_fcs(doc, settings_name)
+		fc = self.get_fcs(doc, settings_name)
 		load_id = doc.get("shipment_id") or ""
 		if not load_id:
 			return {}
 
 		with httpx.Client() as client:
 			resp = client.get(
-				self._url(fc, "/tracking/statuses"),
+				self.url(fc, "/tracking/statuses"),
 				params={"loadId": load_id},
-				headers=self._headers(fc),
+				headers=self.headers(fc),
 				timeout=30,
 			)
-		resp.raise_for_status()
+		self.raise_for_status(resp, "track_shipment GET /tracking/statuses")
 		return resp.json()
 
 	def get_documents(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
 		"""GET /shipments/{loadId}/documents."""
-		fc = self._get_fcs(doc, settings_name)
+		fc = self.get_fcs(doc, settings_name)
 		load_id = doc.get("shipment_id") or ""
 		if not load_id:
 			return []
 
 		with httpx.Client() as client:
 			resp = client.get(
-				self._url(fc, f"/shipments/{load_id}/documents"),
-				headers=self._headers(fc),
+				self.url(fc, f"/shipments/{load_id}/documents"),
+				headers=self.headers(fc),
 				timeout=30,
 			)
-		resp.raise_for_status()
+		self.raise_for_status(resp, "get_documents GET /documents")
 		data = resp.json()
 		raw_docs = data if isinstance(data, list) else data.get("documents") or []
 
