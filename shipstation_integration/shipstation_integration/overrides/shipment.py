@@ -14,6 +14,7 @@ the desk.
 """
 
 import json
+from typing import Any
 
 import frappe
 from erpnext.stock.doctype.shipment.shipment import Shipment
@@ -161,6 +162,107 @@ def supports_quote_or_spot_quote(doc: Shipment | str, settings_name: str | None 
 	doc = frappe.get_doc(json.loads(doc)) if isinstance(doc, str) else doc
 	ltl_class = get_ltl_provider(doc)
 	return ltl_class.supports_quote_or_spot_quote(doc, ltl_settings_name(settings_name))
+
+
+@frappe.whitelist()
+def fetch_ltl_quotes(doc: Shipment | str, settings_name: str | None = None) -> list[dict]:
+	"""Return available LTL quotes as a list of normalized dicts without saving anything.
+
+	The JS layer uses this to populate a selection dialog; the user then calls
+	``save_selected_ltl_quotes`` with only the quotes they want to keep.
+
+	Args:
+	doc: Shipment dict or JSON string.
+	settings_name: Optional Shipstation Settings document name.
+
+	Returns:
+	List of quote dicts (carrier_name, carrier_scac, offer_id, transaction_id,
+	service_level, total_price, currency, transit_days, estimated_delivery_date,
+	expiration_date, is_spot_quote, charges).
+	"""
+	if not doc:
+		frappe.throw(_("Missing Shipment data: pass ``doc`` as a JSON string in the POST body."))
+	doc = frappe.get_doc(json.loads(doc)) if isinstance(doc, str) else doc
+	ltl_class = get_ltl_provider(doc)
+	return ltl_class.fetch_ltl_offers(doc, ltl_settings_name(settings_name))
+
+
+@frappe.whitelist()
+def save_selected_ltl_quotes(shipment_name: str, selected_quotes: list | str) -> str:
+	"""Save only the quotes the user selected from the dialog as Shipment Quotation docs.
+
+	Args:
+	shipment_name: Name of the Shipment document.
+	selected_quotes: JSON list of normalized quote dicts returned by ``fetch_ltl_quotes``.
+
+	Returns:
+	Summary message string.
+	"""
+	parsed = json.loads(selected_quotes) if isinstance(selected_quotes, str) else selected_quotes
+	if not isinstance(parsed, list):
+		frappe.throw(_("Invalid quotes payload: expected a JSON array."))
+	if not parsed:
+		frappe.throw(_("No quotes selected."))
+
+	doc = frappe.get_doc("Shipment", shipment_name)
+	saved = 0
+	for raw in parsed:
+		if not isinstance(raw, dict):
+			frappe.throw(_("Each selected quote must be a JSON object."))
+		q: dict[str, Any] = raw
+		scac = q.get("carrier_scac") or ""
+		carrier_name = q.get("carrier_name") or "Unknown"
+
+		supplier_name = (
+			frappe.db.get_value("Supplier", {"ltl_carrier_scac": scac, "is_transporter": 1}, "name")
+			if scac
+			else None
+		)
+
+		sq = frappe.new_doc("Shipment Quotation")
+		sq.shipment = doc.name
+		sq.carrier = supplier_name or carrier_name
+		sq.carrier_scac = scac
+		sq.quote_or_offer_id = q.get("offer_id") or ""
+		sq.quote_or_offer_transaction_id = q.get("transaction_id") or ""
+		sq.service_level = q.get("service_level") or ""
+		sq.grand_total = float(q.get("total_price") or 0)
+		sq.pickup_date = doc.get("pickup_date")
+		sq.is_spot_quote = bool(q.get("is_spot_quote"))
+		if q.get("transit_days") is not None:
+			sq.estimated_delivery_days = float(q["transit_days"])
+		if q.get("estimated_delivery_date"):
+			sq.estimated_delivery_date = q["estimated_delivery_date"]
+		if q.get("expiration_date"):
+			try:
+				sq.expiration_date = q["expiration_date"][:10]
+			except Exception:
+				pass
+		for raw_charge in q.get("charges") or []:
+			if not isinstance(raw_charge, dict):
+				continue
+			charge: dict[str, Any] = raw_charge
+			amount_obj = charge.get("amount")
+			amount_inner = amount_obj if isinstance(amount_obj, dict) else {}
+			c_type = charge.get("type", "N/A").title()
+			amount = float(amount_inner.get("value", 0))
+			if c_type.lower() == "discount":
+				amount *= -1
+			if c_type.lower() == "total":
+				continue
+			sq.append(
+				"charges",
+				{
+					"type": c_type,
+					"amount": amount,
+					"currency": amount_inner.get("currency") or "USD",
+					"description": charge.get("description") or "",
+				},
+			)
+		sq.insert(ignore_permissions=True)
+		saved += 1
+
+	return _("{0} quote(s) saved as Shipment Quotation(s).").format(saved)
 
 
 @frappe.whitelist()

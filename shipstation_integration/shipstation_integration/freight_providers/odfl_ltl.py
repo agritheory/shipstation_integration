@@ -144,10 +144,6 @@ class OdflLTL(BaseLTL):
 	def __init__(self):
 		self.provider = "ODFL"
 
-	# ------------------------------------------------------------------
-	# Auth / request helpers
-	# ------------------------------------------------------------------
-
 	def get_fcs(self, doc: Shipment | None, settings_name: str | None):
 		if settings_name and frappe.db.exists("Freight Carrier Settings", settings_name):
 			return frappe.get_doc("Freight Carrier Settings", settings_name)
@@ -215,10 +211,6 @@ class OdflLTL(BaseLTL):
 	def iso3_country(two_letter: str) -> str:
 		return ISO2_TO_ISO3.get((two_letter or "").upper(), "USA")
 
-	# ------------------------------------------------------------------
-	# Address helpers
-	# ------------------------------------------------------------------
-
 	@staticmethod
 	def odfl_address(info: dict) -> dict:
 		"""Convert ShipstationLTL.get_address_and_contact_info output → ODFL address block."""
@@ -245,10 +237,6 @@ class OdflLTL(BaseLTL):
 				"email": contact["email"] or "",
 			},
 		}
-
-	# ------------------------------------------------------------------
-	# Rate estimate (SOAP)
-	# ------------------------------------------------------------------
 
 	def build_rate_soap(self, doc: Shipment, fc) -> str:
 		"""Build the ODFL SOAP rate request XML."""
@@ -327,10 +315,6 @@ class OdflLTL(BaseLTL):
 			"deliveryDate": find_text(body, "rate:deliveryDate"),
 		}
 
-	# ------------------------------------------------------------------
-	# eBOL payload builder
-	# ------------------------------------------------------------------
-
 	def build_ebol_payload(self, doc: Shipment, fc, reference_number: str = "") -> dict:
 		"""Build the REST eBOL creation payload."""
 		ltl = ShipstationLTL()
@@ -391,10 +375,6 @@ class OdflLTL(BaseLTL):
 			payload["accessorials"] = [{"code": c} for c in accessorial_codes]
 
 		return payload
-
-	# ------------------------------------------------------------------
-	# BaseLTL interface
-	# ------------------------------------------------------------------
 
 	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Call ODFL SOAP rate service and save one Shipment Quotation."""
@@ -632,10 +612,6 @@ class OdflLTL(BaseLTL):
 			for d in raw_docs
 			if d.get("content") or d.get("base64Document")
 		]
-
-	# ------------------------------------------------------------------
-	# Remaining BaseLTL methods
-	# ------------------------------------------------------------------
 
 	def book_shipment(self, doc: Shipment, settings_name: str | None = None) -> dict:
 		raise NotImplementedError("Use schedule_ltl_pickup for ODFL booking.")

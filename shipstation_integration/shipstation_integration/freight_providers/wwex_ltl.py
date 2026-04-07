@@ -36,7 +36,7 @@ from __future__ import annotations
 import base64
 import time
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import frappe
 import httpx
@@ -57,9 +57,6 @@ if TYPE_CHECKING:
 TOKEN_REFRESH_BUFFER = 60  # refresh token this many seconds before expiry
 
 
-# ---------------------------------------------------------------------------
-# Accessorial flag map: Shipment field name → WWEX shopFlow boolean key
-# ---------------------------------------------------------------------------
 WWEX_ACCESSORIAL_FLAGS: dict[str, str] = {
 	"additional_insurance_or_excess_value": "insuranceRequestFlag",
 	"appointment_required_at_delivery": "appointmentDeliveryFlag",
@@ -94,10 +91,6 @@ class WwexLTL(BaseLTL):
 	def __init__(self):
 		self.provider = "WWEX"
 
-	# ------------------------------------------------------------------
-	# Auth / request helpers
-	# ------------------------------------------------------------------
-
 	def get_fcs(self, doc: Shipment | None, settings_name: str | None):
 		if settings_name and frappe.db.exists("Freight Carrier Settings", settings_name):
 			return frappe.get_doc("Freight Carrier Settings", settings_name)
@@ -113,26 +106,64 @@ class WwexLTL(BaseLTL):
 		return fc
 
 	def get_token(self, fc) -> str:
+		"""Return a Bearer token via client_credentials grant.
+
+		Priority:
+		1. ``client_id`` / ``client_secret`` on FCS → POST to ``fc.auth_url``.
+		2. Connected App (legacy) → uses its client_id/secret and token_uri.
+
+		The ``audience`` FCS field (e.g. "wwex-apig") is added to the token
+		request when set. It is required by WWEX but optional for other providers.
+		"""
 		cache_key = f"wwex_token:{fc.name}"
 		cached = frappe.cache.get_value(cache_key)
 		if cached and cached.get("expires_at", 0) > time.time() + TOKEN_REFRESH_BUFFER:
 			return cached["access_token"]
 
-		app = frappe.get_doc("Connected App", fc.connected_app)
-		data = {
-			"grant_type": "client_credentials",
-			"client_id": app.client_id,
-			"client_secret": app.get_password("client_secret"),
-		}
-		# Extra params (e.g. audience=staging-wwex-apig) stored as query_parameters rows
-		for row in app.get("query_parameters") or []:
-			data[row.key] = row.value
+		client_id = fc.get_password("client_id", raise_exception=False) or ""
+		client_secret = fc.get_password("client_secret", raise_exception=False) or ""
+
+		if client_id and client_secret:
+			token_url = fc.auth_url or ""
+			if not token_url:
+				frappe.throw(
+					_(
+						"Auth / Token URL is not set on Freight Carrier Settings <b>{0}</b>. "
+						"For WWEX production set it to https://auth.wwex.com/oauth/token."
+					).format(fc.name),
+					title=_("Missing Token URL"),
+				)
+			data = {
+				"grant_type": "client_credentials",
+				"client_id": client_id,
+				"client_secret": client_secret,
+			}
+			if fc.audience:
+				data["audience"] = fc.audience
+		elif getattr(fc, "connected_app", None):
+			app = frappe.get_doc("Connected App", fc.connected_app)
+			token_url = app.token_uri
+			data = {
+				"grant_type": "client_credentials",
+				"client_id": app.client_id,
+				"client_secret": app.get_password("client_secret"),
+			}
+			for row in app.get("query_parameters") or []:
+				data[row.key] = row.value
+		else:
+			frappe.throw(
+				_(
+					"No credentials found on Freight Carrier Settings <b>{0}</b>. "
+					"Set Client ID, Client Secret, and Auth / Token URL, or link a Connected App."
+				).format(fc.name),
+				title=_("Missing WWEX Credentials"),
+			)
 
 		with httpx.Client() as client:
-			resp = client.post(app.token_uri, data=data, timeout=30)
-			resp.raise_for_status()
-			payload = resp.json()
+			resp = client.post(token_url, data=data, timeout=30)
+		self.raise_for_status(resp, "token")
 
+		payload = resp.json()
 		access_token = payload["access_token"]
 		expires_in = int(payload.get("expires_in", 3600))
 		frappe.cache.set_value(
@@ -141,6 +172,24 @@ class WwexLTL(BaseLTL):
 			expires_in_sec=expires_in,
 		)
 		return access_token
+
+	def raise_for_status(self, resp: httpx.Response, context: str = "") -> None:
+		"""Raise with WWEX's error body surfaced in the UI and error log."""
+		if resp.is_error:
+			try:
+				body = resp.json()
+			except Exception:
+				body = resp.text
+			detail = body if isinstance(body, str) else frappe.as_json(body, indent=2)
+			label = f" ({context})" if context else ""
+			frappe.log_error(
+				title=f"WWEX LTL {resp.status_code}{label}",
+				message=detail,
+			)
+			frappe.throw(
+				_("WWEX API error {0}{1}:\n{2}").format(resp.status_code, label, detail),
+				title=_("WWEX LTL Error"),
+			)
 
 	def headers(self, fc) -> dict:
 		return {
@@ -165,12 +214,8 @@ class WwexLTL(BaseLTL):
 				headers=self.headers(fc),
 				timeout=60,
 			)
-		resp.raise_for_status()
+		self.raise_for_status(resp, path)
 		return resp.json()
-
-	# ------------------------------------------------------------------
-	# Address helpers
-	# ------------------------------------------------------------------
 
 	@staticmethod
 	def wwex_address(info: dict) -> dict:
@@ -198,19 +243,20 @@ class WwexLTL(BaseLTL):
 			}
 		}
 
-	# ------------------------------------------------------------------
-	# Payload builders
-	# ------------------------------------------------------------------
+	# WWEX unit strings differ from the plural values stored in build_packages_from_sdn
+	WEIGHT_UNIT = {"pounds": "LB", "kilograms": "KG", "ounces": "OZ", "grams": "GM"}
+	DIM_UNIT = {"inches": "IN", "centimeters": "CM", "feet": "FT"}
 
 	def build_handling_units(self, doc: Shipment) -> list[dict]:
 		"""Build WWEX handlingUnitList from Shipment parcel groups."""
-		# Reuse ShipstationLTL's parcel grouping logic
 		ltl = ShipstationLTL()
 		packages = ltl.build_packages_from_sdn(doc)
 
 		units = []
 		for pkg in packages:
 			dims = pkg.get("dimensions", {})
+			wt_unit = self.WEIGHT_UNIT.get(pkg["weight"].get("unit", "pounds"), "LB")
+			dim_unit = self.DIM_UNIT.get(dims.get("unit", "inches"), "IN")
 			items = []
 			for i in range(int(pkg.get("quantity", 1))):
 				item: dict = {
@@ -219,7 +265,7 @@ class WwexLTL(BaseLTL):
 					"isHazMat": bool(doc.get("hazardous_material")),
 					"weight": {
 						"value": str(pkg["weight"]["value"]),
-						"unit": pkg["weight"]["unit"].upper()[:2],  # LB / KG
+						"unit": wt_unit,
 					},
 					"quantity": 1,
 				}
@@ -232,12 +278,12 @@ class WwexLTL(BaseLTL):
 				"quantity": int(pkg.get("quantity", 1)),
 				"weight": {
 					"value": str(pkg["weight"]["value"]),
-					"unit": pkg["weight"]["unit"].upper()[:2],
+					"unit": wt_unit,
 				},
 				"billedDimension": {
-					"length": {"value": str(dims.get("length", 0)), "unit": dims.get("unit", "IN").upper()[:2]},
-					"width": {"value": str(dims.get("width", 0)), "unit": dims.get("unit", "IN").upper()[:2]},
-					"height": {"value": str(dims.get("height", 0)), "unit": dims.get("unit", "IN").upper()[:2]},
+					"length": {"value": str(dims.get("length", 0)), "unit": dim_unit},
+					"width": {"value": str(dims.get("width", 0)), "unit": dim_unit},
+					"height": {"value": str(dims.get("height", 0)), "unit": dim_unit},
 				},
 				"shippedItemList": items,
 				"isMixedClass": False,
@@ -280,7 +326,10 @@ class WwexLTL(BaseLTL):
 		payload: dict = {
 			"productType": "LTL",
 			"shipment": {
-				"shipmentDate": str(doc.get("pickup_date") or ""),
+				"shipmentDate": "{} {}".format(
+					doc.get("pickup_date") or "",
+					str(doc.get("pickup_from") or "00:00:00").zfill(8),
+				),
 				"originAddress": origin,
 				"destinationAddress": dest,
 				"handlingUnitList": self.build_handling_units(doc),
@@ -296,37 +345,75 @@ class WwexLTL(BaseLTL):
 		payload["shipment"].update(self.build_accessorial_flags(doc))
 		return payload
 
-	# ------------------------------------------------------------------
-	# BaseLTL interface
-	# ------------------------------------------------------------------
+	def fetch_wwex_offers(self, doc: Shipment, fc) -> list[dict]:
+		"""Call shopFlow and return the raw offerList without saving."""
+		response = self.post(fc, "/svc/shopFlow", self.build_shop_payload(doc))
+		return response.get("response", {}).get("offerList", [])
+
+	def fetch_ltl_offers(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
+		"""Return WWEX shopFlow offers as normalized dicts without saving anything."""
+		fc = self.get_fcs(doc, settings_name)
+		offers = self.fetch_wwex_offers(doc, fc)
+		results: list[dict[str, Any]] = []
+		for offer in offers:
+			vendor = offer.get("primaryVendor") or {}
+			first_product = (offer.get("offeredProductList") or [{}])[0]
+			time_in_transit = (first_product.get("shopRQShipment") or {}).get("timeInTransit") or {}
+			offer_price = offer.get("totalOfferPrice") or {}
+			results.append(
+				{
+					"carrier_name": vendor.get("preferredName") or "WWEX",
+					"carrier_scac": vendor.get("scac") or "",
+					"offer_id": offer.get("offerId") or "",
+					"transaction_id": offer.get("productTransactionId") or "",
+					"service_level": (
+						time_in_transit.get("serviceDescription") or time_in_transit.get("serviceLevel") or ""
+					),
+					"total_price": float(offer_price.get("value") or 0),
+					"currency": offer_price.get("unit") or "USD",
+					"transit_days": time_in_transit.get("transitDays"),
+					"estimated_delivery_date": time_in_transit.get("estimatedDeliveryDate"),
+					"expiration_date": offer.get("expirationDate"),
+					"is_spot_quote": False,
+					"charges": [],
+				}
+			)
+		return results
 
 	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Call shopFlow and create one Shipment Quotation per carrier offer returned."""
 		fc = self.get_fcs(doc, settings_name)
-		response = self.post(fc, "/svc/shopFlow", self.build_shop_payload(doc))
+		offers = self.fetch_wwex_offers(doc, fc)
 
-		offers = response.get("response", {}).get("shipmentOfferList", [])
+		offers = offers or []
 		if not offers:
 			frappe.msgprint(_("WWEX returned no carrier offers for this shipment."))
 			return None
 
 		saved = 0
 		for offer in offers:
-			carrier_name = offer.get("carrierName") or "WWEX"
-			scac = offer.get("scac") or ""
-			offer_id = offer.get("shipmentOfferId") or ""
-			txn_id = response.get("response", {}).get("shipmentProductTransactionId") or ""
+			vendor = offer.get("primaryVendor") or {}
+			carrier_name = vendor.get("preferredName") or "WWEX"
+			scac = vendor.get("scac") or ""
+			offer_id = offer.get("offerId") or ""
+			txn_id = offer.get("productTransactionId") or ""
 
-			# Find or create a Supplier for this carrier
+			# Dig into the first offered product for transit/service details
+			first_product = (offer.get("offeredProductList") or [{}])[0]
+			time_in_transit = (first_product.get("shopRQShipment") or {}).get("timeInTransit") or {}
+			transit_days = time_in_transit.get("transitDays")
+			service_level = (
+				time_in_transit.get("serviceDescription") or time_in_transit.get("serviceLevel") or ""
+			)
+
 			supplier_name = (
 				frappe.db.get_value("Supplier", {"ltl_carrier_scac": scac, "is_transporter": 1}, "name")
 				if scac
 				else None
 			)
 
-			price = offer.get("price") or {}
-			net = float(price.get("netPrice") or price.get("totalPrice") or 0)
-			transit_days = offer.get("transitDays")
+			offer_price = offer.get("totalOfferPrice") or {}
+			net = float(offer_price.get("value") or 0)
 
 			sq = frappe.new_doc("Shipment Quotation")
 			sq.shipment = doc.name
@@ -334,7 +421,7 @@ class WwexLTL(BaseLTL):
 			sq.carrier_scac = scac
 			sq.quote_or_offer_id = offer_id
 			sq.quote_or_offer_transaction_id = txn_id
-			sq.service_level = offer.get("serviceDescription") or offer.get("serviceType") or ""
+			sq.service_level = service_level
 			sq.grand_total = net
 			sq.pickup_date = doc.get("pickup_date")
 			if transit_days is not None:
@@ -506,10 +593,6 @@ class WwexLTL(BaseLTL):
 				}
 			)
 		return documents
-
-	# ------------------------------------------------------------------
-	# Remaining BaseLTL stubs (WWEX is a broker — no carrier management)
-	# ------------------------------------------------------------------
 
 	def book_shipment(self, doc: Shipment, settings_name: str | None = None) -> dict:
 		# WWEX booking goes through schedule_ltl_pickup (quoteOrderFlow)

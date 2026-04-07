@@ -15,11 +15,6 @@ from shipstation_integration.tests.setup import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Shared mock infrastructure
-# ---------------------------------------------------------------------------
-
-
 class MockResponse:
 	def __init__(self, json_data=None, text="", status_code=200):
 		self._json = json_data
@@ -60,10 +55,6 @@ class MockHttpxClient:
 	def delete(self, *args, **kwargs):
 		return self.next_response()
 
-
-# ---------------------------------------------------------------------------
-# Fixture response data
-# ---------------------------------------------------------------------------
 
 SHOP_FLOW_RESPONSE = MockResponse(
 	json_data={
@@ -114,11 +105,6 @@ CANCEL_FLOW_RESPONSE = MockResponse(
 )
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def get_wwex_fcs_name():
 	return frappe.db.get_value("Supplier", {"supplier_name": "WWEX LTL", "is_transporter": 1}, "name")
 
@@ -140,11 +126,6 @@ def inject_wwex_token(fc_name):
 		f"wwex_token:{fc_name}",
 		{"access_token": "test-wwex-bearer-token", "expires_at": time.time() + 7200},
 	)
-
-
-# ---------------------------------------------------------------------------
-# get_ltl_quotes
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.order(100)
@@ -201,11 +182,6 @@ def test_wwex_get_ltl_quotes_no_offers_returns_none(monkeypatch):
 	result = provider.get_ltl_quotes(shipment, settings_name=settings_name)
 
 	assert result is None
-
-
-# ---------------------------------------------------------------------------
-# schedule_ltl_pickup
-# ---------------------------------------------------------------------------
 
 
 def create_wwex_accepted_quotation(shipment, settings_name):
@@ -283,11 +259,6 @@ def test_wwex_schedule_ltl_pickup_attaches_bol(monkeypatch):
 	assert len(attachments) >= 1
 
 
-# ---------------------------------------------------------------------------
-# cancel_shipment
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.order(112)
 def test_wwex_cancel_shipment_returns_confirmation(monkeypatch):
 	settings_name = get_wwex_settings_name()
@@ -308,11 +279,6 @@ def test_wwex_cancel_shipment_returns_confirmation(monkeypatch):
 	frappe.db.set_value("Shipment", shipment.name, "shipment_id", None)
 
 
-# ---------------------------------------------------------------------------
-# track_shipment
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.order(114)
 def test_wwex_track_shipment_calls_search_flow(monkeypatch):
 	settings_name = get_wwex_settings_name()
@@ -330,11 +296,6 @@ def test_wwex_track_shipment_calls_search_flow(monkeypatch):
 	assert "IN_TRANSIT" in str(result)
 
 	frappe.db.set_value("Shipment", shipment.name, "awb_number", None)
-
-
-# ---------------------------------------------------------------------------
-# get_documents
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.order(116)
@@ -358,11 +319,6 @@ def test_wwex_get_documents_returns_list(monkeypatch):
 	frappe.db.set_value("Shipment", shipment.name, "shipment_id", None)
 
 
-# ---------------------------------------------------------------------------
-# validate_required_shipment_form_fields
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.order(118)
 def test_wwex_validate_missing_pickup_address_returns_message():
 	doc = MagicMock()
@@ -379,11 +335,6 @@ def test_wwex_validate_complete_doc_returns_none():
 	provider = WwexLTL()
 	result = provider.validate_required_shipment_form_fields(shipment)
 	assert result is None
-
-
-# ---------------------------------------------------------------------------
-# Static / metadata methods
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.order(122)

@@ -123,7 +123,10 @@ override_doctype_class = {
 ltl_providers = {
 	"shipengine.com": "shipstation_integration.ltl.ShipstationLTL",
 	"shipstation.com": "shipstation_integration.ltl.ShipstationLTL",
+	# WWEX: staging uses speedship.staging-wwex.com (matches wwex.com),
+	# production uses www.speedship.com (matches speedship.com)
 	"wwex.com": "shipstation_integration.shipstation_integration.freight_providers.wwex_ltl.WwexLTL",
+	"speedship.com": "shipstation_integration.shipstation_integration.freight_providers.wwex_ltl.WwexLTL",
 	"banyantechnology.com": "shipstation_integration.shipstation_integration.freight_providers.banyan_ltl.BanyanLTL",
 	"odfl.com": "shipstation_integration.shipstation_integration.freight_providers.odfl_ltl.OdflLTL",
 }

@@ -134,6 +134,18 @@
    "label": "Account Number"
   },
   {
+   "description": "OAuth 2.0 token endpoint when different from base_url (e.g. WWEX: https://auth.wwex.com/oauth/token). Leave blank if the provider uses the same host for auth and API.",
+   "fieldname": "auth_url",
+   "fieldtype": "Data",
+   "label": "Auth / Token URL"
+  },
+  {
+   "description": "OAuth audience parameter (WWEX: wwex-apig for prod, staging-wwex-apig for staging). Leave blank if not required by the provider.",
+   "fieldname": "audience",
+   "fieldtype": "Data",
+   "label": "OAuth Audience"
+  },
+  {
    "description": "Banyan only: use the /shipments/ezrate endpoint (zip-to-zip rating) instead of the full /shipments endpoint. Useful when full address validation is not required.",
    "fieldname": "use_ez_rate",
    "fieldtype": "Check",

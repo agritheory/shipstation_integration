@@ -208,6 +208,10 @@ class BaseLTL:
 		"""
 		raise NotImplementedError
 
+	def fetch_ltl_offers(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
+		"""Return available LTL offers as normalized dicts without persisting. Override for quote-shop UIs."""
+		raise NotImplementedError
+
 	# def supports_scheduled_pickup(
 	# 	self, doc: Shipment, settings_name: str | None = None
 	# ) -> dict:

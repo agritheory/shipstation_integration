@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import base64
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import frappe
 import httpx
@@ -95,10 +95,6 @@ class BanyanLTL(BaseLTL):
 
 	def __init__(self):
 		self.provider = "Banyan"
-
-	# ------------------------------------------------------------------
-	# Auth / request helpers
-	# ------------------------------------------------------------------
 
 	def get_fcs(self, doc: Shipment | None, settings_name: str | None):
 		if settings_name and frappe.db.exists("Freight Carrier Settings", settings_name):
@@ -224,10 +220,6 @@ class BanyanLTL(BaseLTL):
 				title=_("Banyan LTL Error"),
 			)
 
-	# ------------------------------------------------------------------
-	# Address helpers
-	# ------------------------------------------------------------------
-
 	@staticmethod
 	def banyan_location(info: dict) -> dict:
 		"""Convert get_address_and_contact_info output → Banyan PascalCase location block.
@@ -259,10 +251,6 @@ class BanyanLTL(BaseLTL):
 				"Email": contact.get("email") or "",
 			},
 		}
-
-	# ------------------------------------------------------------------
-	# Payload builders
-	# ------------------------------------------------------------------
 
 	SHIP_TYPE_MAP = {
 		"Shipper": "Shipper",
@@ -421,13 +409,8 @@ class BanyanLTL(BaseLTL):
 			"ShipmentData": shipment_data,
 		}
 
-	# ------------------------------------------------------------------
-	# BaseLTL interface
-	# ------------------------------------------------------------------
-
-	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
-		"""POST /shipments (or /shipments/ezrate) and save one Shipment Quotation per quote."""
-		fc = self.get_fcs(doc, settings_name)
+	def fetch_banyan_offers(self, doc: Shipment, fc) -> tuple[str, list[dict]]:
+		"""Call the Banyan API and return (load_id, raw_quotes) without saving."""
 		use_ez = bool(getattr(fc, "use_ez_rate", False))
 		endpoint = "/shipments/ezrate" if use_ez else "/shipments"
 		payload = self.build_ez_rate_payload(doc, fc) if use_ez else self.build_shipment_payload(doc, fc)
@@ -437,13 +420,42 @@ class BanyanLTL(BaseLTL):
 				self.url(fc, endpoint),
 				json=payload,
 				headers=self.headers(fc),
-				timeout=120,  # waitForRates can be slow
+				timeout=120,
 			)
 		self.raise_for_status(resp, f"get_ltl_quotes POST {endpoint}")
 		data = resp.json()
+		return data.get("loadId") or data.get("id") or "", data.get("quotes") or []
 
-		load_id = data.get("loadId") or data.get("id") or ""
-		quotes = data.get("quotes") or []
+	def fetch_ltl_offers(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
+		"""Return Banyan quotes as normalized dicts without saving anything."""
+		fc = self.get_fcs(doc, settings_name)
+		load_id, quotes = self.fetch_banyan_offers(doc, fc)
+		results: list[dict[str, Any]] = []
+		for q in quotes:
+			scac = q.get("scac") or ""
+			raw_price = q.get("rawPrice") or {}
+			results.append(
+				{
+					"carrier_name": q.get("carrierName") or "Banyan",
+					"carrier_scac": scac,
+					"offer_id": str(q.get("quoteId") or ""),
+					"transaction_id": load_id,
+					"service_level": q.get("serviceDescription") or "",
+					"total_price": float(raw_price.get("netPrice") or raw_price.get("totalPrice") or 0),
+					"currency": "USD",
+					"transit_days": q.get("transitDays"),
+					"estimated_delivery_date": None,
+					"expiration_date": None,
+					"is_spot_quote": False,
+					"charges": [],
+				}
+			)
+		return results
+
+	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
+		"""POST /shipments (or /shipments/ezrate) and save one Shipment Quotation per quote."""
+		fc = self.get_fcs(doc, settings_name)
+		load_id, quotes = self.fetch_banyan_offers(doc, fc)
 
 		if not quotes:
 			frappe.msgprint(_("Banyan returned no quotes for this shipment."))
@@ -606,10 +618,6 @@ class BanyanLTL(BaseLTL):
 			}
 			for d in raw_docs
 		]
-
-	# ------------------------------------------------------------------
-	# Remaining BaseLTL methods
-	# ------------------------------------------------------------------
 
 	def book_shipment(self, doc: Shipment, settings_name: str | None = None) -> dict:
 		raise NotImplementedError("Use schedule_ltl_pickup for Banyan booking.")

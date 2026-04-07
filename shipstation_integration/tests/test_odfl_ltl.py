@@ -15,11 +15,6 @@ from shipstation_integration.tests.setup import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Shared mock infrastructure
-# ---------------------------------------------------------------------------
-
-
 class MockResponse:
 	def __init__(self, json_data=None, text="", status_code=200):
 		self._json = json_data
@@ -58,10 +53,6 @@ class MockHttpxClient:
 	def delete(self, *args, **kwargs):
 		return self.next_response()
 
-
-# ---------------------------------------------------------------------------
-# Fixture response data
-# ---------------------------------------------------------------------------
 
 TOKEN_RESPONSE = MockResponse(
 	json_data={"access_token": "odfl-bearer-token-001", "expires_in": 3600}
@@ -116,11 +107,6 @@ DOCUMENTS_RESPONSE = MockResponse(
 DELETE_OK_RESPONSE = MockResponse(json_data={"cancelled": True})
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def get_odfl_settings_name():
 	supplier = frappe.db.get_value(
 		"Supplier", {"supplier_name": "ODFL LTL", "is_transporter": 1}, "name"
@@ -158,11 +144,6 @@ def create_odfl_accepted_quotation(shipment):
 	return sq
 
 
-# ---------------------------------------------------------------------------
-# Static helpers — no DB, no HTTP
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.order(300)
 def test_odfl_iso3_country_converts_us():
 	assert OdflLTL._iso3_country("US") == "USA"
@@ -190,11 +171,6 @@ def test_odfl_parse_rate_response_extracts_fields():
 def test_odfl_parse_rate_response_returns_empty_on_bad_xml():
 	result = OdflLTL._parse_rate_response("this is not xml <<<")
 	assert result == {}
-
-
-# ---------------------------------------------------------------------------
-# get_ltl_quotes
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.order(310)
@@ -255,11 +231,6 @@ def test_odfl_get_ltl_quotes_no_total_returns_none(monkeypatch):
 	assert result is None
 
 
-# ---------------------------------------------------------------------------
-# schedule_ltl_pickup
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.order(316)
 def test_odfl_schedule_ltl_pickup_sets_awb_number(monkeypatch):
 	settings_name = get_odfl_settings_name()
@@ -318,11 +289,6 @@ def test_odfl_schedule_ltl_pickup_attaches_bol(monkeypatch):
 	assert len(attachments) >= 1
 
 
-# ---------------------------------------------------------------------------
-# cancel_shipment
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.order(322)
 def test_odfl_cancel_shipment_cancels_pickup_and_bol(monkeypatch):
 	settings_name = get_odfl_settings_name()
@@ -348,11 +314,6 @@ def test_odfl_cancel_shipment_cancels_pickup_and_bol(monkeypatch):
 	frappe.db.set_value("Shipment", shipment.name, "pickup_id", None)
 
 
-# ---------------------------------------------------------------------------
-# track_shipment
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.order(324)
 def test_odfl_track_shipment_returns_status(monkeypatch):
 	settings_name = get_odfl_settings_name()
@@ -370,11 +331,6 @@ def test_odfl_track_shipment_returns_status(monkeypatch):
 	assert "IN_TRANSIT" in str(result)
 
 	frappe.db.set_value("Shipment", shipment.name, "awb_number", None)
-
-
-# ---------------------------------------------------------------------------
-# get_documents
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.order(326)
@@ -396,11 +352,6 @@ def test_odfl_get_documents_returns_list(monkeypatch):
 	assert "BOL" in doc_type
 
 	frappe.db.set_value("Shipment", shipment.name, "awb_number", None)
-
-
-# ---------------------------------------------------------------------------
-# Static / metadata methods
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.order(328)

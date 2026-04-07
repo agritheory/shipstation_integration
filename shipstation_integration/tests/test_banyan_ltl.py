@@ -14,11 +14,6 @@ from shipstation_integration.tests.setup import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Shared mock infrastructure
-# ---------------------------------------------------------------------------
-
-
 class MockResponse:
 	def __init__(self, json_data=None, text="", status_code=200):
 		self._json = json_data
@@ -58,10 +53,6 @@ class MockHttpxClient:
 		return self.next_response()
 
 
-# ---------------------------------------------------------------------------
-# Fixture response data
-# ---------------------------------------------------------------------------
-
 SHIPMENTS_RESPONSE = MockResponse(
 	json_data={
 		"loadId": "load-banyan-001",
@@ -91,11 +82,6 @@ TRACKING_RESPONSE = MockResponse(json_data={"status": "DELIVERED", "loadId": "lo
 CANCEL_RESPONSE = MockResponse(json_data={"confirmationNumber": "CANCEL-BAN-001"})
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def get_banyan_settings_name():
 	supplier = frappe.db.get_value(
 		"Supplier", {"supplier_name": "Banyan LTL", "is_transporter": 1}, "name"
@@ -123,11 +109,6 @@ def create_banyan_accepted_quotation(shipment, settings_name):
 	sq.submit()
 	frappe.db.set_value("Shipment", shipment.name, "accepted_quotation", sq.name)
 	return sq
-
-
-# ---------------------------------------------------------------------------
-# get_ltl_quotes
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.order(200)
@@ -181,11 +162,6 @@ def test_banyan_get_ltl_quotes_no_quotes_returns_none(monkeypatch):
 	result = provider.get_ltl_quotes(shipment, settings_name=settings_name)
 
 	assert result is None
-
-
-# ---------------------------------------------------------------------------
-# schedule_ltl_pickup
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.order(206)
@@ -243,11 +219,6 @@ def test_banyan_schedule_ltl_pickup_attaches_bol(monkeypatch):
 	assert len(attachments) >= 1
 
 
-# ---------------------------------------------------------------------------
-# cancel_shipment
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.order(212)
 def test_banyan_cancel_shipment_returns_confirmation(monkeypatch):
 	settings_name = get_banyan_settings_name()
@@ -267,11 +238,6 @@ def test_banyan_cancel_shipment_returns_confirmation(monkeypatch):
 	frappe.db.set_value("Shipment", shipment.name, "shipment_id", None)
 
 
-# ---------------------------------------------------------------------------
-# track_shipment
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.order(214)
 def test_banyan_track_shipment_returns_status(monkeypatch):
 	settings_name = get_banyan_settings_name()
@@ -288,11 +254,6 @@ def test_banyan_track_shipment_returns_status(monkeypatch):
 	assert "DELIVERED" in str(result)
 
 	frappe.db.set_value("Shipment", shipment.name, "shipment_id", None)
-
-
-# ---------------------------------------------------------------------------
-# get_documents
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.order(216)
@@ -315,11 +276,6 @@ def test_banyan_get_documents_returns_list(monkeypatch):
 	frappe.db.set_value("Shipment", shipment.name, "shipment_id", None)
 
 
-# ---------------------------------------------------------------------------
-# validate_required_shipment_form_fields
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.order(218)
 def test_banyan_validate_missing_delivery_address_returns_message():
 	doc = MagicMock()
@@ -338,11 +294,6 @@ def test_banyan_validate_complete_doc_returns_none():
 	provider = BanyanLTL()
 	result = provider.validate_required_shipment_form_fields(shipment)
 	assert result is None
-
-
-# ---------------------------------------------------------------------------
-# Static / metadata methods
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.order(222)

@@ -238,16 +238,17 @@ async function show_quote_and_spot_quote_fields(frm) {
 				) {
 					frm.add_custom_button(__('Get LTL Quotes'), () => {
 						frappe.call({
-							method: 'shipstation_integration.shipstation_integration.overrides.shipment.get_ltl_quotes',
-							args: {
-								doc: frm.doc,
-								settings_name: null,
-							},
+							method: 'shipstation_integration.shipstation_integration.overrides.shipment.fetch_ltl_quotes',
+							args: { doc: frm.doc, settings_name: null },
 							freeze: true,
+							freeze_message: __('Fetching LTL quotes…'),
 							callback: function (r) {
-								if (r) {
-									frappe.msgprint(__(r))
+								const quotes = r && r.message
+								if (!quotes || !quotes.length) {
+									frappe.msgprint(__('No LTL quotes returned for this shipment.'))
+									return
 								}
+								show_ltl_quote_selection_dialog(frm, quotes)
 							},
 						})
 					})
@@ -256,6 +257,75 @@ async function show_quote_and_spot_quote_fields(frm) {
 				}
 			}
 		})
+}
+
+function show_ltl_quote_selection_dialog(frm, quotes) {
+	const fmt_currency = (val, currency) => `${currency || 'USD'} ${parseFloat(val || 0).toFixed(2)}`
+	const fmt_days = d => (d != null ? `${d} day${d !== 1 ? 's' : ''}` : '—')
+
+	const rows = quotes
+		.map(
+			(q, i) => `
+		<tr>
+			<td class="text-center"><input type="checkbox" class="ltl-quote-check" data-idx="${i}"></td>
+			<td>${frappe.utils.escape_html(q.carrier_name || '')}${q.carrier_scac ? ` <small class="text-muted">(${q.carrier_scac})</small>` : ''}</td>
+			<td>${frappe.utils.escape_html(q.service_level || '—')}</td>
+			<td class="text-center">${fmt_days(q.transit_days)}</td>
+			<td class="text-right"><strong>${fmt_currency(q.total_price, q.currency)}</strong></td>
+		</tr>`
+		)
+		.join('')
+
+	const html = `
+		<div style="margin-bottom:8px">
+			<label><input type="checkbox" id="ltl-select-all"> <strong>${__('Select all')}</strong></label>
+		</div>
+		<table class="table table-bordered table-condensed" style="margin-bottom:0">
+			<thead>
+				<tr>
+					<th style="width:36px"></th>
+					<th>${__('Carrier')}</th>
+					<th>${__('Service')}</th>
+					<th class="text-center">${__('Transit')}</th>
+					<th class="text-right">${__('Total')}</th>
+				</tr>
+			</thead>
+			<tbody>${rows}</tbody>
+		</table>`
+
+	const d = new frappe.ui.Dialog({
+		title: __(`${quotes.length} LTL Quote(s) Received — Select to Save`),
+		fields: [{ fieldtype: 'HTML', options: html }],
+		primary_action_label: __('Save Selected'),
+		primary_action() {
+			const selected = []
+			d.$body.find('.ltl-quote-check:checked').each(function () {
+				selected.push(quotes[parseInt($(this).data('idx'))])
+			})
+			if (!selected.length) {
+				frappe.msgprint(__('Please select at least one quote to save.'))
+				return
+			}
+			frappe.call({
+				method: 'shipstation_integration.shipstation_integration.overrides.shipment.save_selected_ltl_quotes',
+				args: {
+					shipment_name: frm.doc.name,
+					selected_quotes: selected,
+				},
+				freeze: true,
+				callback(r) {
+					d.hide()
+					if (r && r.message) frappe.msgprint(r.message)
+				},
+			})
+		},
+	})
+
+	d.show()
+
+	d.$body.find('#ltl-select-all').on('change', function () {
+		d.$body.find('.ltl-quote-check').prop('checked', this.checked)
+	})
 }
 
 function add_schedule_pickup_button(frm) {

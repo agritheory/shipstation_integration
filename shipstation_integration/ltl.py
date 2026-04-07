@@ -472,6 +472,62 @@ class ShipstationLTL(BaseLTL):
 		)
 		return msg
 
+	def fetch_ltl_offers(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
+		"""Return quotes from the API as a list of normalized dicts without saving anything.
+
+		Each dict contains the fields needed to create a Shipment Quotation:
+		``carrier_name``, ``carrier_scac``, ``offer_id``, ``transaction_id``,
+		``service_level``, ``total_price``, ``currency``, ``transit_days``,
+		``estimated_delivery_date``, ``expiration_date``, ``is_spot_quote``, ``charges``.
+		"""
+		self.validate_carrier_and_id(doc, settings_name)
+		carrier_id = doc.carrier_id
+
+		quote_support = self.supports_quote_or_spot_quote(doc, settings_name)
+		supports_spot_quote = quote_support.get("supports_spot_quote")
+		is_spot_quote = bool(supports_spot_quote and doc.request_spot_quote)
+
+		if not quote_support.get("supports_quote") and not supports_spot_quote:
+			return []
+		if not quote_support.get("supports_quote") and supports_spot_quote:
+			is_spot_quote = True
+
+		if is_spot_quote:
+			raw = self.request_ltl_spot_quote(carrier_id, doc, settings_name)
+		else:
+			raw = self.request_ltl_quote(carrier_id, doc, settings_name)
+
+		carrier_scac = frappe.db.get_value("Supplier", doc.preferred_carrier, "ltl_carrier_scac") or ""
+		results = []
+		for quote in raw:
+			charges = quote.get("charges", [])
+			total = next(
+				(float(c["amount"]["value"]) for c in charges if c.get("type", "").lower() == "total"),
+				sum(
+					float(c.get("amount", {}).get("value", 0))
+					* (-1 if c.get("type", "").lower() == "discount" else 1)
+					for c in charges
+				),
+			)
+			currency = next((c.get("amount", {}).get("currency") for c in charges), "USD") or "USD"
+			results.append(
+				{
+					"carrier_name": doc.preferred_carrier or "Unknown",
+					"carrier_scac": carrier_scac,
+					"offer_id": quote.get("quote_id") or "",
+					"transaction_id": "",
+					"service_level": (quote.get("service") or {}).get("carrier_description") or "",
+					"total_price": total,
+					"currency": currency,
+					"transit_days": quote.get("estimated_delivery_days"),
+					"estimated_delivery_date": quote.get("estimated_delivery_date"),
+					"expiration_date": quote.get("expiration_date"),
+					"is_spot_quote": is_spot_quote,
+					"charges": charges,
+				}
+			)
+		return results
+
 	def save_ltl_quotes_as_shipment_quotations_and_display(
 		self,
 		doc: Shipment,
