@@ -295,6 +295,7 @@ function show_ltl_quote_selection_dialog(frm, quotes) {
 
 	const d = new frappe.ui.Dialog({
 		title: __(`${quotes.length} LTL Quote(s) Received — Select to Save`),
+		size: 'extra-large',
 		fields: [{ fieldtype: 'HTML', options: html }],
 		primary_action_label: __('Save Selected'),
 		primary_action() {

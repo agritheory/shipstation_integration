@@ -6,7 +6,8 @@
 Workflow
 --------
 1. ``get_ltl_quotes``
-   POST /shipments  (``waitForRates: true``)
+   POST /shipments with ``ImportAsStatus: Quoted`` and ``waitForRates: true`` so rates
+   are included in the response (Pending returns before quotes are ready).
    Saves one Shipment Quotation per quote returned.
    ``quote_or_offer_id``             = Banyan ``quoteId`` (integer)
    ``quote_or_offer_transaction_id`` = Banyan ``loadId``
@@ -263,6 +264,31 @@ class BanyanLTL(BaseLTL):
 		"Third Party": "ThirdParty",
 	}
 
+	def build_banyan_bill_to(self, doc: Shipment, fc, origin_info: dict, dest_info: dict) -> dict:
+		"""BillTo from shipper (prepaid / third party) or consignee (collect), matching Banyan DTO."""
+		billing_type = doc.get("billing_type") or "Shipper"
+		bill_info = origin_info if billing_type != "Consignee" else dest_info
+		bill_addr = bill_info["address"]
+		bill_contact = bill_info["contact"]
+		bill_to = {
+			"CompanyName": bill_addr.get("company_name") or "",
+			"Address": {
+				"LineOne": bill_addr.get("address_line1") or "",
+				"LineTwo": bill_addr.get("address_line2") or "",
+				"City": bill_addr.get("city_locality") or "",
+				"StateOrProvince": bill_addr.get("state_province") or "",
+				"ZipCode": bill_addr.get("postal_code") or "",
+				"Country": "United States",
+			},
+			"ContactMethods": {
+				"PhoneNumber": bill_contact.get("phone_number") or "",
+				"Email": bill_contact.get("email") or "",
+			},
+		}
+		if fc.account_number:
+			bill_to["AccountNumber"] = fc.account_number
+		return bill_to
+
 	def validate_pickup_date(self, doc: Shipment) -> str:
 		"""Return pickup_date as a string, throwing user-friendly errors if missing or past."""
 		from frappe.utils import getdate, today
@@ -318,26 +344,32 @@ class BanyanLTL(BaseLTL):
 		return units
 
 	def build_ez_rate_payload(self, doc: Shipment, fc) -> dict:
-		"""Build the simpler Banyan POST /shipments/ezrate payload (zip-to-zip rating).
+		"""Build Banyan EZ Rate payload for POST /shipments.
 
-		EZ Rate skips full address, company name, location name, and BillTo validation.
-		Only origin/destination postal codes, handling units, and service mode are required.
+		``isEzRate`` relaxes some full-shipment rules, but city/state/country and BillTo are
+		still required; we send the same location and BillTo shapes as the full payload.
 		"""
 		pickup_date = self.validate_pickup_date(doc)
 		ltl = ShipstationLTL()
 		origin_info = ltl.get_address_and_contact_info(doc, ship_from=True)
 		dest_info = ltl.get_address_and_contact_info(doc, ship_from=False)
+		billing_type = doc.get("billing_type") or "Shipper"
+		payment_terms = doc.get("payment_terms") or "Prepaid"
 
 		return {
-			"ImportAsStatus": "Pending",
+			# Quoted + waitForRates: Banyan only waits for carrier rates when status is Quoted;
+			# Pending returns before quotes are populated (empty quotes[]).
+			"ImportAsStatus": "Quoted",
 			"shouldRunRates": True,
 			"waitForRates": True,
+			"isEzRate": True,
 			"ShipmentData": {
-				"ShipType": self.SHIP_TYPE_MAP.get(doc.get("billing_type") or "Shipper", "Shipper"),
-				"PayType": self.PAY_TYPE_MAP.get(doc.get("payment_terms") or "Prepaid", "Prepaid"),
+				"ShipType": self.SHIP_TYPE_MAP.get(billing_type, "Shipper"),
+				"PayType": self.PAY_TYPE_MAP.get(payment_terms, "Prepaid"),
 				"PickupDate": pickup_date,
-				"ShipperLocation": {"Address": {"ZipCode": origin_info["address"].get("postal_code") or ""}},
-				"ConsigneeLocation": {"Address": {"ZipCode": dest_info["address"].get("postal_code") or ""}},
+				"ShipperLocation": self.banyan_location(origin_info),
+				"ConsigneeLocation": self.banyan_location(dest_info),
+				"BillTo": self.build_banyan_bill_to(doc, fc, origin_info, dest_info),
 				"HandlingUnits": self.build_handling_units(doc),
 				"Accessorials": self.build_accessorial_list(doc),
 				"ShipmentServices": [{"ServiceMode": "LTL", "Quantity": 1}],
@@ -352,7 +384,8 @@ class BanyanLTL(BaseLTL):
 		"""Build the full Banyan POST /shipments payload.
 
 		Banyan v3 wraps everything in ``ShipmentData`` with PascalCase field names.
-		``ImportAsStatus`` = "Pending" requests rate retrieval without booking.
+		Use ``ImportAsStatus`` = "Quoted" with ``waitForRates`` so the create response
+		includes carrier quotes (see Banyan Create Shipment docs).
 		``ShipType``  ← billing_type  (Shipper / Consignee / ThirdParty)
 		``PayType``   ← payment_terms (Prepaid / Collect)
 		``ShipmentServices`` must contain at least one entry; we always include "LTL".
@@ -365,35 +398,13 @@ class BanyanLTL(BaseLTL):
 		billing_type = doc.get("billing_type") or "Shipper"
 		payment_terms = doc.get("payment_terms") or "Prepaid"
 
-		# BillTo: use shipper info for prepaid, consignee for collect
-		bill_info = origin_info if billing_type != "Consignee" else dest_info
-		bill_addr = bill_info["address"]
-		bill_contact = bill_info["contact"]
-		bill_to = {
-			"CompanyName": bill_addr.get("company_name") or "",
-			"Address": {
-				"LineOne": bill_addr.get("address_line1") or "",
-				"LineTwo": bill_addr.get("address_line2") or "",
-				"City": bill_addr.get("city_locality") or "",
-				"StateOrProvince": bill_addr.get("state_province") or "",
-				"ZipCode": bill_addr.get("postal_code") or "",
-				"Country": "United States",
-			},
-			"ContactMethods": {
-				"PhoneNumber": bill_contact.get("phone_number") or "",
-				"Email": bill_contact.get("email") or "",
-			},
-		}
-		if fc.account_number:
-			bill_to["AccountNumber"] = fc.account_number
-
 		shipment_data = {
 			"ShipType": self.SHIP_TYPE_MAP.get(billing_type, "Shipper"),
 			"PayType": self.PAY_TYPE_MAP.get(payment_terms, "Prepaid"),
 			"PickupDate": str(pickup_date),
 			"ShipperLocation": self.banyan_location(origin_info),
 			"ConsigneeLocation": self.banyan_location(dest_info),
-			"BillTo": bill_to,
+			"BillTo": self.build_banyan_bill_to(doc, fc, origin_info, dest_info),
 			"HandlingUnits": self.build_handling_units(doc),
 			"Accessorials": self.build_accessorial_list(doc),
 			# At least one ShipmentServiceDto is required; Quantity must be > 0
@@ -403,28 +414,292 @@ class BanyanLTL(BaseLTL):
 
 		# shouldRunRates / waitForRates are top-level flags (not inside ShipmentData)
 		return {
-			"ImportAsStatus": "Pending",
+			"ImportAsStatus": "Quoted",
 			"shouldRunRates": True,
 			"waitForRates": True,
 			"ShipmentData": shipment_data,
 		}
 
+	@staticmethod
+	def parse_create_shipment_response(data: Any) -> tuple[str, list[dict]]:
+		"""loadId and quotes from POST /shipments JSON (camelCase or PascalCase keys)."""
+		if not isinstance(data, dict):
+			return "", []
+		lid = data.get("loadId")
+		if lid is None:
+			lid = data.get("LoadId")
+		if lid is None:
+			lid = data.get("id")
+		load_id_str = str(lid) if lid is not None else ""
+		raw = data.get("quotes")
+		if raw is None:
+			raw = data.get("Quotes")
+		quotes = raw if isinstance(raw, list) else []
+		return load_id_str, quotes
+
+	@staticmethod
+	def normalize_banyan_quote(q: dict) -> dict[str, Any]:
+		"""One QuoteDto into uniform keys (handles PascalCase and alternate field names)."""
+		rp = q.get("rawPrice") or q.get("RawPrice") or {}
+		transit = q.get("transitDays")
+		if transit is None:
+			transit = q.get("transitTime")
+		if transit is None:
+			transit = q.get("TransitTime")
+		svc = q.get("serviceDescription") or q.get("service") or q.get("Service") or ""
+		qid = q.get("quoteId")
+		if qid is None:
+			qid = q.get("QuoteId")
+		return {
+			"carrierName": q.get("carrierName") or q.get("CarrierName") or "Banyan",
+			"scac": q.get("scac") or q.get("Scac") or "",
+			"quoteId": qid,
+			"rawPrice": rp if isinstance(rp, dict) else {},
+			"transitDays": transit,
+			"serviceDescription": svc,
+		}
+
+	@staticmethod
+	def banyan_price_dto_total(d: Any) -> float:
+		"""Best total from one QuotePriceDto (camelCase or PascalCase; line items if totals are 0)."""
+		if not isinstance(d, dict):
+			return 0.0
+
+		def to_float(v: Any) -> float | None:
+			if v is None:
+				return None
+			try:
+				return float(v)
+			except (TypeError, ValueError):
+				return None
+
+		for key in ("netPrice", "NetPrice", "totalPrice", "TotalPrice", "grossCharge", "GrossCharge"):
+			f = to_float(d.get(key))
+			if f is not None and f != 0:
+				return f
+
+		charges = d.get("charges") or d.get("Charges")
+		if isinstance(charges, list) and charges:
+			ch_sum = 0.0
+			for ch in charges:
+				if not isinstance(ch, dict):
+					continue
+				f = to_float(ch.get("amount") or ch.get("Amount"))
+				if f is not None:
+					ch_sum += f
+			if ch_sum != 0:
+				return ch_sum
+
+		parts: list[float] = []
+		for a, b in (
+			("freightCharge", "FreightCharge"),
+			("fuelSurcharge", "FuelSurcharge"),
+			("accessorialCharges", "AccessorialCharges"),
+			("otherCharges", "OtherCharges"),
+			("tariff", "Tariff"),
+			("interline", "Interline"),
+			("minimum", "Minimum"),
+		):
+			f = to_float(d.get(a))
+			if f is None:
+				f = to_float(d.get(b))
+			if f is not None:
+				parts.append(f)
+		# Do not subtract discountAmount here: Banyan often exposes list/tariff discount in that
+		# field while freight/fuel aggregates are already net and match netPrice (see grand_total).
+		total = sum(parts)
+		if total != 0:
+			return max(total, 0.0)
+		return 0.0
+
+	@staticmethod
+	def banyan_quote_monetary_total(q: dict) -> float:
+		"""Quote row total: prefer customer (sell), then carrier, then raw carrier pricing."""
+		if not isinstance(q, dict):
+			return 0.0
+		for keys in (
+			("customerPrice", "CustomerPrice"),
+			("carrierPrice", "CarrierPrice"),
+			("rawPrice", "RawPrice"),
+		):
+			block: dict | None = None
+			for k in keys:
+				cand = q.get(k)
+				if isinstance(cand, dict):
+					block = cand
+					break
+			if block is not None:
+				t = BanyanLTL.banyan_price_dto_total(block)
+				if t > 0:
+					return t
+		return 0.0
+
+	@staticmethod
+	def banyan_currency_from_quote(q: dict) -> str:
+		ct = q.get("currencyType") if q.get("currencyType") is not None else q.get("CurrencyType")
+		if isinstance(ct, str) and len(ct) >= 3:
+			return ct.strip().upper()[:3]
+		if isinstance(ct, dict):
+			name = ct.get("name") or ct.get("value")
+			if isinstance(name, str) and len(name) >= 3:
+				return name.strip().upper()[:3]
+		return "USD"
+
+	@staticmethod
+	def banyan_price_block_used_for_total(q: dict) -> dict | None:
+		"""Same customer → carrier → raw precedence as ``banyan_quote_monetary_total``."""
+		if not isinstance(q, dict):
+			return None
+		for keys in (
+			("customerPrice", "CustomerPrice"),
+			("carrierPrice", "CarrierPrice"),
+			("rawPrice", "RawPrice"),
+		):
+			block: dict | None = None
+			for k in keys:
+				cand = q.get(k)
+				if isinstance(cand, dict):
+					block = cand
+					break
+			if block is not None and BanyanLTL.banyan_price_dto_total(block) > 0:
+				return block
+		return None
+
+	@staticmethod
+	def banyan_fallback_price_block(q: dict) -> dict | None:
+		if not isinstance(q, dict):
+			return None
+		for keys in (
+			("customerPrice", "CustomerPrice"),
+			("carrierPrice", "CarrierPrice"),
+			("rawPrice", "RawPrice"),
+		):
+			for k in keys:
+				cand = q.get(k)
+				if isinstance(cand, dict):
+					return cand
+		return None
+
+	@staticmethod
+	def charges_from_banyan_price_dto_block(block: dict, curr: str) -> list[dict]:
+		"""Line items from one ``QuotePriceDto`` (``charges[]`` or aggregate fields)."""
+
+		def to_float(v: Any) -> float | None:
+			if v is None:
+				return None
+			try:
+				return float(v)
+			except (TypeError, ValueError):
+				return None
+
+		out: list[dict[str, Any]] = []
+		raw_charges = block.get("charges") or block.get("Charges") or []
+		if isinstance(raw_charges, list):
+			for ch in raw_charges:
+				if not isinstance(ch, dict):
+					continue
+				name = ch.get("name") or ch.get("Name") or ""
+				code = ch.get("code") or ch.get("Code") or ""
+				label = (name or code or "Charge").strip() or "Charge"
+				amt = ch.get("amount") if ch.get("amount") is not None else ch.get("Amount")
+				f = to_float(amt)
+				if f is None or f == 0:
+					continue
+				out.append(
+					{
+						"type": label[:140],
+						"amount": {"value": f, "currency": curr},
+						"description": (code or "")[:140],
+					}
+				)
+
+		if not out:
+			for label, a, b in (
+				("Freight", "freightCharge", "FreightCharge"),
+				("Fuel surcharge", "fuelSurcharge", "FuelSurcharge"),
+				("Accessorials", "accessorialCharges", "AccessorialCharges"),
+				("Other charges", "otherCharges", "OtherCharges"),
+				("Tariff", "tariff", "Tariff"),
+				("Interline", "interline", "Interline"),
+				("Minimum", "minimum", "Minimum"),
+			):
+				f = to_float(block.get(a))
+				if f is None:
+					f = to_float(block.get(b))
+				if f is not None and f != 0:
+					out.append(
+						{
+							"type": label,
+							"amount": {"value": f, "currency": curr},
+							"description": "",
+						}
+					)
+			# Omit discountAmount as a child row: it is not a third line on top of freight+fuel;
+			# those fields already reconcile to netPrice. Carrier-named discount lines still come
+			# through charges[] above when Banyan sends them.
+
+		return out
+
+	@staticmethod
+	def banyan_charges_normalized_for_shipment(q: dict) -> list[dict]:
+		"""Charge rows in ShipEngine shape for ``save_selected_ltl_quotes`` / Shipment Quotation.
+
+		Uses ``QuotePriceDto.charges`` when present; otherwise builds rows from freight/fuel/etc.
+		If the priced block (e.g. customer) has no breakdown, falls back to ``rawPrice`` detail.
+		"""
+		block = BanyanLTL.banyan_price_block_used_for_total(q) or BanyanLTL.banyan_fallback_price_block(
+			q
+		)
+		if not isinstance(block, dict):
+			return []
+		curr = BanyanLTL.banyan_currency_from_quote(q)
+		out = BanyanLTL.charges_from_banyan_price_dto_block(block, curr)
+		if not out:
+			raw_blk = q.get("rawPrice") or q.get("RawPrice")
+			if isinstance(raw_blk, dict) and raw_blk is not block:
+				out = BanyanLTL.charges_from_banyan_price_dto_block(raw_blk, curr)
+		return out
+
+	@staticmethod
+	def append_quotation_charges_normalized(sq: Any, charges_normalized: list[dict]) -> None:
+		"""Match ``save_selected_ltl_quotes`` charge handling (ShipEngine-shaped dicts)."""
+		for raw_charge in charges_normalized or []:
+			if not isinstance(raw_charge, dict):
+				continue
+			charge: dict[str, Any] = raw_charge
+			amount_obj = charge.get("amount")
+			amount_inner = amount_obj if isinstance(amount_obj, dict) else {}
+			c_type = charge.get("type", "N/A").title()
+			amount = float(amount_inner.get("value", 0))
+			if c_type.lower() == "discount":
+				amount *= -1
+			if c_type.lower() == "total":
+				continue
+			sq.append(
+				"charges",
+				{
+					"type": c_type,
+					"amount": amount,
+					"currency": amount_inner.get("currency") or "USD",
+					"description": charge.get("description") or "",
+				},
+			)
+
 	def fetch_banyan_offers(self, doc: Shipment, fc) -> tuple[str, list[dict]]:
 		"""Call the Banyan API and return (load_id, raw_quotes) without saving."""
 		use_ez = bool(getattr(fc, "use_ez_rate", False))
-		endpoint = "/shipments/ezrate" if use_ez else "/shipments"
 		payload = self.build_ez_rate_payload(doc, fc) if use_ez else self.build_shipment_payload(doc, fc)
 
 		with httpx.Client() as client:
 			resp = client.post(
-				self.url(fc, endpoint),
+				self.url(fc, "/shipments"),
 				json=payload,
 				headers=self.headers(fc),
 				timeout=120,
 			)
-		self.raise_for_status(resp, f"get_ltl_quotes POST {endpoint}")
+		self.raise_for_status(resp, "get_ltl_quotes POST /shipments")
 		data = resp.json()
-		return data.get("loadId") or data.get("id") or "", data.get("quotes") or []
+		return self.parse_create_shipment_response(data)
 
 	def fetch_ltl_offers(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
 		"""Return Banyan quotes as normalized dicts without saving anything."""
@@ -432,28 +707,30 @@ class BanyanLTL(BaseLTL):
 		load_id, quotes = self.fetch_banyan_offers(doc, fc)
 		results: list[dict[str, Any]] = []
 		for q in quotes:
-			scac = q.get("scac") or ""
-			raw_price = q.get("rawPrice") or {}
+			if not isinstance(q, dict):
+				continue
+			n = self.normalize_banyan_quote(q)
+			scac = n["scac"]
 			results.append(
 				{
-					"carrier_name": q.get("carrierName") or "Banyan",
+					"carrier_name": n["carrierName"],
 					"carrier_scac": scac,
-					"offer_id": str(q.get("quoteId") or ""),
+					"offer_id": str(n["quoteId"] if n["quoteId"] is not None else ""),
 					"transaction_id": load_id,
-					"service_level": q.get("serviceDescription") or "",
-					"total_price": float(raw_price.get("netPrice") or raw_price.get("totalPrice") or 0),
+					"service_level": n["serviceDescription"],
+					"total_price": self.banyan_quote_monetary_total(q),
 					"currency": "USD",
-					"transit_days": q.get("transitDays"),
+					"transit_days": n["transitDays"],
 					"estimated_delivery_date": None,
 					"expiration_date": None,
 					"is_spot_quote": False,
-					"charges": [],
+					"charges": self.banyan_charges_normalized_for_shipment(q),
 				}
 			)
 		return results
 
 	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
-		"""POST /shipments (or /shipments/ezrate) and save one Shipment Quotation per quote."""
+		"""POST /shipments (with ``isEzRate`` when EZ mode is enabled) and save Shipment Quotations."""
 		fc = self.get_fcs(doc, settings_name)
 		load_id, quotes = self.fetch_banyan_offers(doc, fc)
 
@@ -463,13 +740,15 @@ class BanyanLTL(BaseLTL):
 
 		saved = 0
 		for q in quotes:
-			carrier_name = q.get("carrierName") or "Banyan"
-			scac = q.get("scac") or ""
-			quote_id = str(q.get("quoteId") or "")
-			raw_price = q.get("rawPrice") or {}
-			net = float(raw_price.get("netPrice") or raw_price.get("totalPrice") or 0)
-			transit_days = q.get("transitDays")
-			service_desc = q.get("serviceDescription") or ""
+			if not isinstance(q, dict):
+				continue
+			n = self.normalize_banyan_quote(q)
+			carrier_name = n["carrierName"]
+			scac = n["scac"]
+			quote_id = str(n["quoteId"] if n["quoteId"] is not None else "")
+			net = self.banyan_quote_monetary_total(q)
+			transit_days = n["transitDays"]
+			service_desc = n["serviceDescription"]
 
 			supplier_name = (
 				frappe.db.get_value("Supplier", {"ltl_carrier_scac": scac, "is_transporter": 1}, "name")
@@ -488,6 +767,7 @@ class BanyanLTL(BaseLTL):
 			sq.pickup_date = doc.get("pickup_date")
 			if transit_days is not None:
 				sq.estimated_delivery_days = float(transit_days)
+			self.append_quotation_charges_normalized(sq, self.banyan_charges_normalized_for_shipment(q))
 			sq.insert(ignore_permissions=True)
 			saved += 1
 

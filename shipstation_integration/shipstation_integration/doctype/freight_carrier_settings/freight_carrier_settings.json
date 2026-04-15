@@ -116,13 +116,13 @@
    "label": "LTL API Key"
   },
   {
-   "description": "Banyan: OAuth client_id (client_credentials). ODFL: API username. WWEX: use Connected App, not this field.",
+   "description": "Banyan or WWEX: OAuth client_id (client_credentials). For WWEX set Auth / Token URL and OAuth Audience. ODFL: API username.",
     "fieldname": "client_id",
     "fieldtype": "Password",
     "label": "Client ID"
    },
    {
-    "description": "Banyan: OAuth client_secret. ODFL: API password. WWEX: use Connected App, not this field.",
+    "description": "Banyan or WWEX: OAuth client_secret. ODFL: API password.",
     "fieldname": "client_secret",
     "fieldtype": "Password",
     "label": "Client Secret"
@@ -146,7 +146,7 @@
    "label": "OAuth Audience"
   },
   {
-   "description": "Banyan only: use the /shipments/ezrate endpoint (zip-to-zip rating) instead of the full /shipments endpoint. Useful when full address validation is not required.",
+   "description": "Banyan only: send isEzRate on POST /shipments (minimal zip-to-zip style payload) instead of a full shipment. Same API path; relaxes required-field validators.",
    "fieldname": "use_ez_rate",
    "fieldtype": "Check",
    "label": "Use EZ Rate (Banyan)",

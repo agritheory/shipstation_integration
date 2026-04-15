@@ -23,11 +23,11 @@ Workflow
 
 Authentication
 --------------
-OAuth 2.0 client-credentials flow via Frappe Connected App.
-Token endpoint: ``https://auth.staging-wwex.com/oauth/token`` (staging).
-The Connected App ``query_parameters`` child table should contain
-``audience = staging-wwex-apig`` (staging) or the production equivalent.
-Token is cached in ``frappe.cache`` keyed by FCS record name.
+OAuth 2.0 client-credentials. Primary: ``client_id`` and ``client_secret`` on
+Freight Carrier Settings, POST to ``auth_url`` (e.g. staging
+``https://auth.staging-wwex.com/oauth/token``), with ``audience`` on FCS when
+required. Alternate: Frappe **Connected App** (token URI and ``query_parameters``
+for audience). Token is cached in ``frappe.cache`` keyed by FCS record name.
 
 All requests wrap in ``{"request": {...}, "correlationId": "<uuid>"}``.
 """
@@ -110,7 +110,7 @@ class WwexLTL(BaseLTL):
 
 		Priority:
 		1. ``client_id`` / ``client_secret`` on FCS → POST to ``fc.auth_url``.
-		2. Connected App (legacy) → uses its client_id/secret and token_uri.
+		2. Connected App → uses its client_id/secret and token_uri.
 
 		The ``audience`` FCS field (e.g. "wwex-apig") is added to the token
 		request when set. It is required by WWEX but optional for other providers.
