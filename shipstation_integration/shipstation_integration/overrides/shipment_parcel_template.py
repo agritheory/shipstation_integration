@@ -43,10 +43,10 @@ class ShipstationShipmentParcelTemplate(ShipmentParcelTemplate):
 		if existing:
 			pd = frappe.get_doc("Physical Dimension", existing)
 			pd.uom = "Centimeter"
-			pd.item_length = self.length or 0
-			pd.item_width = self.width or 0
-			pd.item_height = self.height or 0
-			pd.item_weight = self.weight or 0
+			pd.item_length = self.length
+			pd.item_width = self.width
+			pd.item_height = self.height
+			pd.item_weight = self.weight
 			pd.save(ignore_permissions=True)
 			return False
 		else:
@@ -55,10 +55,10 @@ class ShipstationShipmentParcelTemplate(ShipmentParcelTemplate):
 			pd.reference_document = self.name
 			pd.dimension_type = "Interior"
 			pd.uom = "Centimeter"
-			pd.item_length = self.length or 0
-			pd.item_width = self.width or 0
-			pd.item_height = self.height or 0
-			pd.item_weight = self.weight or 0
+			pd.item_length = self.length
+			pd.item_width = self.width
+			pd.item_height = self.height
+			pd.item_weight = self.weight
 			pd.insert(ignore_permissions=True)
 			return True
 
