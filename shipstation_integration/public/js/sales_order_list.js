@@ -1,3 +1,6 @@
+// Copyright (c) 2026, AgriTheory and contributors
+// For license information, please see license.txt
+
 let old_onload = frappe.listview_settings['Sales Order'].onload
 var new_onload = function (cur_list) {
 	old_onload(cur_list)
