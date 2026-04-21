@@ -7,12 +7,61 @@ from erpnext.stock.doctype.shipment_parcel_template.shipment_parcel_template imp
 	ShipmentParcelTemplate,
 )
 from frappe import _
-from frappe.utils import now
 
 from shipstation_integration.utils import get_shipstation_settings
 
 
 class ShipstationShipmentParcelTemplate(ShipmentParcelTemplate):
+	def after_insert(self):
+		self.sync_physical_dimension()
+
+	def on_update(self):
+		self.sync_physical_dimension()
+
+	def sync_physical_dimension(self):
+		if "inventory_tools" not in frappe.get_installed_apps():
+			return
+
+		settings_name = frappe.db.get_value(
+			"Shipstation Settings",
+			{"enabled": 1, "create_physical_dimension_per_parcel_template": 1},
+			"name",
+		)
+		if not settings_name:
+			return
+
+		existing = frappe.db.get_value(
+			"Physical Dimension",
+			{
+				"reference_doctype": "Shipment Parcel Template",
+				"reference_document": self.name,
+				"dimension_type": "Interior",
+			},
+			"name",
+		)
+
+		if existing:
+			pd = frappe.get_doc("Physical Dimension", existing)
+			pd.uom = "Centimeter"
+			pd.item_length = self.length or 0
+			pd.item_width = self.width or 0
+			pd.item_height = self.height or 0
+			pd.item_weight = self.weight or 0
+			pd.save(ignore_permissions=True)
+			return False
+		else:
+			pd = frappe.new_doc("Physical Dimension")
+			pd.reference_doctype = "Shipment Parcel Template"
+			pd.reference_document = self.name
+			pd.dimension_type = "Interior"
+			pd.uom = "Centimeter"
+			pd.item_length = self.length or 0
+			pd.item_width = self.width or 0
+			pd.item_height = self.height or 0
+			pd.item_weight = self.weight or 0
+			pd.insert(ignore_permissions=True)
+			return True
+
 	def get_user_uoms(self):
 		user = frappe.get_cached_doc("User", frappe.session.user)
 		return (user.dimension_uom or "Centimeter", user.weight_uom or "Kilogram")
