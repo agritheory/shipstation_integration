@@ -3,24 +3,6 @@
 
 const PARCEL_COLORS = ['#2AC48A', '#5E64FF', '#FF8A00', '#A553E0', '#3478F6', '#D62B31']
 
-/**
- * Check if a value is empty or MySQL NULL placeholder
- * MySQL exports NULL as \N which may have been imported as literal text
- */
-function is_empty_or_null(value) {
-	return !value || value === '\\N' || value === 'NULL' || value === 'None'
-}
-
-/**
- * Clean a value, converting MySQL NULL placeholders to empty string
- */
-function clean_value(value) {
-	if (is_empty_or_null(value)) {
-		return ''
-	}
-	return value
-}
-
 function get_parcel_color(parcel_number) {
 	if (!parcel_number) return null
 	return PARCEL_COLORS[(parcel_number - 1) % PARCEL_COLORS.length]
@@ -145,20 +127,19 @@ function fetch_delivery_note_defaults(frm) {
 			frm.doc.__onload = frm.doc.__onload || {}
 			frm.doc.__onload.customer = dn.customer
 
-			const dn_shipping_addr = clean_value(dn.shipping_address_name)
-			if (is_empty_or_null(frm.doc.shipping_address_name) && dn_shipping_addr) {
-				frm.set_value('shipping_address_name', dn_shipping_addr)
+			if (!frm.doc.shipping_address_name && dn.shipping_address_name) {
+				frm.set_value('shipping_address_name', dn.shipping_address_name)
 			}
 
 			// Prefer dispatch_address_name (ship-from) over company_address (billing)
-			const dn_dispatch_addr = clean_value(dn.dispatch_address_name) || clean_value(dn.company_address)
-			if (is_empty_or_null(frm.doc.dispatch_address_name) && dn_dispatch_addr) {
+			const dn_dispatch_addr = dn.dispatch_address_name || dn.company_address
+			if (!frm.doc.dispatch_address_name && dn_dispatch_addr) {
 				frm.set_value('dispatch_address_name', dn_dispatch_addr)
 			}
 
 			fetch_weight_from_delivery_note(frm, dn)
 
-			if (is_empty_or_null(frm.doc.carrier)) {
+			if (!frm.doc.carrier) {
 				frappe.call({
 					method: 'shipstation_integration.carriers.get_shipping_accounts',
 					args: { delivery_note: frm.doc.delivery_note },
@@ -166,7 +147,7 @@ function fetch_delivery_note_defaults(frm) {
 						const accounts = r.message || []
 						if (!accounts.length) return
 						const account = accounts.find(a => a.default) || accounts.find(a => a.enabled) || accounts[0]
-						if (account && account.carrier && is_empty_or_null(frm.doc.carrier)) {
+						if (account && account.carrier && !frm.doc.carrier) {
 							frm.set_value('carrier', account.carrier)
 						}
 					},
@@ -350,9 +331,7 @@ frappe.ui.form.on('Packing Slip', {
 		// The delivery_note change event only fires when the field changes
 		// interactively, so this covers make_packing_slip and reloads.
 		if (frm.doc.delivery_note) {
-			const missing_shipping = is_empty_or_null(frm.doc.shipping_address_name)
-			const missing_dispatch = is_empty_or_null(frm.doc.dispatch_address_name)
-			if (missing_shipping || missing_dispatch) {
+			if (!frm.doc.shipping_address_name || !frm.doc.dispatch_address_name) {
 				fetch_delivery_note_defaults(frm)
 			}
 		}
@@ -615,12 +594,12 @@ function setup_shipping_actions(frm) {
 }
 
 function get_shipping_rates(frm) {
-	if (is_empty_or_null(frm.doc.shipping_address_name)) {
+	if (!frm.doc.shipping_address_name) {
 		frappe.msgprint(__('Please select a shipping address first.'))
 		return
 	}
 
-	if (is_empty_or_null(frm.doc.dispatch_address_name)) {
+	if (!frm.doc.dispatch_address_name) {
 		frappe.msgprint(__('Please select a dispatch (ship from) address first.'))
 		return
 	}
