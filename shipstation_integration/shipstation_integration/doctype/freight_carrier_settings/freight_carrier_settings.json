@@ -110,25 +110,25 @@
    "label": "Credentials"
   },
   {
-   "description": "ShipEngine: Api-Key. Banyan: optional static Bearer only if the carrier issues a token; when set, overrides Client ID/Secret OAuth for Banyan.",
+   "description": "ShipEngine: Api-Key. Banyan: optional static Bearer only if the carrier issues a token; when set, overrides Client ID/Secret OAuth for Banyan. TrafficTech: request header subscription-key.",
    "fieldname": "ltl_api_key",
    "fieldtype": "Password",
    "label": "LTL API Key"
   },
   {
-   "description": "Banyan or WWEX: OAuth client_id (client_credentials). For WWEX set Auth / Token URL and OAuth Audience. ODFL: API username.",
+   "description": "Banyan or WWEX: OAuth client_id (client_credentials). For WWEX set Auth / Token URL and OAuth Audience. ODFL: API username. TrafficTech: TT Interactive portal login email (JSON customerContactEmail).",
     "fieldname": "client_id",
     "fieldtype": "Password",
     "label": "Client ID"
    },
    {
-    "description": "Banyan or WWEX: OAuth client_secret. ODFL: API password.",
+    "description": "Banyan or WWEX: OAuth client_secret. ODFL: API password. TrafficTech: TT Interactive portal password (JSON customerContactEmailPassword).",
     "fieldname": "client_secret",
     "fieldtype": "Password",
     "label": "Client Secret"
    },
   {
-   "description": "Shipper account number with the provider (WWEX account#, ODFL bill-to account code, Banyan clientRefNumber). Not used for ShipEngine.",
+   "description": "Shipper account number with the provider (WWEX account#, ODFL bill-to account code, Banyan clientRefNumber, TrafficTech numeric customerId). Not used for ShipEngine.",
    "fieldname": "account_number",
    "fieldtype": "Data",
    "label": "Account Number"

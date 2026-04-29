@@ -128,5 +128,6 @@ ltl_providers = {
 	"wwex.com": "shipstation_integration.shipstation_integration.freight_providers.wwex_ltl.WwexLTL",
 	"speedship.com": "shipstation_integration.shipstation_integration.freight_providers.wwex_ltl.WwexLTL",
 	"banyantechnology.com": "shipstation_integration.shipstation_integration.freight_providers.banyan_ltl.BanyanLTL",
+	"traffictech.com": "shipstation_integration.shipstation_integration.freight_providers.traffictech_ltl.TrafficTechLTL",
 	"odfl.com": "shipstation_integration.shipstation_integration.freight_providers.odfl_ltl.OdflLTL",
 }

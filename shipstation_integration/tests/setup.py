@@ -284,8 +284,12 @@ def create_freight_carrier_settings_for_tests(settings):
 			"scac": "BYAN",
 		},
 		{"name": "ODFL LTL", "base_url": "https://api.odfl.com", "scac": "ODFL"},
+		{
+			"name": "TrafficTech LTL",
+			"base_url": "https://apitest.traffictech.com/ltl-api-n8n/",
+			"scac": "TTCH",
+		},
 	]
-
 	for carrier in ltl_carriers:
 		supplier = frappe.db.get_value(
 			"Supplier", {"supplier_name": carrier["name"], "is_transporter": 1}, "name"
@@ -312,6 +316,10 @@ def create_freight_carrier_settings_for_tests(settings):
 		if carrier["name"] == "ODFL LTL":
 			fc.client_id = "test_odfl_client_id"
 			fc.set("client_secret", "test_odfl_client_secret")
+		if carrier["name"] == "TrafficTech LTL":
+			fc.account_number = "33361"
+			fc.client_id = "test_traffictech_portal@example.com"
+			fc.set("client_secret", "test_traffictech_portal_secret")
 		fc.auto_create_accounting_entry = 1
 		fc.base_url = carrier["base_url"]
 		if not (fc.ltl_carrier_scac or "").strip():
@@ -334,7 +342,7 @@ def create_freight_carrier_settings_for_tests(settings):
 
 
 def create_transporters():
-	"""Create transporter suppliers for FedEx, UPS, USPS, test LTL carrier, and four multi-provider LTL carriers."""
+	"""Create transporter suppliers for FedEx, UPS, USPS, test LTL carrier, and multi-provider LTL carriers."""
 	default_supplier_group = frappe.get_value("Supplier Group", {"is_group": 0}, "name")
 
 	for carrier_name in ("FedEx", "UPS", "USPS"):
@@ -367,6 +375,7 @@ def create_transporters():
 		{"name": "WWEX LTL", "scac": "WWEX", "carrier_id": "wwex-carrier"},
 		{"name": "Banyan LTL", "scac": "BYAN", "carrier_id": "banyan-carrier"},
 		{"name": "ODFL LTL", "scac": "ODFL", "carrier_id": "odfl-carrier"},
+		{"name": "TrafficTech LTL", "scac": "TTCH", "carrier_id": "traffictech-carrier"},
 	]
 
 	for carrier in ltl_carriers:

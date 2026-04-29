@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # Less Than Truckload (LTL)
 
 <div class="byline">
-  Heather Kusmierz and Tyler Matteson 2026-03-30
+  Heather Kusmierz and Tyler Matteson 2026-04-05
 </div>
 
 
@@ -18,8 +18,8 @@ Every LTL HTTP call resolves credentials and the base URL from **Freight Carrier
 
 - One **Freight Carrier Settings** row per **Company** + **Supplier** (transporter).
 - **Base URL** — determines which provider class handles the shipment (see Provider Selection below). Defaults to `https://api.shipengine.com` when blank.
-- **Client ID** / **Client Secret** — meaning depends on provider: **Banyan** OAuth client credentials; **ODFL** API username/password; not used for **WWEX** (Connected App) or **ShipEngine** (LTL API Key).
-- **LTL API Key** — **ShipEngine** `Api-Key` header. **Banyan** only: optional static Bearer token if the carrier issues one; if this field is set, it is used **instead of** Client ID/Secret OAuth (do not fill both unless you intend to override with the static token).
+- **Client ID** / **Client Secret** — meaning depends on provider: **Banyan** OAuth client credentials; **ODFL** API username/password; **TrafficTech** TT Interactive portal email and password (embedded in the rate request body); not used for **WWEX** (Connected App) or **ShipEngine** (LTL API Key).
+- **LTL API Key** — **ShipEngine** `Api-Key` header. **Banyan** only: optional static Bearer token if the carrier issues one; if this field is set, it is used **instead of** Client ID/Secret OAuth (do not fill both unless you intend to override with the static token). **TrafficTech** `subscription-key` header on every request.
 - **Connected App** — **WWEX** OAuth 2.0 client-credentials (required for WWEX in the current implementation). Optional for **Banyan** if you prefer Centralized OAuth config over FCS Client ID/Secret.
 
 On the Shipment, set **Preferred Carrier** and ensure a **Company** is resolvable (set directly on pickup/delivery when party type is Company, or rely on the user default company).
@@ -44,6 +44,7 @@ The app resolves which provider class to use by matching the **Base URL** in Fre
 | `shipstation.com` | `ShipstationLTL` (ShipEngine) |
 | `wwex.com` | `WwexLTL` |
 | `banyantechnology.com` | `BanyanLTL` |
+| `traffictech.com` | `TrafficTechLTL` |
 | `odfl.com` | `OdflLTL` |
 
 When no Freight Carrier Settings record exists for the shipment, or no entry matches, `ShipstationLTL` is used as the fallback.
@@ -112,6 +113,33 @@ Not all carriers support every action through the API. The interface only shows 
 `quote_or_offer_id` stores the Banyan `quoteId` (integer); `quote_or_offer_transaction_id` stores the `loadId`. The `loadId` is used as the Shipment's `shipment_id` after booking. Spot quotes are not supported.
 
 **Accessorial services:** Banyan supports a full set of accessorial codes (liftgate delivery/pickup, inside delivery/pickup, residential, appointment, construction site, limited access, tradeshow, sort and segregate, COD, notify before delivery, protect from cold, over-dimension, marked/tagged, etc.).
+
+---
+
+### TrafficTech (LTL Quoting API)
+
+**Base URL:** UAT example: `https://apitest.traffictech.com/ltl-api-n8n/` (no query string stored on the row; the integration appends `message-type=LTLRate`). Production URL is issued when your account is approved.
+
+**Authentication:** HTTP header `subscription-key` from **LTL API Key** on Freight Carrier Settings. TrafficTech also requires static outbound IP whitelisting before calls succeed.
+
+**Freight Carrier Settings fields required:**
+- **Base URL** — must contain `traffictech.com` (see Provider Selection)
+- **LTL API Key** — subscription key
+- **Account Number** — numeric TrafficTech `customerId`
+- **Client ID** — TT Interactive portal email (`customerContactEmail` in the JSON body)
+- **Client Secret** — TT Interactive portal password (`customerContactEmailPassword` in the JSON body)
+
+**Workflow mapping:**
+
+| Step | TrafficTech endpoint |
+|---|---|
+| Get quotes | `POST {base_url}?message-type=LTLRate` |
+| Schedule pickup | *Not in current API guide — integration throws a clear message until TrafficTech documents booking* |
+| Get documents / Track / Cancel | *Same — follow-on documentation expected from TrafficTech* |
+
+`quote_or_offer_id` stores the `quoteId` from each carrier offer; `quote_or_offer_transaction_id` stores the response `loadId`. Hazmat is rejected at quote time (API requires `isHazmat: false`). Declared value defaults to **500** in the request when **Value of Goods** on the Shipment is unset (per TrafficTech sample payloads).
+
+**Accessorial services:** A subset of Shipment checkboxes map to TrafficTech boolean flags (residential/inside/liftgate pickup and delivery, delivery appointment, notify before delivery, sort and segregate).
 
 ---
 
