@@ -12,6 +12,11 @@ from frappe.utils import getdate
 
 MOCK_API_KEY = "mock_test_api_key_abc123"
 
+TEST_17TRACK_COMPANY = "Chelsea Fruit Co"
+SEED_TN_WEBHOOK = "1Z2617V10397725789"
+SEED_TN_ONE_REF = "TRK-SEED-0000001"
+SEED_TN_TWO_REF = "TRK-SEED-0000002"
+
 
 def read_json(name):
 	"""Read a fixture JSON file from the tests/fixtures directory."""
@@ -31,7 +36,7 @@ def before_test():
 		{
 			"currency": "USD",
 			"full_name": "Shipstation User",
-			"company_name": "Chelsea Fruit Co",
+			"company_name": TEST_17TRACK_COMPANY,
 			"timezone": "America/New_York",
 			"company_abbr": "CFC",
 			"domains": ["Distribution"],
@@ -39,7 +44,7 @@ def before_test():
 			"fy_start_date": today.replace(month=1, day=1).isoformat(),
 			"fy_end_date": today.replace(month=12, day=31).isoformat(),
 			"language": "english",
-			"company_tagline": "Chelsea Fruit Co",
+			"company_tagline": TEST_17TRACK_COMPANY,
 			"email": "shipstation@chelseafruit.co",
 			"password": "admin",
 			"chart_of_accounts": "Standard with Numbers",
@@ -61,7 +66,7 @@ def create_test_data():
 	settings = frappe._dict(
 		{
 			"day": getdate().replace(month=1, day=1),
-			"company": "Chelsea Fruit Co",
+			"company": TEST_17TRACK_COMPANY,
 		}
 	)
 	create_customer_group()
@@ -77,7 +82,7 @@ def create_test_data():
 	create_delivery_note(settings)
 	create_packing_slip(settings)
 	create_seventeen_track_settings()
-	# create_test_tracking_numbers()
+	create_test_tracking_numbers()
 
 
 def create_customer_group():
@@ -331,9 +336,25 @@ def create_packing_slip(settings):
 	ps.save()
 
 
-def create_seventeen_track_settings():
-	frappe.db.set_single_value("Seventeen Track", "add_updates_as_comments", 1)
-	frappe.db.set_single_value("Seventeen Track", "api_key", MOCK_API_KEY)
+def create_seventeen_track_settings(company: str = TEST_17TRACK_COMPANY):
+	if frappe.db.exists("Seventeen Track", company):
+		doc = frappe.get_doc("Seventeen Track", company)
+	else:
+		doc = frappe.new_doc("Seventeen Track")
+		doc.company = company
+	if doc.seventeen_track_user and not frappe.db.exists("User", doc.seventeen_track_user):
+		doc.seventeen_track_user = None
+	doc.add_updates_as_comments = 1
+	doc.api_key = MOCK_API_KEY
+	doc.flags.ignore_permissions = True
+	doc.flags.ignore_validate = True
+	doc.save()
+	from shipstation_integration.shipstation_integration.doctype.seventeen_track.seventeen_track import (
+		build_seventeen_track_webhook_callback_uri,
+	)
+
+	webhook_uri = build_seventeen_track_webhook_callback_uri()
+	frappe.db.set_value("Seventeen Track", doc.name, "webhook_callback_uri", webhook_uri)
 	frappe.db.commit()
 
 
@@ -344,19 +365,19 @@ def create_test_tracking_numbers():
 	seed_item_3 = "Gooseberry Pie"
 
 	# TN1 — primary webhook test target: submitted but subscription stopped
-	if not frappe.db.exists("Tracking Number", {"tracking_number": "1Z2617V10397725789"}):
-		tn = frappe.get_doc({"doctype": "Tracking Number", "tracking_number": "1Z2617V10397725789"})
+	if not frappe.db.exists("Tracking Number", {"tracking_number": SEED_TN_WEBHOOK}):
+		tn = frappe.get_doc({"doctype": "Tracking Number", "tracking_number": SEED_TN_WEBHOOK})
 		tn.flags.ignore_validate = True
 		tn.insert(ignore_permissions=True)
 		frappe.db.set_value("Tracking Number", tn.name, "docstatus", 1)
 		frappe.db.set_value("Tracking Number", tn.name, "subscription_status", "Active")
 
 	# TN2 — single reference to an Item
-	if not frappe.db.exists("Tracking Number", {"tracking_number": "TRK-SEED-0000001"}):
+	if not frappe.db.exists("Tracking Number", {"tracking_number": SEED_TN_ONE_REF}):
 		tn = frappe.get_doc(
 			{
 				"doctype": "Tracking Number",
-				"tracking_number": "TRK-SEED-0000001",
+				"tracking_number": SEED_TN_ONE_REF,
 				"references": [{"reference_doctype": "Item", "document_name": seed_item_3}],
 			}
 		)
@@ -366,11 +387,11 @@ def create_test_tracking_numbers():
 		frappe.db.set_value("Tracking Number", tn.name, "subscription_status", "Active")
 
 	# TN3 — two references to Items
-	if not frappe.db.exists("Tracking Number", {"tracking_number": "TRK-SEED-0000002"}):
+	if not frappe.db.exists("Tracking Number", {"tracking_number": SEED_TN_TWO_REF}):
 		tn = frappe.get_doc(
 			{
 				"doctype": "Tracking Number",
-				"tracking_number": "TRK-SEED-0000002",
+				"tracking_number": SEED_TN_TWO_REF,
 				"references": [
 					{"reference_doctype": "Item", "document_name": seed_item_1},
 					{"reference_doctype": "Item", "document_name": seed_item_2},

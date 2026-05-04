@@ -11,10 +11,18 @@ import pytest
 
 from shipstation_integration.shipstation_integration.doctype.seventeen_track.seventeen_track import (
 	SeventeenTrackClient,
+	build_seventeen_track_webhook_callback_uri,
+	get_webhook_callback_uri,
 	seventeentrack_webhook,
 )
-from shipstation_integration.tests.setup import MOCK_API_KEY
-from shipstation_integration.tests.setup import create_seventeen_track_settings
+from shipstation_integration.tests.setup import (
+	MOCK_API_KEY,
+	SEED_TN_ONE_REF,
+	SEED_TN_TWO_REF,
+	SEED_TN_WEBHOOK,
+	TEST_17TRACK_COMPANY,
+	create_seventeen_track_settings,
+)
 
 WEBHOOK_MOCK_PATH = (
 	Path(frappe.get_app_path("shipstation_integration"))
@@ -54,18 +62,31 @@ def new_tn(tracking_number: str) -> frappe.model.document.Document:
 	return tn
 
 
-# — Webhook tests —
+def test_get_webhook_callback_uri_matches_build_helper():
+	assert get_webhook_callback_uri() == build_seventeen_track_webhook_callback_uri()
+
+
+def test_build_webhook_callback_uri_includes_api_method_suffix():
+	uri = build_seventeen_track_webhook_callback_uri()
+	assert "/api/method/" in uri
+	assert "seventeentrack_webhook" in uri
+
+
+def test_webhook_callback_uri_stored_after_create_seventeen_track_settings():
+	create_seventeen_track_settings()
+	stored = frappe.db.get_value("Seventeen Track", TEST_17TRACK_COMPANY, "webhook_callback_uri")
+	assert stored
+	assert stored == build_seventeen_track_webhook_callback_uri()
 
 
 def test_webhook_valid_signature():
 	body_bytes = WEBHOOK_MOCK_PATH.read_bytes()
 	sig = make_signature(body_bytes, MOCK_API_KEY)
 
-	# reset status fields before test
 	name = frappe.db.get_value(
-		"Tracking Number", {"tracking_number": "1Z2617V10397725789", "docstatus": 1}, "name"
+		"Tracking Number", {"tracking_number": SEED_TN_WEBHOOK, "docstatus": 1}, "name"
 	)
-	assert name, "Seed Tracking Number '1Z2617V10397725789' not found (docstatus=1)"
+	assert name, f"Seed Tracking Number {SEED_TN_WEBHOOK!r} not found (docstatus=1)"
 	frappe.db.set_value(
 		"Tracking Number", name, {"seventeen_track_status": None, "seventeen_track_description": None}
 	)
@@ -104,7 +125,7 @@ def test_webhook_invalid_signature():
 
 
 def test_webhook_ignores_non_tracking_updated_event():
-	payload = json.dumps({"event": "AWB_UPDATED", "data": {"number": "1Z2617V10397725789"}}).encode()
+	payload = json.dumps({"event": "AWB_UPDATED", "data": {"number": SEED_TN_WEBHOOK}}).encode()
 	sig = make_signature(payload, MOCK_API_KEY)
 
 	with patch("frappe.log_error") as mock_log, patch.object(
@@ -143,11 +164,10 @@ def test_webhook_skips_stopped_tracking_number():
 	sig = make_signature(body_bytes, MOCK_API_KEY)
 
 	name = frappe.db.get_value(
-		"Tracking Number", {"tracking_number": "1Z2617V10397725789", "docstatus": 1}, "name"
+		"Tracking Number", {"tracking_number": SEED_TN_WEBHOOK, "docstatus": 1}, "name"
 	)
-	assert name, "Seed Tracking Number '1Z2617V10397725789' not found (docstatus=1)"
+	assert name, f"Seed Tracking Number {SEED_TN_WEBHOOK!r} not found (docstatus=1)"
 
-	# Clear status fields so we can assert they were NOT touched
 	frappe.db.set_value(
 		"Tracking Number",
 		name,
@@ -165,7 +185,6 @@ def test_webhook_skips_stopped_tracking_number():
 	assert doc.seventeen_track_status is None, "Stopped TN should not be updated by webhook"
 	assert doc.seventeen_track_description is None
 
-	# Now set Active — same payload should update the record
 	frappe.db.set_value("Tracking Number", name, "subscription_status", "Active")
 
 	with patch.object(frappe.local, "request", mock_request(body_bytes, {"sign": sig}), create=True):
@@ -175,9 +194,6 @@ def test_webhook_skips_stopped_tracking_number():
 	assert doc.seventeen_track_status == "Delivered"
 	assert doc.seventeen_track_description == "DELIVERED"
 	assert doc.seventeen_track_latest_status_time == "2022-04-04T23:35:22Z"
-
-
-# — Lifecycle tests —
 
 
 def test_submit_calls_register_tracks():
@@ -292,10 +308,9 @@ def test_amend_different_number_calls_register():
 
 
 def test_no_api_key_raises_error():
-	frappe.db.set_single_value("Seventeen Track", "api_key", "")
-	frappe.db.delete(
-		"__Auth", {"doctype": "Seventeen Track", "name": "Seventeen Track", "fieldname": "api_key"}
-	)
+	from frappe.utils.password import remove_encrypted_password
+
+	remove_encrypted_password("Seventeen Track", TEST_17TRACK_COMPANY, "api_key")
 	frappe.db.commit()
 	try:
 		tn = new_tn("TEST-NOKEY-001")
@@ -306,15 +321,14 @@ def test_no_api_key_raises_error():
 
 
 def test_duplicate_active_number_raises_error():
-	# "TRK-SEED-0000001" is already submitted (docstatus=1) from seed data
-	tn = frappe.get_doc({"doctype": "Tracking Number", "tracking_number": "TRK-SEED-0000001"})
+	tn = frappe.get_doc({"doctype": "Tracking Number", "tracking_number": SEED_TN_ONE_REF})
 	with pytest.raises(frappe.exceptions.ValidationError, match="already active"):
 		tn.insert(ignore_permissions=True)
 
 
 def test_single_reference_persisted():
-	name = frappe.db.get_value("Tracking Number", {"tracking_number": "TRK-SEED-0000001"}, "name")
-	assert name, "Seed TN 'TRK-SEED-0000001' not found"
+	name = frappe.db.get_value("Tracking Number", {"tracking_number": SEED_TN_ONE_REF}, "name")
+	assert name, f"Seed TN {SEED_TN_ONE_REF!r} not found"
 
 	doc = frappe.get_doc("Tracking Number", name)
 	assert len(doc.references) == 1
@@ -323,8 +337,8 @@ def test_single_reference_persisted():
 
 
 def test_multiple_references_persisted():
-	name = frappe.db.get_value("Tracking Number", {"tracking_number": "TRK-SEED-0000002"}, "name")
-	assert name, "Seed TN 'TRK-SEED-0000002' not found"
+	name = frappe.db.get_value("Tracking Number", {"tracking_number": SEED_TN_TWO_REF}, "name")
+	assert name, f"Seed TN {SEED_TN_TWO_REF!r} not found"
 
 	doc = frappe.get_doc("Tracking Number", name)
 	assert len(doc.references) == 2
