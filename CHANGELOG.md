@@ -5,6 +5,44 @@ For license information, please see license.txt-->
 
 <!-- version list -->
 
+## v1.12.0 (2026-05-04)
+
+### Bug Fixes
+
+- Linters
+  ([`3093e91`](https://github.com/agritheory/shipstation_integration/commit/3093e91cb69fbcc86ed138c13008e4a5125655f9))
+
+### Chores
+
+- Code cleanup
+  ([`e99424e`](https://github.com/agritheory/shipstation_integration/commit/e99424ec7cd0c27c17a9d6684a0ec1f76d1d1d31))
+
+- Update mypy and precommit
+  ([`e87e712`](https://github.com/agritheory/shipstation_integration/commit/e87e712bf5a3e7a5813443f72d53c9c0a14b7233))
+
+### Features
+
+- 17track seed data
+  ([`60af264`](https://github.com/agritheory/shipstation_integration/commit/60af264f967a7a18df8ab42d7a117d08e7a1c24c))
+
+- Dt seventeen track
+  ([`5aecb60`](https://github.com/agritheory/shipstation_integration/commit/5aecb604121c902556f78eed0f174c8a5fee1158))
+
+- Dt tracking number
+  ([`239a67c`](https://github.com/agritheory/shipstation_integration/commit/239a67c036efbe65ba832beb33ab1d89a9fd305d))
+
+- Seed 17track webhook
+  ([`ea3051e`](https://github.com/agritheory/shipstation_integration/commit/ea3051e1851b7c61105cdad27a826aa34f6ab2ce))
+
+- Tracking number refactor
+  ([`8dd4f56`](https://github.com/agritheory/shipstation_integration/commit/8dd4f5658790baae12b7f3eb48d0daf86002a18c))
+
+### Testing
+
+- 17track init tests
+  ([`6b4fe4c`](https://github.com/agritheory/shipstation_integration/commit/6b4fe4cc4d6a60b52cc46abb44f2b7d66dcdff99))
+
+
 ## v1.11.0 (2026-02-24)
 
 ### Bug Fixes
