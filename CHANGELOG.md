@@ -5,6 +5,9 @@ For license information, please see license.txt-->
 
 <!-- version list -->
 
+## v1.13.0 (2026-05-04)
+
+
 ## v1.12.0 (2026-05-04)
 
 ### Bug Fixes
