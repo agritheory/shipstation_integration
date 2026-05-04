@@ -3,6 +3,13 @@
 
 from . import __version__ as app_version
 
+# Each path is a callable () -> dict[tuple[str, str], str]. Results are merged in install order; later keys win.
+# Custom apps: append dotted paths to `seventeen_track_status_description_providers`, or use legacy
+# `extend_seventeen_track_status_descriptions` (merged after the providers list).
+seventeen_track_status_description_providers = [
+	"shipstation_integration.shipstation_integration.doctype.seventeen_track.status_description_defaults.base_status_description_map",
+]
+
 app_name = "shipstation_integration"
 app_title = "Shipstation Integration"
 app_publisher = "AgriTheory"
@@ -34,6 +41,7 @@ app_include_js = ["shipstation_integration.bundle.js"]
 # include js in doctype views
 
 doctype_js = {
+	"Seventeen Track": "public/js/seventeen_track.js",
 	"Delivery Note": "public/js/delivery_note.js",
 	"Packing Slip": "public/js/packing_slip.js",
 	"Sales Order": "public/js/sales_order.js",
@@ -70,7 +78,10 @@ doctype_list_js = {
 
 # Installation
 # ------------
-after_migrate = ["shipstation_integration.install.add_custom_queue"]
+after_migrate = [
+	"shipstation_integration.install.add_custom_queue",
+	"shipstation_integration.install.ensure_17track_integration_role",
+]
 after_install = "shipstation_integration.install.after_install"
 
 # Desk Notifications

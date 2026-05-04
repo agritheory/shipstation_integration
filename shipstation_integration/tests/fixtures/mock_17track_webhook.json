@@ -1,0 +1,335 @@
+{
+	"event": "TRACKING_UPDATED",
+	"data": {
+		"number": "1Z2617V10397725789",
+		"carrier": 3011,
+		"param": null,
+		"tag": "",
+		"track_info": {
+			"shipping_info": {
+				"shipper_address": {
+					"country": "US",
+					"state": "CA",
+					"city": "CITY OF INDUSTRY",
+					"street": null,
+					"postal_code": null,
+					"coordinates": {
+						"longitude": null,
+						"latitude": null
+					}
+				},
+				"recipient_address": {
+					"country": "US",
+					"state": "CA",
+					"city": "GASQUET",
+					"street": null,
+					"postal_code": null,
+					"coordinates": {
+						"longitude": null,
+						"latitude": null
+					}
+				}
+			},
+			"latest_status": {
+				"status": "Delivered",
+				"sub_status": "Delivered_Other",
+				"sub_status_descr": null
+			},
+			"latest_event": {
+				"time_iso": "2022-04-04T16:35:22-07:00",
+				"time_utc": "2022-04-04T23:35:22Z",
+				"time_raw": {
+					"date": null,
+					"time": null,
+					"timezone": null
+				},
+				"description": "DELIVERED",
+				"location": "GASQUET, CA, US",
+				"stage": null,
+				"sub_status": null,
+				"address": {
+					"country": "US",
+					"state": "CA",
+					"city": "GASQUET",
+					"street": null,
+					"postal_code": null,
+					"coordinates": {
+						"longitude": null,
+						"latitude": null
+					}
+				}
+			},
+			"time_metrics": {
+				"days_after_order": 7,
+				"days_of_transit": 4,
+				"days_of_transit_done": 4,
+				"days_after_last_update": 0,
+				"estimated_delivery_date": {
+					"source": null,
+					"from": null,
+					"to": null
+				}
+			},
+			"milestone": [
+				{
+					"key_stage": "InfoReceived",
+					"time_iso": "2022-03-28T22:43:08-07:00",
+					"time_utc": "2022-03-29T05:43:08Z",
+					"time_raw": {
+						"date": null,
+						"time": null,
+						"timezone": null
+					}
+				},
+				{
+					"key_stage": "PickedUp",
+					"time_iso": null,
+					"time_utc": null,
+					"time_raw": {
+						"date": null,
+						"time": null,
+						"timezone": null
+					}
+				},
+				{
+					"key_stage": "Departure",
+					"time_iso": null,
+					"time_utc": null,
+					"time_raw": {
+						"date": null,
+						"time": null,
+						"timezone": null
+					}
+				},
+				{
+					"key_stage": "Arrival",
+					"time_iso": null,
+					"time_utc": null,
+					"time_raw": {
+						"date": null,
+						"time": null,
+						"timezone": null
+					}
+				},
+				{
+					"key_stage": "AvailableForPickup",
+					"time_iso": null,
+					"time_utc": null,
+					"time_raw": {
+						"date": null,
+						"time": null,
+						"timezone": null
+					}
+				},
+				{
+					"key_stage": "OutForDelivery",
+					"time_iso": "2022-04-04T08:46:06-07:00",
+					"time_utc": "2022-04-04T15:46:06Z",
+					"time_raw": {
+						"date": null,
+						"time": null,
+						"timezone": null
+					}
+				},
+				{
+					"key_stage": "Delivered",
+					"time_iso": "2022-04-04T16:35:22-07:00",
+					"time_utc": "2022-04-04T23:35:22Z",
+					"time_raw": {
+						"date": null,
+						"time": null,
+						"timezone": null
+					}
+				},
+				{
+					"key_stage": "Returning",
+					"time_iso": null,
+					"time_utc": null,
+					"time_raw": {
+						"date": null,
+						"time": null,
+						"timezone": null
+					}
+				},
+				{
+					"key_stage": "Returned",
+					"time_iso": null,
+					"time_utc": null,
+					"time_raw": {
+						"date": null,
+						"time": null,
+						"timezone": null
+					}
+				}
+			],
+			"misc_info": {
+				"risk_factor": 0,
+				"service_type": "UPS Ground",
+				"weight_raw": "49.20LBS",
+				"weight_kg": "22.32",
+				"pieces": null,
+				"dimensions": null,
+				"customer_number": "2617V1",
+				"reference_number": null,
+				"local_number": "",
+				"local_provider": "",
+				"local_key": 0
+			},
+			"tracking": {
+				"providers_hash": -595601716,
+				"providers": [
+					{
+						"provider": {
+							"key": 100002,
+							"name": "UPS",
+							"alias": "UPS",
+							"tel": null,
+							"homepage": "http://www.ups.com/",
+							"country": ""
+						},
+						"provider_lang": null,
+						"service_type": "UPS Ground",
+						"latest_sync_status": "Success",
+						"latest_sync_time": "2022-04-29T08:06:06Z",
+						"events_hash": -925320483,
+						"provider_tips": null,
+						"events": [
+							{
+								"time_iso": "2022-04-04T16:35:22-07:00",
+								"time_utc": "2022-04-04T23:35:22Z",
+								"time_raw": {
+									"date": null,
+									"time": null,
+									"timezone": null
+								},
+								"description": "DELIVERED",
+								"location": "GASQUET, CA, US",
+								"stage": "Delivered",
+								"sub_status": null,
+								"address": {
+									"country": "US",
+									"state": "CA",
+									"city": "GASQUET",
+									"street": null,
+									"postal_code": null,
+									"coordinates": {
+										"longitude": null,
+										"latitude": null
+									}
+								}
+							},
+							{
+								"time_iso": "2022-04-04T08:46:06-07:00",
+								"time_utc": "2022-04-04T15:46:06Z",
+								"time_raw": {
+									"date": null,
+									"time": null,
+									"timezone": null
+								},
+								"description": "Out For Delivery Today",
+								"location": "Crescent City, CA, US",
+								"stage": "OutForDelivery",
+								"sub_status": null,
+								"address": {
+									"country": "US",
+									"state": "CA",
+									"city": "Crescent City",
+									"street": null,
+									"postal_code": null,
+									"coordinates": {
+										"longitude": null,
+										"latitude": null
+									}
+								}
+							},
+							{
+								"time_iso": "2022-04-02T02:15:00-07:00",
+								"time_utc": "2022-04-02T09:15:00Z",
+								"time_raw": {
+									"date": null,
+									"time": null,
+									"timezone": null
+								},
+								"description": "Arrived at Facility",
+								"location": "Anderson, CA, US",
+								"stage": null,
+								"sub_status": null,
+								"address": {
+									"country": "US",
+									"state": "CA",
+									"city": "Anderson",
+									"street": null,
+									"postal_code": null,
+									"coordinates": {
+										"longitude": null,
+										"latitude": null
+									}
+								}
+							},
+							{
+								"time_iso": "2022-03-31T16:36:47-07:00",
+								"time_utc": "2022-03-31T23:36:47Z",
+								"time_raw": {
+									"date": null,
+									"time": null,
+									"timezone": null
+								},
+								"description": "Origin Scan",
+								"location": "Ontario, CA, US",
+								"stage": null,
+								"sub_status": null,
+								"address": {
+									"country": "US",
+									"state": "CA",
+									"city": "Ontario",
+									"street": null,
+									"postal_code": null,
+									"coordinates": {
+										"longitude": null,
+										"latitude": null
+									}
+								}
+							},
+							{
+								"time_iso": "2022-03-28T22:43:08-07:00",
+								"time_utc": "2022-03-29T05:43:08Z",
+								"time_raw": {
+									"date": null,
+									"time": null,
+									"timezone": null
+								},
+								"description": "Shipper created a label, UPS has not received the package yet.",
+								"location": "US",
+								"stage": "InfoReceived",
+								"sub_status": null,
+								"address": {
+									"country": "US",
+									"state": null,
+									"city": null,
+									"street": null,
+									"postal_code": null,
+									"coordinates": {
+										"longitude": null,
+										"latitude": null
+									}
+								}
+							}
+						]
+					}
+				]
+			}
+		},
+		"lang": null,
+		"destination_postal_code": null,
+		"origin_country": null,
+		"destination_country": null,
+		"destination_city": null,
+		"ship_date": null,
+		"shipper": null,
+		"consignee": null,
+		"phone_number_last_4": null,
+		"phone_number": null,
+		"cpf_or_cnpj": null,
+		"special_tracking_info": null
+	}
+}
