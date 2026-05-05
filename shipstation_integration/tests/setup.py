@@ -14,6 +14,37 @@ from frappe.utils import getdate
 from beam.tests.fixtures import customers
 
 
+def today_safe_shipment_pickup_date(settings):
+	"""Carrier APIs reject pickup dates before today; postings may still use FY start."""
+	return max(settings.day, getdate())
+
+
+def ensure_ambrosia_shipstation_gs1_prefix():
+	"""Sites created before the GS1 field existed may lack a prefix; SSCC tests need it."""
+	name = "Ambrosia Pie Company"
+	if frappe.db.exists("Shipstation Settings", name):
+		frappe.db.set_value("Shipstation Settings", name, "gs1_company_prefix", "0614141")
+
+
+def ensure_draft_shipment_pickup_dates_current():
+	"""Refresh pickup dates on draft shipments (seed FY may be earlier than today)."""
+	today = getdate()
+	for row in frappe.get_all("Shipment", filters={"docstatus": 0}, fields=["name", "pickup_date"]):
+		pickup = row.pickup_date
+		if pickup and getdate(pickup) < today:
+			frappe.db.set_value("Shipment", row.name, "pickup_date", today)
+
+
+def ensure_seed_shipment_pickup_date_current(shipment):
+	"""Per-doc refresh after load when tests skip before_test or use an older DB."""
+	today = getdate()
+	pickup = shipment.pickup_date
+	if pickup and getdate(pickup) < today:
+		frappe.db.set_value("Shipment", shipment.name, "pickup_date", today)
+		shipment.reload()
+	return shipment
+
+
 def before_test():
 	frappe.clear_cache()
 	today = getdate()
@@ -45,11 +76,30 @@ def before_test():
 	from beam.tests.setup import create_test_data as beam_create_test_data
 
 	beam_create_test_data()
-	create_test_data()
+	settings = create_test_data()
+
+	create_seventeen_track_settings(settings.company)
+	create_test_tracking_numbers()
+
+	ensure_ambrosia_shipstation_gs1_prefix()
+	ensure_draft_shipment_pickup_dates_current()
 
 	for modu in frappe.get_all("Module Onboarding"):
 		frappe.db.set_value("Module Onboarding", modu, "is_complete", 1)
 	frappe.db.set_single_value("Website Settings", "home_page", "login")
+
+
+def ensure_beam_settings_for_company(company: str) -> None:
+	"""Ensure BEAM Settings exists for the company and has handling units enabled."""
+	from beam.beam.doctype.beam_settings.beam_settings import create_beam_settings
+
+	if not frappe.db.exists("BEAM Settings", {"company": company}):
+		create_beam_settings(company)
+
+	beam_settings = frappe.get_doc("BEAM Settings", {"company": company})
+	if not beam_settings.enable_handling_units:
+		beam_settings.enable_handling_units = 1
+		beam_settings.save()
 
 
 def create_test_data():
@@ -59,6 +109,7 @@ def create_test_data():
 			"company": "Ambrosia Pie Company",
 		}
 	)
+	ensure_beam_settings_for_company(settings.company)
 	create_transporters()
 	create_parcel_templates()
 	create_freight_item(settings)
@@ -72,6 +123,8 @@ def create_test_data():
 	create_delivery_notes(settings)
 	create_packing_slips(settings)
 	create_shipments(settings)
+
+	return settings
 
 
 def create_inventory_with_handling_units(settings):
@@ -425,9 +478,7 @@ def create_parcel_templates():
 		t.save()
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # Addresses and contacts
-# ──────────────────────────────────────────────────────────────────────────────
 
 # (city, state, zip, street, phone)
 CUSTOMER_ADDRESS_DATA = {
@@ -508,9 +559,7 @@ def create_customer_addresses_and_contacts(settings):
 		contact.save()
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # Sales Orders
-# ──────────────────────────────────────────────────────────────────────────────
 
 # Each entry: (customer_index, [(item_code, qty), ...])
 # Two SOs for customers[0] so the LTL shipment can span multiple delivery notes.
@@ -559,9 +608,7 @@ def so_exists_with_items(customer, company, item_codes):
 	return False
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # Delivery Notes
-# ──────────────────────────────────────────────────────────────────────────────
 
 
 def create_delivery_notes(settings):
@@ -589,9 +636,7 @@ def get_so_with_items(customer, company, item_codes):
 	return None
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # Packing Slips (small parcel)
-# ──────────────────────────────────────────────────────────────────────────────
 
 
 def create_packing_slips(settings):
@@ -641,9 +686,7 @@ def create_packing_slips(settings):
 	ps.save()
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # Shipments
-# ──────────────────────────────────────────────────────────────────────────────
 
 
 def create_shipments(settings):
@@ -703,7 +746,7 @@ def create_shipment_for_ltl(settings):
 
 	shipment = frappe.new_doc("Shipment")
 	shipment.posting_date = settings.day
-	shipment.pickup_date = settings.day
+	shipment.pickup_date = today_safe_shipment_pickup_date(settings)
 	shipment.pickup_from = "08:00:00"
 	shipment.pickup_to = "17:00:00"
 	shipment.pickup_from_type = "Company"
@@ -800,7 +843,7 @@ def create_shipment_for_small_parcel(settings):
 
 	shipment = frappe.new_doc("Shipment")
 	shipment.posting_date = settings.day
-	shipment.pickup_date = settings.day
+	shipment.pickup_date = today_safe_shipment_pickup_date(settings)
 	shipment.pickup_from = "08:00:00"
 	shipment.pickup_to = "17:00:00"
 	shipment.pickup_from_type = "Company"
@@ -863,13 +906,6 @@ def create_shipment_for_small_parcel(settings):
 
 
 def create_shipment_for_freight_terminal(settings):
-	"""Draft LTL Shipment for customers[2] destined for a freight terminal.
-
-	Uses delivery_to_type="Contact" — the load goes to the Northeast Freight
-	Terminal where the customer's transport collects it (carrier-terminal-pickup).
-
-	Billing: Shipper / Prepaid.
-	"""
 	if frappe.db.exists(
 		"Shipment",
 		{"freight_type": "LTL", "delivery_to_type": "Contact", "docstatus": 0},
@@ -901,7 +937,7 @@ def create_shipment_for_freight_terminal(settings):
 
 	shipment = frappe.new_doc("Shipment")
 	shipment.posting_date = settings.day
-	shipment.pickup_date = settings.day
+	shipment.pickup_date = today_safe_shipment_pickup_date(settings)
 	shipment.pickup_from = "08:00:00"
 	shipment.pickup_to = "17:00:00"
 	shipment.pickup_from_type = "Company"
@@ -967,11 +1003,6 @@ def create_shipment_for_freight_terminal(settings):
 	shipment.save()
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Test helpers
-# ──────────────────────────────────────────────────────────────────────────────
-
-
 def load_ltl_json_fixture(filename: str) -> dict:
 	fixtures_dir = Path(frappe.get_app_path("shipstation_integration", "tests", "fixtures"))
 	return json.loads((fixtures_dir / filename).read_text())
@@ -994,7 +1025,7 @@ def get_draft_ltl_shipment_for_tests():
 		filters={"freight_type": "LTL", "delivery_to_type": "Customer", "docstatus": 0},
 	)
 	shipment.reload()
-	return shipment
+	return ensure_seed_shipment_pickup_date_current(shipment)
 
 
 def get_small_parcel_shipment_for_tests():
@@ -1003,7 +1034,7 @@ def get_small_parcel_shipment_for_tests():
 		"Shipment", filters={"freight_type": "Small Parcel", "docstatus": 0}
 	)
 	shipment.reload()
-	return shipment
+	return ensure_seed_shipment_pickup_date_current(shipment)
 
 
 def get_freight_terminal_shipment_for_tests():
@@ -1013,7 +1044,7 @@ def get_freight_terminal_shipment_for_tests():
 		filters={"freight_type": "LTL", "delivery_to_type": "Contact", "docstatus": 0},
 	)
 	shipment.reload()
-	return shipment
+	return ensure_seed_shipment_pickup_date_current(shipment)
 
 
 LTL_SHIPMENT_QUOTATION_RESET_FIELDS = (
@@ -1048,4 +1079,74 @@ def reset_ltl_shipment_quotation_test_state() -> None:
 	reset_values: dict[str, object] = {field: None for field in reset_fields}
 	reset_values["shipment_amount"] = 0
 	reset_values["payment_terms"] = "Prepaid"  # Reset to initial value, not None
+	reset_values["pickup_date"] = getdate()
 	frappe.db.set_value("Shipment", shipment.name, reset_values)
+
+
+def create_seventeen_track_settings(company: str):
+	if not company:
+		frappe.throw("Company is required to create 17Track settings.")
+	if frappe.db.exists("Seventeen Track", company):
+		doc = frappe.get_doc("Seventeen Track", company)
+	else:
+		doc = frappe.new_doc("Seventeen Track")
+		doc.company = company
+	if doc.seventeen_track_user and not frappe.db.exists("User", doc.seventeen_track_user):
+		doc.seventeen_track_user = None
+	doc.add_updates_as_comments = 1
+	doc.api_key = "mock_test_api_key_abc123"
+	doc.flags.ignore_permissions = True
+	doc.flags.ignore_validate = True
+	doc.save()
+	from shipstation_integration.shipstation_integration.doctype.seventeen_track.seventeen_track import (
+		build_seventeen_track_webhook_callback_uri,
+	)
+
+	webhook_uri = build_seventeen_track_webhook_callback_uri()
+	frappe.db.set_value("Seventeen Track", doc.name, "webhook_callback_uri", webhook_uri)
+
+
+def create_test_tracking_numbers():
+	"""Create 3 seed Tracking Number records without triggering real 17Track API calls."""
+	seed_item_1 = "Ambrosia Pie"
+	seed_item_2 = "Double Plum Pie"
+	seed_item_3 = "Gooseberry Pie"
+
+	# TN1 — primary webhook test target: submitted but subscription stopped
+	if not frappe.db.exists("Tracking Number", {"tracking_number": "1Z2617V10397725789"}):
+		tn = frappe.get_doc({"doctype": "Tracking Number", "tracking_number": "1Z2617V10397725789"})
+		tn.flags.ignore_validate = True
+		tn.insert(ignore_permissions=True)
+		frappe.db.set_value("Tracking Number", tn.name, "docstatus", 1)
+		frappe.db.set_value("Tracking Number", tn.name, "subscription_status", "Active")
+
+	# TN2 — single reference to an Item
+	if not frappe.db.exists("Tracking Number", {"tracking_number": "TRK-SEED-0000001"}):
+		tn = frappe.get_doc(
+			{
+				"doctype": "Tracking Number",
+				"tracking_number": "TRK-SEED-0000001",
+				"references": [{"reference_doctype": "Item", "document_name": seed_item_3}],
+			}
+		)
+		tn.flags.ignore_validate = True
+		tn.insert(ignore_permissions=True)
+		frappe.db.set_value("Tracking Number", tn.name, "docstatus", 1)
+		frappe.db.set_value("Tracking Number", tn.name, "subscription_status", "Active")
+
+	# TN3 — two references to Items
+	if not frappe.db.exists("Tracking Number", {"tracking_number": "TRK-SEED-0000002"}):
+		tn = frappe.get_doc(
+			{
+				"doctype": "Tracking Number",
+				"tracking_number": "TRK-SEED-0000002",
+				"references": [
+					{"reference_doctype": "Item", "document_name": seed_item_1},
+					{"reference_doctype": "Item", "document_name": seed_item_2},
+				],
+			}
+		)
+		tn.flags.ignore_validate = True
+		tn.insert(ignore_permissions=True)
+		frappe.db.set_value("Tracking Number", tn.name, "docstatus", 1)
+		frappe.db.set_value("Tracking Number", tn.name, "subscription_status", "Active")

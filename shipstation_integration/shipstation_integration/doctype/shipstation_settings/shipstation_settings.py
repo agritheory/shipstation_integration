@@ -2,12 +2,11 @@
 # For license information, please see license.txt
 
 import json
-
 import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils.nestedset import get_root_of
-from httpx import HTTPError
+import httpx
 from shipengine import ShipEngine
 from shipstation import ShipStation
 from shipstation.models import ShipStationWebhook
@@ -67,7 +66,7 @@ class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comi
 	def on_update(self):
 		if self.enabled:
 			self.add_webhooks()
-		sync_ltl_api_credentials_from_shipstation_settings(self)
+		self.create_physical_dimensions_for_parcel_templates()
 
 	@frappe.whitelist()
 	def get_orders(self):
@@ -311,6 +310,27 @@ class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comi
 		if not self.enabled and self.enable_label_generation:
 			self.enable_label_generation = False
 
+	def create_physical_dimensions_for_parcel_templates(self):
+		if (
+			"inventory_tools" not in frappe.get_installed_apps()
+			or not self.enabled
+			or not self.create_physical_dimension_per_parcel_template
+		):
+			return
+
+		created = 0
+		for shipment_parcel_template_name in frappe.get_all("Shipment Parcel Template", pluck="name"):
+			shipment_parcel_template = frappe.get_doc(
+				"Shipment Parcel Template", shipment_parcel_template_name
+			)
+			if shipment_parcel_template.sync_physical_dimension():
+				created += 1
+
+		if created:
+			frappe.msgprint(
+				_("{0} Physical Dimension record(s) created for Shipment Parcel Templates.").format(created)
+			)
+
 	def validate_enabled_stores(self):
 		for store in self.shipstation_stores:
 			if store.enable_shipments and not store.enable_orders:
@@ -328,7 +348,7 @@ class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comi
 			try:
 				client = self.client()
 				client.list_carriers()
-			except HTTPError as e:
+			except httpx.HTTPError as e:
 				if e.response.status_code == 401:
 					frappe.throw(_("Invalid Legacy API key or secret"))
 				else:
@@ -554,8 +574,6 @@ class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comi
 			api_key = self.get_password("shipstation_api_key")
 			if not api_key:
 				return
-
-			import httpx
 
 			WEBHOOK_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.webhook_receiver.shipstation_api_webhook"
 			V2_WEBHOOK_EVENTS = ["batch", "track"]

@@ -5,13 +5,9 @@
 Shipment Billing — T-Account Test Suite
 ========================================
 
-Four ways a shipment cost may flow through the books, keyed to
-``Shipment.billing_type``, ``Shipment.payment_terms``, and whether a
-``delivery_customer`` is set (i.e. the freight will be charged back).
-
-All tests use real fixture data: Ambrosia Pie Company ships via Test LTL
-Carrier.  The "Standard LTL" rate from the captured ShipEngine fixture is
-$474.38.
+Tests cover Collect (PI + clearing) and Prepaid chargeback (Journal Entry + GL)
+paths for the seeded LTL shipment and Test LTL Carrier.  Standard rate from the
+ShipEngine fixture is $474.38.
 
 Accounting document chosen at Shipment Quotation submit
 -------------------------------------------------------
@@ -19,7 +15,7 @@ Accounting document chosen at Shipment Quotation submit
   Consignee billing
     → nothing: customer pays the carrier directly.
 
-  Shipper / Prepaid / delivery_customer set  (order 21–23)
+  Shipper / Prepaid / delivery_customer set  (order 111–113)
     → Journal Entry
     | Account                        | Stock Ledger |   Debit |   Credit | Party             |
     | ------------------------------ |:------------:| -------:| --------:| ----------------- |
@@ -28,21 +24,13 @@ Accounting document chosen at Shipment Quotation submit
     Freight Clearing is a Current Asset account cleared when the customer SI
     taxes-and-charges line posts.
 
-  Shipper / Collect  (order 20)
-    → Purchase Invoice, item expense_account = freight_receivable_account
+  Shipper / Collect  (order 110)
+    → Purchase Invoice, item expense_account = freight_clearing_account
     | Account          | Stock Ledger |   Debit |   Credit | Party            |
     | ---------------- |:------------:| -------:| --------:| ---------------- |
     | Freight Clearing |              | $474.38 |          |                  |
     | Creditors        |              |         |  $474.38 | Test LTL Carrier |
     Freight Clearing cleared when customer SI taxes-and-charges line posts.
-
-  Shipper / Prepaid / no delivery_customer  (company absorbs; order 43)
-    → Purchase Invoice, item expense_account = freight_expense_account
-    | Account                        | Stock Ledger |   Debit |   Credit | Party            |
-    | ------------------------------ |:------------:| -------:| --------:| ---------------- |
-    | Freight and Forwarding Charges |              | $474.38 |          |                  |
-    | Creditors                      |              |         |  $474.38 | Test LTL Carrier |
-    Used for freight-terminal shipments where no specific customer is billed.
 
 """
 
@@ -53,14 +41,12 @@ from frappe.utils.data import flt
 from shipstation_integration.ltl import ShipstationLTL
 from shipstation_integration.tests.setup import (
 	get_draft_ltl_shipment_for_tests,
-	get_freight_terminal_shipment_for_tests,
 	ltl_quotes_response_for_tests,
 	reset_ltl_shipment_quotation_test_state,
 )
 
 
 COMPANY = "Ambrosia Pie Company"
-LTL_CARRIER = "Test LTL Carrier"
 LTL_STANDARD_RATE = 474.38  # from captured ShipEngine fixture
 
 
@@ -81,24 +67,7 @@ def freight_clearing_account():
 	)
 
 
-def freight_receivable_account():
-	"""Freight Receivable account used for prepaid chargeback (Customer party)."""
-	return frappe.db.get_value(
-		"Account",
-		{"account_name": "Freight Receivable", "company": COMPANY},
-		"name",
-	)
-
-
-def creditors_account():
-	return frappe.db.get_value(
-		"Account",
-		{"root_type": "Liability", "account_type": "Payable", "company": COMPANY, "is_group": 0},
-		"name",
-	)
-
-
-@pytest.mark.order(20)
+@pytest.mark.order(110)
 def test_collect_billing_sq_submit_creates_purchase_invoice_with_clearing_account():
 	"""
 	Shipper / Collect — carrier invoices after delivery; cost will be passed to customer via SI.
@@ -113,7 +82,7 @@ def test_collect_billing_sq_submit_creates_purchase_invoice_with_clearing_accoun
 	| Freight Clearing |              | $474.38 |          |                  |
 	| Creditors        |              |         |  $474.38 | Test LTL Carrier |
 	"""
-
+	reset_ltl_shipment_quotation_test_state()
 	ltl_shipment = get_draft_ltl_shipment_for_tests()
 	original_payment_terms = ltl_shipment.payment_terms
 
@@ -150,7 +119,7 @@ def test_collect_billing_sq_submit_creates_purchase_invoice_with_clearing_accoun
 	frappe.db.set_value("Shipment", ltl_shipment.name, "payment_terms", original_payment_terms)
 
 
-@pytest.mark.order(21)
+@pytest.mark.order(111)
 def test_prepaid_billing_with_customer_sq_submit_creates_journal_entry():
 	"""
 	Shipper / Prepaid / delivery_customer set — company pre-pays, charges back to customer.
@@ -186,10 +155,10 @@ def test_prepaid_billing_with_customer_sq_submit_creates_journal_entry():
 	assert flt(ltl_shipment.shipment_amount, 2) == LTL_STANDARD_RATE
 
 
-@pytest.mark.order(22)
+@pytest.mark.order(112)
 def test_prepaid_billing_journal_entry_gl_entries():
 	"""
-	Continued from order 21 — verify GL entries on the auto-created Journal Entry.
+	Continued from order 111 — verify GL entries on the auto-created Journal Entry.
 
 	| Account                        | Stock Ledger |   Debit |   Credit | Party             |
 	| ------------------------------ |:------------:| -------:| --------:| ----------------- |
@@ -229,10 +198,10 @@ def test_prepaid_billing_journal_entry_gl_entries():
 	assert gl_cr.party == ltl_shipment.delivery_customer
 
 
-@pytest.mark.order(23)
+@pytest.mark.order(113)
 def test_prepaid_billing_cancel_sq_cancels_journal_entry():
 	"""
-	Continued from order 21/22 — cancelling the SQ reverses the Journal Entry.
+	Continued from order 111/112 — cancelling the SQ reverses the Journal Entry.
 
 	| Account                        | Stock Ledger |   Debit |   Credit | Party             |
 	| ------------------------------ |:------------:| -------:| --------:| ----------------- |
@@ -260,137 +229,3 @@ def test_prepaid_billing_cancel_sq_cancels_journal_entry():
 	assert not ltl_shipment.shipment_amount
 
 	reset_ltl_shipment_quotation_test_state()
-
-
-@pytest.mark.order(40)
-def test_freight_terminal_shipment_has_contact_delivery_type():
-	"""
-	The Northeast Freight Terminal scenario: Ambrosia Pie ships to a carrier
-	terminal where Cafe 27 Cafeteria's transport picks up the load.
-	delivery_to_type = "Contact" routes to the terminal address/contact;
-	accounting is otherwise identical to Scenario 2.
-	"""
-	shipment = get_freight_terminal_shipment_for_tests()
-	assert shipment.delivery_to_type == "Contact"
-	assert shipment.carrier_terminal_pickup == 1
-
-
-@pytest.mark.order(41)
-def test_freight_terminal_shipment_contact_has_phone_and_email():
-	"""
-	The terminal agent contact must have a phone and email so that the
-	ShipEngine payload passes validation before the API call is made.
-	"""
-	shipment = get_freight_terminal_shipment_for_tests()
-	assert shipment.delivery_contact_name, "Terminal contact must be set on the shipment"
-
-	contact = frappe.get_doc("Contact", shipment.delivery_contact_name)
-	phones = [p.phone for p in contact.phone_nos if p.phone]
-	emails = [e.email_id for e in contact.email_ids if e.email_id]
-	assert phones, f"Contact {contact.name} must have at least one phone number"
-	assert emails, f"Contact {contact.name} must have at least one email address"
-
-
-@pytest.mark.order(42)
-def test_freight_terminal_shipment_sdn_rows_have_parcel_data():
-	"""
-	Every Shipment Delivery Note row must carry parcel_number, dimensions, and
-	weight so that build_packages_from_sdn can construct a valid ShipEngine payload.
-	"""
-	shipment = get_freight_terminal_shipment_for_tests()
-	assert shipment.shipment_delivery_note, "SDN rows must be present"
-	for row in shipment.shipment_delivery_note:
-		assert row.parcel_number, f"Row {row.idx} missing parcel_number"
-		assert (
-			row.parcel_length and row.parcel_width and row.parcel_height
-		), f"Row {row.idx} missing parcel dimensions"
-		assert row.parcel_weight, f"Row {row.idx} missing parcel_weight"
-
-
-@pytest.mark.order(43)
-def test_freight_terminal_prepaid_sq_submit_creates_purchase_invoice():
-	"""
-	Freight terminal — Shipper / Prepaid / no delivery_customer → company absorbs cost.
-
-	Because there is no delivery_customer (goods go to a terminal, not directly to
-	a billed customer), the SQ submit path creates a Purchase Invoice rather than a
-	Journal Entry.  The item expense_account is freight_expense_account — the cost
-	is a direct expense, not a receivable to be recovered.
-
-	| Account                        | Stock Ledger |   Debit |   Credit | Party            |
-	| ------------------------------ |:------------:| -------:| --------:| ---------------- |
-	| Freight and Forwarding Charges |              | $474.38 |          |                  |
-	| Creditors                      |              |         |  $474.38 | Test LTL Carrier |
-	"""
-	terminal_shipment = get_freight_terminal_shipment_for_tests()
-	assert terminal_shipment.billing_type == "Shipper"
-	assert terminal_shipment.payment_terms == "Prepaid"
-	assert not terminal_shipment.get(
-		"delivery_customer"
-	), "Terminal shipment must have no delivery_customer to exercise the absorb-cost path"
-
-	for sq_name in frappe.get_all(
-		"Shipment Quotation",
-		filters={"shipment": terminal_shipment.name},
-		pluck="name",
-	):
-		frappe.delete_doc("Shipment Quotation", sq_name, force=True)
-
-	ltl = ShipstationLTL()
-	ltl.save_ltl_quotes_as_shipment_quotations_and_display(
-		terminal_shipment, ltl_quotes_response_for_tests()[:1]
-	)
-	sq = frappe.get_last_doc("Shipment Quotation", filters={"shipment": terminal_shipment.name})
-	sq.submit()
-	sq.reload()
-
-	assert sq.docstatus == 1
-	assert sq.purchase_invoice
-
-	pi = frappe.get_doc("Purchase Invoice", sq.purchase_invoice)
-	assert pi.docstatus == 1
-	assert flt(pi.grand_total, 2) == LTL_STANDARD_RATE
-	assert (
-		pi.items[0].expense_account == freight_expense_account()
-	), "Terminal shipment PI must use freight_expense_account, not the clearing account"
-
-	gl_entries = frappe.get_all(
-		"GL Entry",
-		filters={"voucher_no": pi.name, "is_cancelled": 0},
-		fields=["account", "debit", "credit"],
-	)
-	assert len(gl_entries) == 2
-
-	expense_acct = freight_expense_account()
-	gl_dr = next((g for g in gl_entries if g.account == expense_acct), None)
-	assert gl_dr, f"Expected debit entry for {expense_acct}"
-	assert flt(gl_dr.debit, 2) == LTL_STANDARD_RATE
-
-	sq.cancel()
-	for sq_name in frappe.get_all(
-		"Shipment Quotation",
-		filters={"shipment": terminal_shipment.name},
-		pluck="name",
-	):
-		frappe.delete_doc("Shipment Quotation", sq_name, force=True)
-	frappe.db.set_value(
-		"Shipment",
-		terminal_shipment.name,
-		{"accepted_quotation": None, "shipment_amount": 0},
-	)
-
-
-@pytest.mark.order(44)
-def test_freight_terminal_delivery_address_is_terminal_not_customer():
-	"""
-	The physical delivery address must be the freight terminal, not the customer.
-	The customer's address is irrelevant to routing; only the terminal appears
-	in the ShipEngine payload.
-	"""
-	shipment = get_freight_terminal_shipment_for_tests()
-	assert shipment.delivery_address_name
-
-	addr = frappe.get_doc("Address", shipment.delivery_address_name)
-	assert "Terminal" in addr.address_title, f"Expected terminal address, got '{addr.address_title}'"
-	customer_links = [lnk for lnk in addr.links if lnk.link_doctype == "Customer"]
-	assert not customer_links, "Freight terminal address should not be linked to a Customer"

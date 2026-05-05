@@ -9,6 +9,18 @@ from frappe.installer import update_site_config
 
 from shipstation_integration.patches.add_user_uom_fields import execute as add_user_uom_fields
 
+INTEGRATION_ROLE_17TRACK = "17Track Integration"
+
+
+def ensure_17track_integration_role():
+	"""Custom role for API/webhook-driven 17Track updates on Tracking Number."""
+	if frappe.db.exists("Role", INTEGRATION_ROLE_17TRACK):
+		return
+	role = frappe.new_doc("Role")
+	role.role_name = INTEGRATION_ROLE_17TRACK
+	role.desk_access = 0
+	role.insert(ignore_permissions=True)
+
 
 def get_user_confirmation():
 	while True:
@@ -69,3 +81,4 @@ def add_custom_queue():
 def after_install():
 	add_custom_queue()
 	add_user_uom_fields()
+	ensure_17track_integration_role()

@@ -9,7 +9,6 @@ from shipstation.models import ShipStationOrder
 
 from shipstation_integration.shipments import create_erpnext_shipment
 
-
 ORDER_ID = "test-shipstation-order-99999"
 ERROR_LOG_TITLE = f"Shipstation: order {ORDER_ID}"
 
@@ -40,29 +39,21 @@ def cleanup_error_log():
 		frappe.delete_doc("Error Log", name, force=True)
 
 
-def test_create_erpnext_shipment_returns_none_on_failure(monkeypatch):
+@pytest.mark.order(40)
+def test_create_erpnext_shipment_fails_silently_when_sales_invoice_errors(monkeypatch):
 	monkeypatch.setattr(
 		"shipstation_integration.shipments.create_sales_invoice",
 		MagicMock(side_effect=frappe.ValidationError("Missing shipping expense account")),
 	)
 	result = create_erpnext_shipment(make_mock_shipment(), make_mock_store(), make_mock_settings())
 	assert result is None
-	cleanup_error_log()
-
-
-def test_create_erpnext_shipment_logs_error_with_order_id(monkeypatch):
-	monkeypatch.setattr(
-		"shipstation_integration.shipments.create_sales_invoice",
-		MagicMock(side_effect=frappe.ValidationError("Missing shipping expense account")),
-	)
-	create_erpnext_shipment(make_mock_shipment(), make_mock_store(), make_mock_settings())
-
 	error_log_name = frappe.db.get_value("Error Log", {"method": ERROR_LOG_TITLE}, "name")
-	assert error_log_name, f"Expected Error Log entry with title '{ERROR_LOG_TITLE}'"
+	assert error_log_name
 	cleanup_error_log()
 
 
-def test_create_erpnext_shipment_logs_error_on_delivery_note_failure(monkeypatch):
+@pytest.mark.order(41)
+def test_create_erpnext_shipment_fails_silently_when_delivery_note_errors(monkeypatch):
 	monkeypatch.setattr(
 		"shipstation_integration.shipments.create_delivery_note",
 		MagicMock(side_effect=frappe.ValidationError("Sales Order not found")),

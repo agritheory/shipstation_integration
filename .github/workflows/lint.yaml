@@ -26,14 +26,19 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install mypy
-        run: pip install mypy
+      - name: Install pre-commit
+        run: pip install pre-commit
 
+<<<<<<< HEAD
       - name: Install mypy stubs
         run: mypy ./shipstation_integration/. --install-types --non-interactive
 
       - name: Run mypy
         run: mypy ./shipstation_integration/.
+=======
+      - name: Mypy (same invocation as local pre-commit)
+        run: pre-commit run mypy --all-files
+>>>>>>> 95b8f34a8f01534b87dc063ff0212c406bdd9ece
 
   black:
     needs: [ py_json_merge ]

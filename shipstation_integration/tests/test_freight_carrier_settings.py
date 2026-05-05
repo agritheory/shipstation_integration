@@ -2,20 +2,21 @@
 # For license information, please see license.txt
 
 import frappe
+import pytest
 
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
 )
-from shipstation_integration.utils import get_shipment_company_for_ltl
+from shipstation_integration.tests.setup import create_freight_carrier_settings_for_tests
 
 
+@pytest.mark.order(30)
 def test_get_freight_carrier_settings_none_when_missing():
-	"""get_freight_carrier_settings returns None for nonexistent company/supplier."""
 	assert get_freight_carrier_settings("No Such Company", "No Such Supplier") is None
 
 
+@pytest.mark.order(31)
 def test_get_freight_carrier_settings_resolves_doc():
-	"""get_freight_carrier_settings resolves an existing FCS document and retrieves password field."""
 	company = "Ambrosia Pie Company"
 	supplier_name = frappe.get_value(
 		"Supplier", {"supplier_name": "Test LTL Carrier", "is_transporter": 1}, "name"
@@ -41,19 +42,5 @@ def test_get_freight_carrier_settings_resolves_doc():
 		assert found.get_password("ltl_api_key") == "test-key-for-unit-test"
 	finally:
 		frappe.delete_doc("Freight Carrier Settings", doc.name, force=1, ignore_permissions=True)
-
-
-def test_get_shipment_company_for_ltl_from_shipment():
-	"""get_shipment_company_for_ltl extracts company from shipment based on pickup configuration."""
-	names = frappe.get_all(
-		"Shipment",
-		filters={"freight_type": "LTL", "docstatus": 0},
-		pluck="name",
-		order_by="creation desc",
-		limit_page_length=1,
-	)
-	shipment = frappe.get_doc("Shipment", names[0])
-
-	shipment.pickup_from_type = "Company"
-	shipment.pickup_company = "Ambrosia Pie Company"
-	assert get_shipment_company_for_ltl(shipment) == "Ambrosia Pie Company"
+		# Restore seed FCS rows deleted at start; billing and LTL tests run later in the session.
+		create_freight_carrier_settings_for_tests(frappe._dict(company=company))

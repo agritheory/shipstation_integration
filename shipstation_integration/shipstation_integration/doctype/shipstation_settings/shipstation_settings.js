@@ -33,6 +33,7 @@ frappe.ui.form.on('Shipstation Settings', {
 		frm.trigger('toggle_mandatory_table_fields')
 		frm.trigger('enable_shipstation_api')
 		frm.trigger('enable_legacy_api')
+		frm.trigger('toggle_cartonization_field')
 
 		if (frm.doc.enable_legacy_api && frm.doc.carrier_data) {
 			const wrapper = $(frm.fields_dict.carriers_html.wrapper)
@@ -356,6 +357,18 @@ frappe.ui.form.on('Shipstation Settings', {
 			.done(() => {
 				frm.reload_doc()
 			})
+	},
+
+	toggle_cartonization_field: frm => {
+		const installed = !!frappe.boot.inventory_tools_installed
+		frm.set_df_property('create_physical_dimension_per_parcel_template', 'read_only', !installed)
+		if (!installed) {
+			frm.set_df_property(
+				'create_physical_dimension_per_parcel_template',
+				'description',
+				__('Inventory Tools is not installed. Install it to enable this feature.')
+			)
+		}
 	},
 
 	enable_shipstation_api: frm => {

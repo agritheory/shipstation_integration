@@ -46,6 +46,20 @@ def db_instance():
 	frappe.init(site=currentsite, sites_path=sites)
 	frappe.connect()
 	frappe.db.commit = MagicMock()
+
+	# Same idempotent tail as before_test (after create_test_data): local pytest may not run bench execute.
+	from shipstation_integration.tests.setup import (
+		create_seventeen_track_settings,
+		create_test_tracking_numbers,
+		ensure_ambrosia_shipstation_gs1_prefix,
+		ensure_draft_shipment_pickup_dates_current,
+	)
+
+	company = frappe.defaults.get_global_default("default_company") or "Ambrosia Pie Company"
+	create_seventeen_track_settings(company)
+	create_test_tracking_numbers()
+	ensure_ambrosia_shipstation_gs1_prefix()
+	ensure_draft_shipment_pickup_dates_current()
 	yield frappe.db
 
 

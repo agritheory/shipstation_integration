@@ -12,10 +12,14 @@ app_color = "grey"
 app_email = "support@agritheory.dev"
 app_license = "MIT"
 
-required_apps = ["erpnext", "beam"]
+required_apps = ["erpnext", "agritheory/beam"]
 
+# Setup Wizard
+# ------------
 # setup_wizard_stages = "shipstation_integration.setup.get_setup_stages"
 
+# Includes in <head>
+# ------------------
 extend_bootinfo = "shipstation_integration.shipstation_integration.boot.boot_session"
 
 # include js, css files in header of desk.html
@@ -32,13 +36,12 @@ app_include_js = ["shipstation_integration.bundle.js"]
 # include js in doctype views
 
 doctype_js = {
-	"Customer": "public/js/customer.js",
 	"Delivery Note": "public/js/delivery_note.js",
 	"Packing Slip": "public/js/packing_slip.js",
 	"Sales Order": "public/js/sales_order.js",
-	"Shipment": ["public/js/shipment_custom.js", "public/js/shipment_pack.js"],
-	"Shipment Parcel Template": "public/js/shipment_parcel_template.js",
 	"Supplier": "public/js/supplier.js",
+	"Customer": "public/js/customer.js",
+	"Shipment Parcel Template": "public/js/shipment_parcel_template.js",
 }
 
 doctype_list_js = {
@@ -46,6 +49,9 @@ doctype_list_js = {
 }
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
+
+# Home Pages
+# ----------
 
 # application home page (will override Website Settings)
 # home_page = "login"
@@ -58,16 +64,25 @@ doctype_list_js = {
 # Website user home page (by function)
 # get_website_user_home_page = "shipstation_integration.utils.get_home_page"
 
+# Generators
+# ----------
+
 # automatically create page for each record of this doctype
 # website_generators = ["Web Page"]
 
+# Installation
+# ------------
 after_migrate = ["shipstation_integration.install.add_custom_queue"]
 after_install = "shipstation_integration.install.after_install"
 
+# Desk Notifications
+# ------------------
 # See frappe.core.notifications.get_notification_config
 
 # notification_config = "shipstation_integration.notifications.get_notification_config"
 
+# Permissions
+# -----------
 # Permissions evaluated in scripted ways
 
 # permission_query_conditions = {
@@ -78,18 +93,19 @@ after_install = "shipstation_integration.install.after_install"
 # 	"Event": "frappe.desk.doctype.event.event.has_permission",
 # }
 
+# Document Events
+# ---------------
 # Hook on document methods and events
 
 doc_events = {
 	"Packing Slip": {
 		"before_submit": "shipstation_integration.packing_slip.before_submit",
 		"on_submit": "shipstation_integration.packing_slip.on_submit",
-	},
-	"Shipment": {
-		"before_submit": "shipstation_integration.shipment_pack.before_submit",
-		"on_submit": "shipstation_integration.shipment_pack.on_submit",
-	},
+	}
 }
+
+# Scheduled Tasks
+# ---------------
 
 scheduler_events = {
 	"all": [
@@ -99,6 +115,12 @@ scheduler_events = {
 	]
 }
 
+# Testing
+# -------
+
+# Overriding Methods
+# ------------------------------
+#
 # override_whitelisted_methods = {
 # 	"frappe.desk.doctype.event.event.get_events": "shipstation_integration.event.get_events"
 # }
@@ -111,9 +133,7 @@ scheduler_events = {
 # }
 
 override_doctype_class = {
-	"Packing Slip": "shipstation_integration.shipstation_integration.overrides.packing_slip.ShipstationPackingSlip",
 	"Sales Order": "shipstation_integration.shipstation_integration.overrides.sales_order.ShipStationSalesOrder",
-	"Shipment": "shipstation_integration.shipstation_integration.overrides.shipment.ShipStationShipment",
 	"Shipment Parcel Template": "shipstation_integration.shipstation_integration.overrides.shipment_parcel_template.ShipstationShipmentParcelTemplate",
 }
 
