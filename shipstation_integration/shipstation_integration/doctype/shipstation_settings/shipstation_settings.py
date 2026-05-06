@@ -41,11 +41,11 @@ class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comi
 		return warehouse_ids
 
 	def onload(self):
-		if self.carrier_data:
+		if self.get("carrier_data"):
 			self.set_onload("carriers", self.get_carrier_data())
-		if self.shipstation_api_carrier_data:
+		if self.get("shipstation_api_carrier_data"):
 			self.set_onload("api_carriers", self.api_carrier_data())
-		if self.shipstation_api_ltl_carrier_data:
+		if self.get("shipstation_api_ltl_carrier_data"):
 			self.set_onload("api_ltl_carriers", self.api_ltl_carrier_data())
 
 	def validate(self):
