@@ -8,6 +8,37 @@ function sdn_get_parcel_color(parcel_number) {
 	return SDN_PARCEL_COLORS[(parcel_number - 1) % SDN_PARCEL_COLORS.length]
 }
 
+function sdn_get_grid_bulk_actions(grid) {
+	if (!grid?.wrapper) return $()
+	let $bulk = grid.wrapper.find('.grid-bulk-actions')
+	if (!$bulk.length) {
+		const $flex = grid.wrapper.find('.grid-footer .flex')
+		if ($flex.length) {
+			$bulk = $('<div class="grid-bulk-actions text-right"></div>')
+			$flex.append($bulk)
+		}
+	}
+	return $bulk
+}
+
+function sdn_attach_tab_listener_for_parcel_buttons(frm) {
+	if (frm.__sdn_parcel_tab_listener) return
+	frm.__sdn_parcel_tab_listener = true
+	frm.$wrapper.on('shown.bs.tab.sdn-parcel', '.form-tabs .nav-link', () => {
+		setTimeout(() => sdn_setup_parcel_buttons(frm), 0)
+		setTimeout(() => sdn_setup_parcel_buttons(frm), 120)
+	})
+}
+
+function sdn_attach_grid_change_for_parcel_buttons(frm) {
+	const grid = frm.fields_dict.shipment_delivery_note?.grid
+	if (!grid?.wrapper || grid.wrapper.data('sdn-parcel-grid-change')) return
+	grid.wrapper.data('sdn-parcel-grid-change', true)
+	grid.wrapper.on('change.sdn-parcel-btns', () => {
+		setTimeout(() => sdn_setup_parcel_buttons(frm), 0)
+	})
+}
+
 function sdn_render_parcel_indicators(frm) {
 	const grid = frm.fields_dict.shipment_delivery_note?.grid
 	if (!grid) return
@@ -39,10 +70,22 @@ function sdn_render_parcel_indicators(frm) {
 
 function sdn_setup_parcel_buttons(frm) {
 	const grid = frm.fields_dict.shipment_delivery_note?.grid
-	if (!grid) return
+	if (!grid?.wrapper) return
 
-	const $bulk_actions = $(grid.wrapper).find('.grid-bulk-actions')
-	if (!$bulk_actions.length || $bulk_actions.find('.sdn-pack-rows').length) return
+	const $bulk_actions = sdn_get_grid_bulk_actions(grid)
+	if (!$bulk_actions.length) return
+
+	if ($bulk_actions.find('.sdn-pack-rows').length) {
+		sdn_update_split_button_state(frm)
+		return
+	}
+
+	if (!grid.wrapper.data('sdn-split-check-bound')) {
+		grid.wrapper.data('sdn-split-check-bound', true)
+		grid.wrapper.on('change', '.grid-row-check', () => {
+			sdn_update_split_button_state(frm)
+		})
+	}
 
 	$bulk_actions.prepend(
 		$('<button type="button" class="sdn-unpack-rows btn btn-xs btn-warning">')
@@ -69,9 +112,7 @@ function sdn_setup_parcel_buttons(frm) {
 			.on('click', () => sdn_split_selected_rows(frm))
 	)
 
-	$(grid.wrapper).on('change', '.grid-row-check', () => {
-		sdn_update_split_button_state(frm)
-	})
+	sdn_update_split_button_state(frm)
 }
 
 function sdn_deselect_all_rows(frm) {
@@ -590,7 +631,11 @@ frappe.ui.form.on('Shipment', {
 			return { filters }
 		})
 
+		sdn_attach_tab_listener_for_parcel_buttons(frm)
+		sdn_attach_grid_change_for_parcel_buttons(frm)
 		sdn_setup_parcel_buttons(frm)
+		setTimeout(() => sdn_setup_parcel_buttons(frm), 0)
+		setTimeout(() => sdn_setup_parcel_buttons(frm), 150)
 		sdn_render_parcel_indicators(frm)
 		sdn_populate_all_parcel_details(frm)
 		sdn_setup_sscc_button(frm)
@@ -628,15 +673,18 @@ frappe.ui.form.on('Shipment', {
 
 	shipment_delivery_note_add: function (frm) {
 		sdn_render_parcel_indicators(frm)
+		setTimeout(() => sdn_setup_parcel_buttons(frm), 0)
 	},
 
 	shipment_delivery_note_remove: function (frm) {
 		sdn_render_parcel_indicators(frm)
+		setTimeout(() => sdn_setup_parcel_buttons(frm), 0)
 	},
 
 	shipment_delivery_note_move: function (frm) {
 		frappe.msgprint(__('Moving rows may require re-packing existing parcels.'), __('Warning'))
 		sdn_render_parcel_indicators(frm)
+		setTimeout(() => sdn_setup_parcel_buttons(frm), 0)
 	},
 })
 
