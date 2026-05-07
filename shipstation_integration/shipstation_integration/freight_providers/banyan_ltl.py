@@ -305,6 +305,16 @@ class BanyanLTL(BaseLTL):
 			)
 		return str(pickup_date)
 
+	def banyan_weight_unit_of_measurement(self, weight_unit: str | None) -> str:
+		"""Map SDN/package weight UOM to Banyan enums (422 if wrong).
+
+		API allows: Pounds, Kilogram, LBS, KG — not ``KGS`` or ERPNext shortcuts like ``Lb``.
+		"""
+		u = (weight_unit or "pounds").strip().lower()
+		if u in ("kg", "kgs", "kilogram", "kilograms", "kilos") or u.startswith("kilo"):
+			return "KG"
+		return "LBS"
+
 	def build_handling_units(self, doc: Shipment) -> list[dict]:
 		"""Build Banyan HandlingUnits[] (PascalCase) from Shipment Delivery Note rows."""
 		ltl = ShipstationLTL()
@@ -314,8 +324,7 @@ class BanyanLTL(BaseLTL):
 			dims = pkg.get("dimensions", {})
 			# Banyan dim UOM: "IN" or "CM" — SDN stores inches by default
 			dim_uom = "IN" if (dims.get("unit") or "inches").startswith("inch") else "CM"
-			# Banyan weight UOM: "LBS" or "KGS"
-			wt_uom = "KGS" if (pkg["weight"].get("unit") or "pounds").startswith("kilo") else "LBS"
+			wt_uom = self.banyan_weight_unit_of_measurement(pkg["weight"].get("unit"))
 
 			product = {
 				"PackageType": pkg.get("code") or "Pallets",

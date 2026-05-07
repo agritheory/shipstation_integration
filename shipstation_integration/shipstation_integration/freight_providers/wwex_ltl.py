@@ -461,10 +461,107 @@ class WwexLTL(BaseLTL):
 		payload["shipment"].update(self.build_accessorial_flags(doc))
 		return payload
 
+	@staticmethod
+	def wwex_offer_total_price_and_currency(offer: dict[str, Any]) -> tuple[float, str]:
+		block = offer.get("totalOfferPrice") or offer.get("totalPrice") or offer.get("offerPrice") or {}
+		if not isinstance(block, dict):
+			return (0.0, "USD")
+		raw_val = block.get("value")
+		if raw_val is None and isinstance(block.get("amount"), dict):
+			raw_val = block["amount"].get("value")
+		try:
+			price = float(raw_val or 0)
+		except (TypeError, ValueError):
+			price = 0.0
+		ccy = block.get("unit") or ""
+		if not ccy and isinstance(block.get("amount"), dict):
+			ccy = block["amount"].get("currency") or ""
+		return (price, ccy or "USD")
+
+	def shop_flow_offer_list(self, payload: dict[str, Any]) -> list[Any]:
+		"""Return offer rows from known shopFlow response envelope shapes."""
+
+		def list_from(keys: tuple[str, ...], d: dict[str, Any] | None) -> list[Any] | None:
+			if not isinstance(d, dict):
+				return None
+			for key in keys:
+				v = d.get(key)
+				if isinstance(v, list):
+					return v
+			return None
+
+		if not isinstance(payload, dict):
+			return []
+
+		found = list_from(("offerList", "shipmentOffers", "offers"), payload)
+		if found is not None:
+			return found
+
+		r = payload.get("response")
+		found = list_from(("offerList", "shipmentOffers", "offers"), r if isinstance(r, dict) else None)
+		if found is not None:
+			return found
+
+		if isinstance(r, dict):
+			nested = r.get("response")
+			found = list_from(
+				("offerList", "shipmentOffers", "offers"), nested if isinstance(nested, dict) else None
+			)
+			if found is not None:
+				return found
+
+		return []
+
+	def shop_flow_raise_no_offers(self, payload: dict[str, Any]) -> None:
+		"""Carrier returned HTTP 200 with no rate rows — expose WWEX diagnostics or fail loudly."""
+
+		messages: list[str] = []
+
+		def harvest_status(obj: Any, depth: int = 0) -> None:
+			if depth > 24 or isinstance(obj, (str, int, float, bool)) or obj is None:
+				return
+			if isinstance(obj, dict):
+				cs = obj.get("clientStatus")
+				if isinstance(cs, dict):
+					msg = cs.get("message")
+					if msg:
+						messages.append(str(msg))
+					for k, errs in (cs.get("fieldMap") or {}).items():
+						messages.append(f"{k}: {errs}")
+				for v in obj.values():
+					harvest_status(v, depth + 1)
+			elif isinstance(obj, list):
+				for item in obj:
+					harvest_status(item, depth + 1)
+
+		harvest_status(payload)
+		try:
+			dump = frappe.as_json(payload, indent=2)
+		except Exception:
+			dump = str(payload)
+		frappe.log_error(
+			title="WWEX shopFlow returned zero offers",
+			message=(dump[:48000] if dump else "(empty)"),
+		)
+		body = "\n".join(dict.fromkeys(m for m in messages if m)).strip()
+		if body:
+			frappe.throw(
+				_("WWEX returned no freight offers. Carrier message:\n{0}").format(body),
+				title=_("No WWEX quotes"),
+			)
+		frappe.throw(
+			_("WWEX returned no freight offers. Details are logged under Error Log (WWEX shopFlow)."),
+			title=_("No WWEX quotes"),
+		)
+
 	def fetch_wwex_offers(self, doc: Shipment, fc) -> list[dict]:
-		"""Call shopFlow and return the raw offerList without saving."""
-		response = self.post(fc, "/svc/shopFlow", self.build_shop_payload(doc))
-		return response.get("response", {}).get("offerList", [])
+		"""Call shopFlow and return raw offer rows (shape varies slightly by WWEX environment)."""
+
+		payload = self.post(fc, "/svc/shopFlow", self.build_shop_payload(doc))
+		offers = self.shop_flow_offer_list(payload)
+		if not offers:
+			self.shop_flow_raise_no_offers(payload)
+		return offers
 
 	def fetch_ltl_offers(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
 		"""Return WWEX shopFlow offers as normalized dicts without saving anything."""
@@ -472,27 +569,50 @@ class WwexLTL(BaseLTL):
 		offers = self.fetch_wwex_offers(doc, fc)
 		results: list[dict[str, Any]] = []
 		for offer in offers:
-			vendor = offer.get("primaryVendor") or {}
-			first_product = (offer.get("offeredProductList") or [{}])[0]
-			time_in_transit = (first_product.get("shopRQShipment") or {}).get("timeInTransit") or {}
-			offer_price = offer.get("totalOfferPrice") or {}
+			if not isinstance(offer, dict):
+				continue
+			vendor_raw = offer.get("primaryVendor") or offer.get("vendor") or offer.get("carrierDetail")
+			vendor = vendor_raw if isinstance(vendor_raw, dict) else {}
+			prods = offer.get("offeredProductList") or offer.get("offeredProducts") or []
+			first_product = prods[0] if isinstance(prods, list) and prods else {}
+			if not isinstance(first_product, dict):
+				first_product = {}
+			srs = first_product.get("shopRQShipment") or {}
+			if not isinstance(srs, dict):
+				srs = {}
+			time_in_transit = srs.get("timeInTransit") or {}
+			if not isinstance(time_in_transit, dict):
+				time_in_transit = {}
+			total_price, currency = self.wwex_offer_total_price_and_currency(offer)
 			results.append(
 				{
-					"carrier_name": vendor.get("preferredName") or "WWEX",
-					"carrier_scac": vendor.get("scac") or "",
-					"offer_id": offer.get("offerId") or "",
-					"transaction_id": offer.get("productTransactionId") or "",
+					"carrier_name": vendor.get("preferredName")
+					or vendor.get("name")
+					or vendor.get("carrierName")
+					or "WWEX",
+					"carrier_scac": vendor.get("scac") or vendor.get("carrierScac") or "",
+					"offer_id": offer.get("offerId") or offer.get("shipmentOfferId") or "",
+					"transaction_id": (
+						offer.get("productTransactionId") or offer.get("shipmentProductTransactionId") or ""
+					),
 					"service_level": (
 						time_in_transit.get("serviceDescription") or time_in_transit.get("serviceLevel") or ""
 					),
-					"total_price": float(offer_price.get("value") or 0),
-					"currency": offer_price.get("unit") or "USD",
+					"total_price": total_price,
+					"currency": currency,
 					"transit_days": time_in_transit.get("transitDays"),
 					"estimated_delivery_date": time_in_transit.get("estimatedDeliveryDate"),
 					"expiration_date": offer.get("expirationDate"),
 					"is_spot_quote": False,
 					"charges": [],
 				}
+			)
+		if not results and offers:
+			frappe.throw(
+				_(
+					"WWEX returned offer rows but they could not be parsed. See Error Log for the raw response."
+				),
+				title=_("No WWEX quotes"),
 			)
 		return results
 
@@ -501,22 +621,26 @@ class WwexLTL(BaseLTL):
 		fc = self.get_fcs(doc, settings_name)
 		offers = self.fetch_wwex_offers(doc, fc)
 
-		offers = offers or []
-		if not offers:
-			frappe.msgprint(_("WWEX returned no carrier offers for this shipment."))
-			return None
-
 		saved = 0
 		for offer in offers:
-			vendor = offer.get("primaryVendor") or {}
-			carrier_name = vendor.get("preferredName") or "WWEX"
-			scac = vendor.get("scac") or ""
-			offer_id = offer.get("offerId") or ""
-			txn_id = offer.get("productTransactionId") or ""
+			vendor_raw = offer.get("primaryVendor") or offer.get("vendor") or offer.get("carrierDetail")
+			vendor = vendor_raw if isinstance(vendor_raw, dict) else {}
+			carrier_name = vendor.get("preferredName") or vendor.get("name") or "WWEX"
+			scac = vendor.get("scac") or vendor.get("carrierScac") or ""
+			offer_id = offer.get("offerId") or offer.get("shipmentOfferId") or ""
+			txn_id = offer.get("productTransactionId") or offer.get("shipmentProductTransactionId") or ""
 
 			# Dig into the first offered product for transit/service details
-			first_product = (offer.get("offeredProductList") or [{}])[0]
-			time_in_transit = (first_product.get("shopRQShipment") or {}).get("timeInTransit") or {}
+			prods = offer.get("offeredProductList") or offer.get("offeredProducts") or []
+			first_product = prods[0] if isinstance(prods, list) and prods else {}
+			if not isinstance(first_product, dict):
+				first_product = {}
+			srs = first_product.get("shopRQShipment") or {}
+			if not isinstance(srs, dict):
+				srs = {}
+			time_in_transit = srs.get("timeInTransit") or {}
+			if not isinstance(time_in_transit, dict):
+				time_in_transit = {}
 			transit_days = time_in_transit.get("transitDays")
 			service_level = (
 				time_in_transit.get("serviceDescription") or time_in_transit.get("serviceLevel") or ""
@@ -528,8 +652,7 @@ class WwexLTL(BaseLTL):
 				else None
 			)
 
-			offer_price = offer.get("totalOfferPrice") or {}
-			net = float(offer_price.get("value") or 0)
+			total_price, _currency_ignore = self.wwex_offer_total_price_and_currency(offer)
 
 			sq = frappe.new_doc("Shipment Quotation")
 			sq.shipment = doc.name
@@ -538,7 +661,7 @@ class WwexLTL(BaseLTL):
 			sq.quote_or_offer_id = offer_id
 			sq.quote_or_offer_transaction_id = txn_id
 			sq.service_level = service_level
-			sq.grand_total = net
+			sq.grand_total = total_price
 			sq.pickup_date = doc.get("pickup_date")
 			if transit_days is not None:
 				sq.estimated_delivery_days = float(transit_days)
