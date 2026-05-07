@@ -40,6 +40,10 @@ assembled ``{base_url}/svc/…`` URLs.
 **Pickup date/time**
 ``shopFlow`` expects ``ShipmentV3.shipmentDate`` exactly as ``yyyy-MM-dd HH:mm:ss`` (24-hour, no
 fractional seconds), e.g. ``2023-03-15 18:49:00``.
+
+**Weights**
+WWEX validates ``ShippedItemV3.weight`` with units **LB** or **OZ** only — not KG/Gram. Packages
+built in SI (e.g. Kg parcel weight) are converted here before POST.
 """
 from __future__ import annotations
 
@@ -52,7 +56,7 @@ from typing import TYPE_CHECKING, Any
 import frappe
 import httpx
 from frappe import _
-from frappe.utils import get_time, now, getdate
+from frappe.utils import flt, get_time, now, getdate
 from frappe.utils.file_manager import save_file
 
 from shipstation_integration.base_ltl import BaseLTL
@@ -66,6 +70,14 @@ if TYPE_CHECKING:
 	from erpnext.stock.doctype.shipment.shipment import Shipment
 
 TOKEN_REFRESH_BUFFER = 60  # refresh token this many seconds before expiry
+
+# ShipEngine-style ``pkg["weight"]["unit"]`` values from ``build_packages_from_sdn`` (plural keys)
+SHIPENGINE_WEIGHT_UNIT_TO_LB = {
+	"pounds": 1.0,
+	"kilograms": 2.20462,
+	"ounces": 1 / 16,
+	"grams": 0.00220462,
+}
 
 
 WWEX_ACCESSORIAL_FLAGS: dict[str, str] = {
@@ -332,30 +344,46 @@ class WwexLTL(BaseLTL):
 			}
 		}
 
-	# WWEX unit strings differ from the plural values stored in build_packages_from_sdn
-	WEIGHT_UNIT = {"pounds": "LB", "kilograms": "KG", "ounces": "OZ", "grams": "GM"}
 	DIM_UNIT = {"inches": "IN", "centimeters": "CM", "feet": "FT"}
 
-	def build_handling_units(self, doc: Shipment) -> list[dict]:
+	@staticmethod
+	def shipengine_pkg_weight_value_to_pounds(pkg_weight: dict) -> float:
+		"""Interpret ``ShipstationLTL`` package weight … value/unit as pounds."""
+		raw = flt(pkg_weight.get("value"))
+		ukey = ((pkg_weight.get("unit")) or "pounds").strip().lower()
+		mult = SHIPENGINE_WEIGHT_UNIT_TO_LB.get(ukey, 1.0)
+		return raw * mult
+
+	@staticmethod
+	def wwex_shipped_item_weight(pkg_weight: dict) -> dict[str, str]:
+		"""WWEX ``ShippedItemV3.weight`` (and HU weight blocks) allows only LB or OZ—not KG or GM."""
+
+		lb = WwexLTL.shipengine_pkg_weight_value_to_pounds(pkg_weight)
+		if lb <= 0:
+			lb = 0.01
+		if lb < 1.0:
+			return {"value": str(round(lb * 16, 3)), "unit": "OZ"}
+		return {"value": str(round(lb, 3)), "unit": "LB"}
+
+	def build_handling_units(
+		self, doc: Shipment, packages: list[dict[str, Any]] | None = None
+	) -> list[dict]:
 		"""Build WWEX handlingUnitList from Shipment parcel groups."""
-		ltl = ShipstationLTL()
-		packages = ltl.build_packages_from_sdn(doc)
+		if packages is None:
+			packages = ShipstationLTL().build_packages_from_sdn(doc)
 
 		units = []
 		for pkg in packages:
 			dims = pkg.get("dimensions", {})
-			wt_unit = self.WEIGHT_UNIT.get(pkg["weight"].get("unit", "pounds"), "LB")
+			w_wwex = self.wwex_shipped_item_weight(pkg["weight"])
 			dim_unit = self.DIM_UNIT.get(dims.get("unit", "inches"), "IN")
 			items = []
-			for i in range(int(pkg.get("quantity", 1))):
+			for _i in range(int(pkg.get("quantity", 1))):
 				item: dict = {
 					"commodityClass": str(pkg.get("freight_class", "50")),
 					"commodityDescription": pkg.get("description") or "",
 					"isHazMat": bool(doc.get("hazardous_material")),
-					"weight": {
-						"value": str(pkg["weight"]["value"]),
-						"unit": wt_unit,
-					},
+					"weight": w_wwex,
 					"quantity": 1,
 				}
 				if pkg.get("nmfc_code"):
@@ -365,10 +393,7 @@ class WwexLTL(BaseLTL):
 			unit = {
 				"packagingType": (pkg.get("code") or "PLT").upper(),
 				"quantity": int(pkg.get("quantity", 1)),
-				"weight": {
-					"value": str(pkg["weight"]["value"]),
-					"unit": wt_unit,
-				},
+				"weight": w_wwex,
 				"billedDimension": {
 					"length": {"value": str(dims.get("length", 0)), "unit": dim_unit},
 					"width": {"value": str(dims.get("width", 0)), "unit": dim_unit},
@@ -412,18 +437,23 @@ class WwexLTL(BaseLTL):
 		for c in dest["address"]["contactList"]:
 			c["contactType"] = "RECEIVER"
 
+		packages = ltl.build_packages_from_sdn(doc)
+		total_lb = sum(self.shipengine_pkg_weight_value_to_pounds(p["weight"]) for p in packages)
+		if total_lb <= 0:
+			total_lb = 0.01
+
 		payload: dict = {
 			"productType": "LTL",
 			"shipment": {
 				"shipmentDate": self.wwex_shop_flow_shipment_date(doc),
 				"originAddress": origin,
 				"destinationAddress": dest,
-				"handlingUnitList": self.build_handling_units(doc),
+				"handlingUnitList": self.build_handling_units(doc, packages),
 				"totalWeight": {
-					"value": sum(p["weight"]["value"] for p in ShipstationLTL().build_packages_from_sdn(doc)),
+					"value": str(round(total_lb, 3)),
 					"unit": "LB",
 				},
-				"totalHandlingUnitCount": len(self.build_handling_units(doc)),
+				"totalHandlingUnitCount": len(packages),
 				"pickupSpecialInstructions": doc.get("description_of_content") or "",
 				"deliverySpecialInstructions": "",
 			},
