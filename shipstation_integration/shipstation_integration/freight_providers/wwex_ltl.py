@@ -30,10 +30,21 @@ required. Alternate: Frappe **Connected App** (token URI and ``query_parameters`
 for audience). Token is cached in ``frappe.cache`` keyed by FCS record name.
 
 All requests wrap in ``{"request": {...}, "correlationId": "<uuid>"}``.
+
+**Base URL (SpeedShip)**
+Use the REST host root only (e.g. ``https://www.speedship.com``). Paths such as ``/svc/shopFlow``
+are appended by the client — do **not** set base URL to ``https://www.speedship.com/svc``.
+See [SpeedShip](https://www.speedship.com/svc/) service root for orientation; API calls use the
+assembled ``{base_url}/svc/…`` URLs.
+
+**Pickup date/time**
+``shopFlow`` expects ``ShipmentV3.shipmentDate`` exactly as ``yyyy-MM-dd HH:mm:ss`` (24-hour, no
+fractional seconds), e.g. ``2023-03-15 18:49:00``.
 """
 from __future__ import annotations
 
 import base64
+import json
 import time
 import uuid
 from typing import TYPE_CHECKING, Any
@@ -41,7 +52,7 @@ from typing import TYPE_CHECKING, Any
 import frappe
 import httpx
 from frappe import _
-from frappe.utils import now
+from frappe.utils import get_time, now, getdate
 from frappe.utils.file_manager import save_file
 
 from shipstation_integration.base_ltl import BaseLTL
@@ -163,7 +174,7 @@ class WwexLTL(BaseLTL):
 			resp = client.post(token_url, data=data, timeout=30)
 		self.raise_for_status(resp, "token")
 
-		payload = resp.json()
+		payload = self.decode_response_json(resp, _("OAuth token exchange"))
 		access_token = payload["access_token"]
 		expires_in = int(payload.get("expires_in", 3600))
 		frappe.cache.set_value(
@@ -191,6 +202,52 @@ class WwexLTL(BaseLTL):
 				title=_("WWEX LTL Error"),
 			)
 
+	def decode_response_json(self, resp: httpx.Response, context: str):
+		"""Parse JSON body after HTTP success — WWEX occasionally returns blank/HTML via wrong base URL."""
+		raw = resp.text if resp.content is not None else ""
+		raw = raw or ""
+		trimmed = raw.strip()
+		req_url = str(getattr(resp.request, "url", "") or "")
+
+		if not trimmed:
+			frappe.log_error(
+				title=_("WWEX LTL empty response"),
+				message=f"context={context}\nstatus_code={resp.status_code}\nurl={req_url}",
+			)
+			frappe.throw(
+				_(
+					"The WWEX API returned an empty body for «{0}» (HTTP {1}). Usually this means "
+					"<b>Domain / Base URL</b> on Freight Carrier Settings does not reach the WWEX REST host "
+					"(wrong host, path, VPN, or a proxy/HTML page instead of JSON). Request URL was: {2}"
+				).format(context, resp.status_code, req_url),
+				title=_("WWEX LTL empty response"),
+			)
+
+		try:
+			data = json.loads(trimmed)
+		except json.JSONDecodeError:
+			frappe.log_error(
+				title=_("WWEX LTL non-JSON response"),
+				message=(f"context={context}\nstatus_code={resp.status_code}\nurl={req_url}\n\nbody:\n{raw}"),
+			)
+			preview = raw[:600].strip()
+			if len(raw) > 600:
+				preview += "…"
+			frappe.throw(
+				_(
+					"The WWEX API returned a non-JSON body for «{0}» (HTTP {1}). "
+					"Check base URL / credentials environment. Preview:\n\n{2}"
+				).format(context, resp.status_code, preview),
+				title=_("WWEX LTL invalid response"),
+			)
+
+		if not isinstance(data, dict):
+			frappe.throw(
+				_("Unexpected WWEX response type for «{0}»: expected a JSON object.").format(context),
+				title=_("WWEX LTL unexpected response"),
+			)
+		return data
+
 	def headers(self, fc) -> dict:
 		return {
 			"Authorization": f"Bearer {self.get_token(fc)}",
@@ -200,6 +257,38 @@ class WwexLTL(BaseLTL):
 
 	def url(self, fc, path: str) -> str:
 		return f"{(fc.base_url or '').rstrip('/')}/{path.lstrip('/')}"
+
+	@staticmethod
+	def wwex_shop_flow_shipment_date(doc: Shipment) -> str:
+		"""Serialize pickup date/time for WWEX ``ShipmentV3.shipmentDate``.
+
+		WWEX rejects values that do not parse as ``yyyy-MM-dd HH:mm:ss`` (ERPNext stores
+		``pickup_from`` with fractional seconds like ``9:53:54.719844`` and uneven padding).
+		"""
+		raw_date = doc.get("pickup_date")
+		if not raw_date:
+			frappe.throw(
+				_("Pickup Date is required for WWEX LTL quotes."),
+				title=_("Missing pickup date"),
+			)
+		date_part = getdate(raw_date)
+		pt = doc.get("pickup_from")
+		if pt in (None, ""):
+			from datetime import time as time_constructor
+
+			t = time_constructor(12, 0, 0)
+		else:
+			try:
+				t = get_time(pt)
+			except Exception:
+				frappe.throw(
+					_("Pickup from time is invalid for WWEX: {0}. Use a recognizable time.").format(pt),
+					title=_("Invalid pickup time"),
+				)
+			# Drop microseconds; strftime H:M:S ignores them but keeps types explicit
+			if getattr(t, "microsecond", 0):
+				t = t.replace(microsecond=0)
+		return f"{date_part.strftime('%Y-%m-%d')} {t.strftime('%H:%M:%S')}"
 
 	def post(self, fc, path: str, payload: dict) -> dict:
 		"""Wrap payload in the standard WWEX envelope and POST."""
@@ -215,7 +304,7 @@ class WwexLTL(BaseLTL):
 				timeout=60,
 			)
 		self.raise_for_status(resp, path)
-		return resp.json()
+		return self.decode_response_json(resp, path)
 
 	@staticmethod
 	def wwex_address(info: dict) -> dict:
@@ -326,10 +415,7 @@ class WwexLTL(BaseLTL):
 		payload: dict = {
 			"productType": "LTL",
 			"shipment": {
-				"shipmentDate": "{} {}".format(
-					doc.get("pickup_date") or "",
-					str(doc.get("pickup_from") or "00:00:00").zfill(8),
-				),
+				"shipmentDate": self.wwex_shop_flow_shipment_date(doc),
 				"originAddress": origin,
 				"destinationAddress": dest,
 				"handlingUnitList": self.build_handling_units(doc),

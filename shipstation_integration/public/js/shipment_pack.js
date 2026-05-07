@@ -310,6 +310,46 @@ function sdn_check_template_match(frm, cdt, cdn) {
 	})
 }
 
+function sdn_try_resolve_dn_item_link(_frm, cdt, cdn) {
+	const row = locals[cdt][cdn]
+	if (!row || !row.delivery_note || row.dn_detail) {
+		return
+	}
+
+	frappe.db
+		.get_list('Delivery Note Item', {
+			filters: { parent: row.delivery_note },
+			fields: ['name', 'item_code', 'item_name', 'qty', 'stock_uom', 'base_amount', 'amount'],
+			order_by: 'idx asc',
+			limit: 500,
+		})
+		.then(items => {
+			if (!items || !items.length) return
+
+			let match = null
+			if (items.length === 1) {
+				match = items[0]
+			} else if (row.item_code) {
+				const by_code = items.filter(i => i.item_code === row.item_code)
+				if (by_code.length === 1) match = by_code[0]
+				else if (row.qty && by_code.length > 1) {
+					const qhits = by_code.filter(i => flt(i.qty) === flt(row.qty))
+					if (qhits.length === 1) match = qhits[0]
+				}
+			}
+			if (!match) return
+
+			frappe.model.set_value(cdt, cdn, {
+				dn_detail: match.name,
+				item_code: match.item_code,
+				item_name: match.item_name,
+				qty: match.qty,
+				stock_uom: match.stock_uom,
+				grand_total: flt(match.base_amount || match.amount),
+			})
+		})
+}
+
 function fetch_delivery_note_items(frm) {
 	const existing_dn_details = new Set((frm.doc.shipment_delivery_note || []).map(r => r.dn_detail).filter(Boolean))
 
@@ -356,7 +396,7 @@ function fetch_delivery_note_items(frm) {
 					doctype: 'Delivery Note Item',
 					parent: 'Delivery Note',
 					filters: fetch_filter,
-					fields: ['name', 'parent', 'item_code', 'item_name', 'qty', 'stock_uom'],
+					fields: ['name', 'parent', 'item_code', 'item_name', 'qty', 'stock_uom', 'base_amount', 'amount'],
 					limit_page_length: 500,
 				},
 				callback: function (r) {
@@ -372,6 +412,7 @@ function fetch_delivery_note_items(frm) {
 						new_row.item_name = item.item_name
 						new_row.qty = item.qty
 						new_row.stock_uom = item.stock_uom
+						new_row.grand_total = flt(item.base_amount || item.amount)
 						added++
 					})
 					frm.refresh_field('shipment_delivery_note')
@@ -631,6 +672,13 @@ frappe.ui.form.on('Shipment', {
 			return { filters }
 		})
 
+		frm.set_query('dn_detail', 'shipment_delivery_note', function (doc, cdt, cdn) {
+			const row = locals[cdt][cdn]
+			return row?.delivery_note
+				? { filters: { parent: row.delivery_note } }
+				: { filters: [['name', '=', '__no_dn_linked__']] }
+		})
+
 		sdn_attach_tab_listener_for_parcel_buttons(frm)
 		sdn_attach_grid_change_for_parcel_buttons(frm)
 		sdn_setup_parcel_buttons(frm)
@@ -689,6 +737,18 @@ frappe.ui.form.on('Shipment', {
 })
 
 frappe.ui.form.on('Shipment Delivery Note', {
+	delivery_note: function (frm, cdt, cdn) {
+		sdn_try_resolve_dn_item_link(frm, cdt, cdn)
+	},
+
+	item_code: function (frm, cdt, cdn) {
+		sdn_try_resolve_dn_item_link(frm, cdt, cdn)
+	},
+
+	qty: function (frm, cdt, cdn) {
+		sdn_try_resolve_dn_item_link(frm, cdt, cdn)
+	},
+
 	parcel_number: function (frm) {
 		sdn_render_parcel_indicators(frm)
 	},

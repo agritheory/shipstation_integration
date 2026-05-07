@@ -102,7 +102,12 @@ doc_events = {
 	"Packing Slip": {
 		"before_submit": "shipstation_integration.packing_slip.before_submit",
 		"on_submit": "shipstation_integration.packing_slip.on_submit",
-	}
+	},
+	"Shipment": {
+		"before_validate": (
+			"shipstation_integration.shipstation_integration.overrides.delivery_note.before_validate_shipment"
+		),
+	},
 }
 
 # Scheduled Tasks

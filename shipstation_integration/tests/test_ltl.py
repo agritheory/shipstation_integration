@@ -132,6 +132,8 @@ def test_get_ltl_provider_resolves_by_fcs_type(case, expected_cls):
 def test_build_packages_raises_on_missing_dimensions(problem):
 	shipment = get_draft_ltl_shipment_for_tests()
 	original = configure_ltl_shipment_for_parcel_tests(shipment)
+	dn_before: list[dict] = []
+	items_before: dict[str, float] = {}
 	try:
 		for row in shipment.shipment_delivery_note:
 			if problem == "zero_dimensions":
@@ -140,7 +142,41 @@ def test_build_packages_raises_on_missing_dimensions(problem):
 				row.parcel_height = 0
 			else:
 				row.parcel_weight = 0
+
+		if problem == "zero_weight":
+			for row in shipment.shipment_delivery_note:
+				rowvals = frappe.db.get_value(
+					"Delivery Note Item",
+					row.dn_detail,
+					["total_weight", "weight_per_unit"],
+					as_dict=True,
+				)
+				dn_before.append(rowvals or {})
+				frappe.db.set_value(
+					"Delivery Note Item",
+					row.dn_detail,
+					{"total_weight": 0, "weight_per_unit": 0},
+				)
+				wp = flt(frappe.db.get_value("Item", row.item_code, "weight_per_unit"))
+				if row.item_code not in items_before:
+					items_before[row.item_code] = wp
+				frappe.db.set_value("Item", row.item_code, "weight_per_unit", 0)
+
 		with pytest.raises(frappe.ValidationError):
 			ShipstationLTL().build_packages_from_sdn(shipment)
 	finally:
+		if problem == "zero_weight":
+			for i, row in enumerate(shipment.shipment_delivery_note):
+				if i < len(dn_before) and row.dn_detail:
+					prev = dn_before[i]
+					frappe.db.set_value(
+						"Delivery Note Item",
+						row.dn_detail,
+						{
+							"total_weight": prev.get("total_weight"),
+							"weight_per_unit": prev.get("weight_per_unit"),
+						},
+					)
+			for item_code, wp in items_before.items():
+				frappe.db.set_value("Item", item_code, "weight_per_unit", wp)
 		restore_ltl_shipment(shipment, original)

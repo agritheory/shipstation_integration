@@ -1569,25 +1569,89 @@ class ShipstationLTL(BaseLTL):
 				return freight_class
 		return 500
 
+	def weight_from_item_qty(self, item_code: str | None, qty: float) -> tuple[float, str]:
+		"""Total weight ``qty × Item.weight_per_unit`` with Item's weight UOM, or zeros if unknown."""
+		if not item_code or qty <= 0:
+			return 0.0, "Pound"
+		item_row = frappe.db.get_value(
+			"Item",
+			item_code,
+			["weight_per_unit", "weight_uom"],
+			as_dict=True,
+		)
+		if not item_row:
+			return 0.0, "Pound"
+		wp = flt(item_row.weight_per_unit)
+		if wp <= 0:
+			return 0.0, "Pound"
+		uom = (item_row.weight_uom or "").strip() or "Pound"
+		return wp * qty, uom
+
+	def sdn_row_weight_from_items(self, row) -> tuple[float, str]:
+		"""Shipment weight from inventory data for this SDN line (not parcel template overrides).
+
+		Uses Delivery Note Item weight for ``row.qty`` (proportional to DN qty when DN has totals),
+		then weight_per_unit × ``row.qty``, then falls back to Item master weight × ``row.qty``.
+		"""
+		qty = flt(row.qty)
+		uom_fallback = "Pound"
+		if qty <= 0:
+			return 0.0, uom_fallback
+
+		if row.dn_detail:
+			dn = frappe.db.get_value(
+				"Delivery Note Item",
+				row.dn_detail,
+				["item_code", "qty", "weight_per_unit", "total_weight", "weight_uom"],
+				as_dict=True,
+			)
+			if dn:
+				uom = (dn.weight_uom or "").strip() or "Pound"
+				dn_qty = flt(dn.qty) or 1.0
+				total_w = flt(dn.total_weight)
+				wp_dn = flt(dn.weight_per_unit)
+				if total_w > 0:
+					return total_w * (qty / dn_qty), uom
+				if wp_dn > 0:
+					return wp_dn * qty, uom
+				if dn.item_code:
+					return self.weight_from_item_qty(dn.item_code, qty)
+				return 0.0, uom
+
+		if getattr(row, "item_code", None):
+			return self.weight_from_item_qty(row.item_code, qty)
+
+		return 0.0, uom_fallback
+
+	def sdn_row_effective_shipment_weight(self, row) -> tuple[float, str]:
+		"""Inventory-first weight for an SDN line; optional parcel_weight only fills gaps."""
+		items_w, items_uom = self.sdn_row_weight_from_items(row)
+		if items_w > 0:
+			return items_w, items_uom
+		parcel_w = flt(row.parcel_weight)
+		if parcel_w > 0:
+			return parcel_w, (row.parcel_weight_uom or "").strip() or "Pound"
+		return 0.0, items_uom
+
 	def get_dn_item_weight(self, dn_detail: str) -> tuple[float, str]:
 		"""
 		Return (total_weight, weight_uom) for a Delivery Note Item row.
 
 		Falls back to (0.0, "Pound") if the row is not found or has no weight.
+		Uses the same inventory-first rules as shipment lines when ``qty`` spans the whole DN row.
 		"""
 		if not dn_detail:
 			return 0.0, "Pound"
-		row = frappe.db.get_value(
+		d = frappe.db.get_value(
 			"Delivery Note Item",
 			dn_detail,
-			["weight_per_unit", "total_weight", "qty", "weight_uom"],
+			["item_code", "qty"],
 			as_dict=True,
 		)
-		if not row:
+		if not d:
 			return 0.0, "Pound"
-		weight = flt(row.total_weight) or flt(row.weight_per_unit) * flt(row.qty)
-		uom = row.weight_uom or "Pound"
-		return weight, uom
+		full_row = frappe._dict(dn_detail=dn_detail, item_code=d.item_code, qty=flt(d.qty))
+		return self.sdn_row_weight_from_items(full_row)
 
 	def build_packages_from_sdn(self, doc) -> list[dict]:
 		"""
@@ -1595,8 +1659,8 @@ class ShipstationLTL(BaseLTL):
 
 		Groups SDN rows by parcel_number.  For each parcel:
 		  - Dimensions come from the first SDN row that has non-zero parcel dimensions.
-		  - Weight is the sum of each row's parcel_weight (falling back to the linked
-		    DN item's total_weight when parcel_weight is zero).
+		  - Weight is summed per SDN line from Delivery Note Items (proportionally by shipped qty),
+		    then Item master weight, then ``parcel_weight`` only when inventory has no weight.
 		  - Density is calculated automatically from dimensions and weight.
 		  - Freight class is derived from density unless explicitly set on the Shipment.
 
@@ -1648,23 +1712,21 @@ class ShipstationLTL(BaseLTL):
 					)
 				)
 
-			# Weight: prefer explicit parcel_weight; fall back to DN item weight
+			# Weight: DN / Item masters first; parcel_weight only fills gaps without inventory weight.
 			total_weight = 0.0
 			weight_uom_key = "Pound"
 			for row in rows:
-				pw = flt(row.parcel_weight)
-				if pw:
-					total_weight += pw
-					weight_uom_key = row.parcel_weight_uom or "Pound"
-				elif row.dn_detail:
-					w, wu = self.get_dn_item_weight(row.dn_detail)
-					total_weight += w
+				w, wu = self.sdn_row_effective_shipment_weight(row)
+				total_weight += flt(w)
+				if flt(w) > 0:
 					weight_uom_key = wu or weight_uom_key
 
 			if not total_weight:
 				frappe.throw(
 					_(
-						"Parcel {0} has no weight. Please set parcel weight on the Shipment Delivery Note rows, or ensure the linked Delivery Note items have a weight defined."
+						"Parcel {0} has no weight. Ensure the Delivery Note items or Items have "
+						"a weight defined for this shipped quantity (or set Parcel Weight manually on "
+						"Shipment Delivery Note lines when inventory weight is unavailable)."
 					).format(parcel_num),
 					title=_("Missing Parcel Weight"),
 				)
