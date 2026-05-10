@@ -45,6 +45,92 @@ def ensure_seed_shipment_pickup_date_current(shipment):
 	return shipment
 
 
+def ensure_exterior_physical_dimensions_for_pie_items(
+	commit: bool = False,
+	item_codes: list[str] | None = None,
+) -> dict:
+	"""Create one shared Exterior Physical Dimension per retail pie Item (for cartonization).
+
+	Uses the same box dimensions for each Item. Skips Items that do not exist, or that
+	already have an Exterior Physical Dimension for (Item, Exterior, Meter, stock UOM).
+
+	Bench console::
+
+	        from shipstation_integration.tests.setup import (
+	                ensure_exterior_physical_dimensions_for_pie_items,
+	        )
+	        ensure_exterior_physical_dimensions_for_pie_items(commit=True)
+
+	Returns a dict with keys ``created``, ``skipped_existing``, ``missing_item``, ``errors``.
+	"""
+
+	# Finished pies and bayberry retail SKUs from beam / inventory_tools fixtures (shared box size).
+	default_codes: tuple[str, ...] = (
+		"Ambrosia Pie",
+		"Double Plum Pie",
+		"Gooseberry Pie",
+		"Kaduka Key Lime Pie",
+		"Tower of Bay-bel",
+		"Pocketful of Bay",
+		"Bayberry Pie",
+		"Bayberry Pocket",
+		"Bayberry Popper",
+	)
+
+	codes = tuple(item_codes) if item_codes is not None else default_codes
+
+	created: list[str] = []
+	skipped_existing: list[str] = []
+	missing_item: list[str] = []
+	errors: list[str] = []
+
+	for item_code in codes:
+		if not frappe.db.exists("Item", item_code):
+			missing_item.append(item_code)
+			continue
+
+		stock_uom = frappe.db.get_value("Item", item_code, "stock_uom")
+		if not stock_uom:
+			errors.append(f"{item_code}: Item has no stock UOM")
+			continue
+
+		duplicate_filters = {
+			"reference_doctype": "Item",
+			"reference_document": item_code,
+			"dimension_type": "Exterior",
+			"uom": "Meter",
+			"item_uom": stock_uom,
+		}
+		if frappe.db.exists("Physical Dimension", duplicate_filters):
+			skipped_existing.append(item_code)
+			continue
+
+		doc = frappe.new_doc("Physical Dimension")
+		doc.reference_doctype = "Item"
+		doc.reference_document = item_code
+		doc.dimension_type = "Exterior"
+		doc.uom = "Meter"
+		doc.item_uom = stock_uom
+		doc.orientation = 1
+		# 12"H × 12"W × 4"D retail pie box (length/width/height in meters)
+		doc.item_length = 0.3048
+		doc.item_width = 0.3048
+		doc.item_height = 0.1016
+		doc.item_weight = 1.2
+		doc.insert()
+		created.append(item_code)
+
+	if commit:
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
+
+	return {
+		"created": created,
+		"skipped_existing": skipped_existing,
+		"missing_item": missing_item,
+		"errors": errors,
+	}
+
+
 def before_test():
 	frappe.clear_cache()
 	today = getdate()
@@ -76,6 +162,10 @@ def before_test():
 	from beam.tests.setup import create_test_data as beam_create_test_data
 
 	beam_create_test_data()
+
+	if "inventory_tools" in frappe.get_installed_apps():
+		ensure_inventory_tools_dimensional_fixtures()
+
 	settings = create_test_data()
 
 	create_seventeen_track_settings(settings.company)
@@ -87,6 +177,150 @@ def before_test():
 	for modu in frappe.get_all("Module Onboarding"):
 		frappe.db.set_value("Module Onboarding", modu, "is_complete", 1)
 	frappe.db.set_single_value("Website Settings", "home_page", "login")
+
+
+def ensure_inventory_tools_dimensional_fixtures():
+	"""
+	Create the minimum inventory_tools fixtures required for cartonization tests:
+	CFC company, CFC warehouse locations (Fruit Storage bins), IT-specific items,
+	and Physical Dimensions for items and warehouses.
+
+	Does NOT call inventory_tools.tests.setup.create_test_data() wholesale, because
+	that function destructively deletes and renames APC warehouses that beam has
+	already stocked, producing a ValidationError.
+	"""
+	from inventory_tools.tests.fixtures import (
+		item_dimensions as IT_ITEM_DIMENSIONS,
+		suppliers as IT_SUPPLIERS,
+		warehouse_dimensions as IT_WAREHOUSE_DIMENSIONS,
+		warehouse_locations as IT_WAREHOUSE_LOCATIONS,
+	)
+	from inventory_tools.tests.setup import (
+		create_item_groups,
+		create_items,
+		create_warehouse_plan,
+	)
+
+	settings = frappe._dict(
+		{
+			"day": getdate().replace(month=1, day=1),
+			"company": "Ambrosia Pie Company",
+			"company_account": frappe.get_value(
+				"Account",
+				{"account_type": "Bank", "company": "Ambrosia Pie Company", "is_group": 0},
+			),
+		}
+	)
+
+	# 1. Ensure Chelsea Fruit Co company exists
+	if not frappe.db.exists("Company", "Chelsea Fruit Co"):
+		cfc = frappe.new_doc("Company")
+		cfc.company_name = "Chelsea Fruit Co"
+		cfc.default_currency = "USD"
+		cfc.create_chart_of_accounts_based_on = "Existing Company"
+		cfc.existing_company = settings.company
+		cfc.abbr = "CFC"
+		cfc.save()
+	else:
+		cfc = frappe.get_doc("Company", "Chelsea Fruit Co")
+
+	# 2. CFC warehouse plan (internally guarded)
+	create_warehouse_plan(cfc)
+
+	# 3. CFC warehouse locations (Refrigerator groups + Fruit Storage bins) with guard
+	for details in IT_WAREHOUSE_LOCATIONS:
+		wh_key = f"{details['warehouse_name']} - CFC"
+		if not frappe.db.exists("Warehouse", wh_key):
+			warehouse = frappe.new_doc("Warehouse")
+			warehouse.update(details)
+			warehouse.save()
+
+	# 4. IT-specific suppliers not already created by beam (Credible Contract Baking,
+	#    Southern Fruit Supply) — beam creates Freedom Provisions, Unity Bakery Supply,
+	#    and Chelsea Fruit Co.
+	if not frappe.db.exists("Supplier Group", "Bakery"):
+		bsg = frappe.new_doc("Supplier Group")
+		bsg.supplier_group_name = "Bakery"
+		bsg.parent_supplier_group = "All Supplier Groups"
+		bsg.save()
+
+	beam_supplier_names = {"Freedom Provisions", "Unity Bakery Supply", "Chelsea Fruit Co"}
+	for supplier in IT_SUPPLIERS:
+		if supplier["name"] in beam_supplier_names:
+			continue
+		if frappe.db.exists("Supplier", supplier["name"]):
+			continue
+		biz = frappe.new_doc("Supplier")
+		biz.supplier_name = supplier["name"]
+		biz.supplier_group = "Bakery"
+		biz.country = "United States"
+		biz.currency = "USD"
+		biz.default_price_list = "Bakery Buying"
+		biz.save()
+
+	# 5. APC warehouses that beam deleted but IT items / warehouse dimensions reference.
+	#    Beam's create_warehouses() purges every APC warehouse not in its own item list,
+	#    which removes Refrigerated Display, Bakery Display, and Credible Contract Baking.
+	apc_root = frappe.get_value(
+		"Warehouse", {"company": settings.company, "is_group": 1, "parent_warehouse": ""}
+	)
+
+	for wh_name, wh_short, parent in (
+		("Refrigerated Display - APC", "Refrigerated Display", "Baked Goods - APC"),
+		("Bakery Display - APC", "Bakery Display", "Baked Goods - APC"),
+		(
+			"Credible Contract Baking - APC",
+			"Credible Contract Baking",
+			apc_root or "All Warehouses - APC",
+		),
+	):
+		if not frappe.db.exists("Warehouse", wh_name):
+			wh = frappe.new_doc("Warehouse")
+			wh.warehouse_name = wh_short
+			wh.parent_warehouse = parent
+			wh.company = settings.company
+			wh.save()
+
+	# 6. Item groups and items (price lists are skipped — beam already creates Bakery
+	#    Buying, Bakery Wholesale, and the Bakery Retail pricing rule; IT's
+	#    create_price_lists() has a broken autoname guard for Pricing Rule that would
+	#    create a duplicate and cause MultiplePricingRuleConflict errors)
+	create_item_groups(settings)
+	create_items(settings)
+
+	# 7. Item Physical Dimensions — guard against duplicates (autoname=hash so no
+	#    duplicate-key protection at DB level)
+	for item in IT_ITEM_DIMENSIONS:
+		if frappe.db.exists(
+			"Physical Dimension",
+			{
+				"reference_doctype": item.get("reference_doctype"),
+				"reference_document": item.get("reference_document"),
+				"dimension_type": item.get("dimension_type"),
+			},
+		):
+			continue
+		pyd = frappe.new_doc("Physical Dimension")
+		pyd.update(item)
+		if pyd.reference_doctype == "Item":
+			stock_uom = frappe.db.get_value("Item", pyd.reference_document, "stock_uom")
+			pyd.item_uom = pyd.item_uom or stock_uom or pyd.uom
+		pyd.save()
+
+	# 8. Warehouse Physical Dimensions (Interior) for Fruit Storage bins — same guard
+	for item in IT_WAREHOUSE_DIMENSIONS:
+		if frappe.db.exists(
+			"Physical Dimension",
+			{
+				"reference_doctype": item.get("reference_doctype"),
+				"reference_document": item.get("reference_document"),
+				"dimension_type": item.get("dimension_type"),
+			},
+		):
+			continue
+		wyd = frappe.new_doc("Physical Dimension")
+		wyd.update(item)
+		wyd.save()
 
 
 def ensure_beam_settings_for_company(company: str) -> None:
@@ -112,6 +346,7 @@ def create_test_data():
 	ensure_beam_settings_for_company(settings.company)
 	create_transporters()
 	create_parcel_templates()
+	ensure_parcel_template_interior_physical_dimensions()
 	create_freight_item(settings)
 	create_freight_clearing_account(settings)
 	create_shipstation_settings(settings)
@@ -175,6 +410,7 @@ def create_shipstation_settings(settings):
 
 	ss.enabled = 1
 	ss.enable_shipstation_api = 1
+	ss.enable_cartonization = 1
 	ss.default_item_group = default_item_group
 	ss.gs1_company_prefix = "0614141"
 	ss.shipstation_user = "Administrator"
@@ -468,6 +704,18 @@ def create_parcel_templates():
 			"weight": 4.54,
 			"package_code": "medium_box",
 		},
+		{
+			# Fits exactly 3 standard 12" pie boxes stacked vertically.
+			# Interior: 30.48 cm × 30.48 cm × 30.48 cm (12" × 12" × 12").
+			# Pie box Exterior: 30.48 cm × 30.48 cm × 10.16 cm (12" × 12" × 4").
+			# Used in cartonization test: 20 pies → 7 bins (6 × 3 + 1 × 2).
+			"parcel_template_name": "Pie Triple Stack",
+			"length": 30.48,  # 12 in
+			"width": 30.48,  # 12 in
+			"height": 30.48,  # 12 in  (3 × 4 in pie boxes)
+			"weight": 4.08,  # ~9 lb capacity
+			"package_code": "pie_triple_stack",
+		},
 	]
 	for tmpl in templates:
 		if frappe.db.exists("Shipment Parcel Template", tmpl["parcel_template_name"]):
@@ -476,6 +724,43 @@ def create_parcel_templates():
 		t.update(tmpl)
 		t.skip_shipstation_sync = 1
 		t.save()
+
+
+def ensure_parcel_template_interior_physical_dimensions():
+	"""Create Interior Physical Dimension rows for ShipStation test parcel templates."""
+
+	if "inventory_tools" not in frappe.get_installed_apps():
+		return
+
+	for name in ("Small Box", "Medium Box", "Pie Triple Stack"):
+		if not frappe.db.exists("Shipment Parcel Template", name):
+			continue
+
+		exists = frappe.db.exists(
+			"Physical Dimension",
+			{
+				"reference_doctype": "Shipment Parcel Template",
+				"reference_document": name,
+				"dimension_type": "Interior",
+			},
+		)
+		if exists:
+			continue
+
+		box = frappe.get_doc("Shipment Parcel Template", name)
+
+		pd = frappe.new_doc("Physical Dimension")
+		pd.reference_doctype = "Shipment Parcel Template"
+		pd.reference_document = name
+		pd.dimension_type = "Interior"
+		pd.uom = "Centimeter"
+		pd.item_length = float(box.length)
+		pd.item_width = float(box.width)
+		pd.item_height = float(box.height)
+		pd.item_weight = float(box.weight)
+		pd.orientation = 1
+		pd.flags.ignore_validate = True
+		pd.save()
 
 
 # Addresses and contacts
