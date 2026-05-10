@@ -10,6 +10,7 @@ TrafficTech: quote API only (booking not published); quote → accept → schedu
 
 from __future__ import annotations
 
+import json as json_lib
 import time
 from typing import Any
 
@@ -34,6 +35,15 @@ class MockResponse:
 		self._json = json_data
 		self.text = text
 		self.status_code = status_code
+		if text:
+			self.content = text.encode("utf-8")
+		elif json_data is not None:
+			self.content = json_lib.dumps(json_data).encode("utf-8")
+			if not self.text:
+				self.text = self.content.decode("utf-8")
+		else:
+			self.content = b""
+		self.request = None
 
 	@property
 	def is_error(self):

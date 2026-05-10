@@ -3,6 +3,7 @@
 
 import pytest
 import frappe
+from frappe.utils import flt
 
 from shipstation_integration.ltl import ShipstationLTL, get_ltl_provider
 from shipstation_integration.shipstation_integration.freight_providers.banyan_ltl import BanyanLTL
