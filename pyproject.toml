@@ -21,6 +21,7 @@ build-backend = 'flit_core.buildapi'
 frappe = ">=15.0.0,<16.0.0"
 erpnext = ">=15.0.0,<16.0.0"
 beam = ">=15.0.0,<16.0.0"
+inventory_tools = ">=15.13.0,<16.0.0"
 
 [tool.bench.dev-dependencies]
 pytest = "~=8.3.2"

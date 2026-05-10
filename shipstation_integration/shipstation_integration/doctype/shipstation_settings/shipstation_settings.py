@@ -51,6 +51,7 @@ class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comi
 	def validate(self):
 		self.validate_label_generation()
 		self.validate_enabled_stores()
+		self.validate_cartonization_defaults()
 
 	def before_insert(self):
 		self.validate_api_connection()
@@ -338,6 +339,27 @@ class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comi
 				store.create_sales_invoice = False
 				store.create_delivery_note = False
 				store.create_shipment = False
+
+	def validate_cartonization_defaults(self):
+		if not self.get("enable_cartonization"):
+			return
+
+		raw = self.get("default_container_doctypes_json")
+		if not raw:
+			self.default_container_doctypes_json = '["Shipment Parcel Template"]'
+			return
+
+		try:
+			decoded = json.loads(raw)
+		except json.JSONDecodeError as exc:
+			frappe.throw(_("Invalid JSON in Default Container DocTypes: {0}").format(str(exc)))
+
+		if decoded is not None and not isinstance(decoded, list):
+			frappe.throw(_("Default Container DocTypes must be a JSON array of DocType names."))
+
+		for entry in decoded:
+			if not frappe.db.exists("DocType", str(entry)):
+				frappe.throw(_("Unknown DocType {0} in Default Container DocTypes.").format(entry))
 
 	def validate_api_connection(self):
 		if not self.enabled:

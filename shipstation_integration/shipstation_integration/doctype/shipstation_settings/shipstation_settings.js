@@ -361,13 +361,22 @@ frappe.ui.form.on('Shipstation Settings', {
 
 	toggle_cartonization_field: frm => {
 		const installed = !!frappe.boot.inventory_tools_installed
-		frm.set_df_property('create_physical_dimension_per_parcel_template', 'read_only', !installed)
+		const read_only = !installed
+		;[
+			'create_physical_dimension_per_parcel_template',
+			'enable_cartonization',
+			'auto_cartonize_packing_slip',
+			'auto_cartonize_shipment',
+			'cartonization_mode',
+			'cartonization_allow_rotation',
+			'cartonization_solver_timeout_seconds',
+			'default_container_doctypes_json',
+		].forEach(fieldname => {
+			frm.set_df_property(fieldname, 'read_only', read_only)
+		})
+		const missing_msg = __('Inventory Tools is not installed. Install it to enable this feature.')
 		if (!installed) {
-			frm.set_df_property(
-				'create_physical_dimension_per_parcel_template',
-				'description',
-				__('Inventory Tools is not installed. Install it to enable this feature.')
-			)
+			frm.set_df_property('create_physical_dimension_per_parcel_template', 'description', missing_msg)
 		}
 	},
 

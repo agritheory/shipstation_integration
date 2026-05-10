@@ -3,9 +3,247 @@
 
 const PARCEL_COLORS = ['#2AC48A', '#5E64FF', '#FF8A00', '#A553E0', '#3478F6', '#D62B31']
 
+const PACKING_SLIP_PURPLE = '#6f42c1'
+
 function get_parcel_color(parcel_number) {
 	if (!parcel_number) return null
 	return PARCEL_COLORS[(parcel_number - 1) % PARCEL_COLORS.length]
+}
+
+function is_row_cartonized(row) {
+	return flt(row?.parcel_number) > 0
+}
+
+function parcel_header_package_icon(opts) {
+	const opacity = opts && opts.opacity != null ? String(opts.opacity) : '1'
+	const stroke = opts && opts.strokeColor
+	let style = 'font-size:14px;line-height:1;vertical-align:middle;'
+	if (stroke) {
+		style += `color:${stroke};`
+	} else {
+		style += `opacity:${opacity};`
+	}
+	return `<i class="octicon octicon-package" aria-hidden="true" style="${style}"></i>`
+}
+
+/** True only for the numbered-column header cell (inside heading row, not body or filter row). */
+function is_heading_row_index_cell($cell) {
+	if (!$cell?.length || !$cell[0]?.closest) return false
+	const el = $cell[0]
+	return !!el.closest('.grid-heading-row') && !el.closest('.grid-body')
+}
+
+/** Parcel / No. column cell in the grid *heading* only (not body rows). */
+function items_grid_heading_row_index_cell(grid) {
+	if (!grid?.wrapper?.length) return $()
+
+	if (grid.header_row?.row_index?.length && is_heading_row_index_cell($(grid.header_row.row_index))) {
+		return grid.header_row.row_index.first()
+	}
+
+	const $gh = grid.wrapper.children('.form-grid-container').children('.form-grid').children('.grid-heading-row').first()
+	if (!$gh.length) return $()
+
+	// Same order as Grid.make_head: label row grid-row first, filter row second.
+	let $hdr = $gh
+		.children('.grid-row')
+		.first()
+		.children('.data-row:not(.filter-row)')
+		.first()
+		.children('.row-index:not(.search)')
+		.first()
+	if (is_heading_row_index_cell($hdr)) return $hdr
+
+	// Fallback: any row-index directly under heading (defensive against DOM tweaks).
+	const $fallback = $gh.find('> .grid-row > .data-row:not(.filter-row) > .row-index:not(.search)').first()
+	return is_heading_row_index_cell($fallback) ? $fallback : $()
+}
+
+/** Remove parcel header widgets accidentally injected into body rows (legacy bug / race). */
+function strip_leaked_parcel_header_widgets_from_grid_body(grid) {
+	if (!grid?.wrapper?.length) return
+	const sel =
+		'.parcel-header-toolbar, .parcel-toggle-uncartonized, .parcel-toggle-cartonized, .parcel-header-parcel-block'
+	grid.wrapper.find('.grid-body .row-index').find(sel).remove()
+	grid.wrapper.find('.grid-body .row-index span.parcel-col-label').removeClass('parcel-col-label').empty()
+}
+
+function toggle_uncartonized_row_selection(frm) {
+	const grid = frm.fields_dict.items.grid
+	const items = frm.doc.items || []
+	const indices = []
+	items.forEach((row, i) => {
+		if (!is_row_cartonized(row)) indices.push(i)
+	})
+	if (!indices.length) {
+		frappe.show_alert({
+			message: __('No unpacked rows on this Packing Slip.'),
+			indicator: 'orange',
+		})
+		return
+	}
+	const allSel = indices.every(i => !!(items[i] && items[i].__checked))
+	const nextChecked = !allSel
+	for (const i of indices) {
+		const gr = grid.grid_rows[i]
+		const row = items[i]
+		if (!gr?.doc || !row) continue
+		gr.select(nextChecked)
+		gr.refresh_check()
+	}
+	grid.refresh_remove_rows_button()
+	update_split_button_state(frm)
+}
+
+function toggle_cartonized_row_selection(frm) {
+	const grid = frm.fields_dict.items.grid
+	const items = frm.doc.items || []
+	const indices = []
+	items.forEach((row, i) => {
+		if (is_row_cartonized(row)) indices.push(i)
+	})
+	if (!indices.length) {
+		frappe.show_alert({
+			message: __('No cartonized rows on this Packing Slip.'),
+			indicator: 'orange',
+		})
+		return
+	}
+	const allSel = indices.every(i => !!(items[i] && items[i].__checked))
+	const nextChecked = !allSel
+	for (const i of indices) {
+		const gr = grid.grid_rows[i]
+		const row = items[i]
+		if (!gr?.doc || !row) continue
+		gr.select(nextChecked)
+		gr.refresh_check()
+	}
+	grid.refresh_remove_rows_button()
+	update_split_button_state(frm)
+}
+
+function attach_parcel_column_header_handlers(frm) {
+	const wrapper = frm.fields_dict.items?.grid?.wrapper
+	if (!wrapper?.length || !frm._ss_cartonization_enabled) return
+	$(wrapper)
+		.off('click.ss-parcel-header keydown.ss-parcel-header')
+		.on('click.ss-parcel-header', '.parcel-toggle-uncartonized', ev => {
+			ev.preventDefault()
+			ev.stopPropagation()
+			toggle_uncartonized_row_selection(frm)
+		})
+		.on('click.ss-parcel-header', '.parcel-toggle-cartonized', ev => {
+			ev.preventDefault()
+			ev.stopPropagation()
+			toggle_cartonized_row_selection(frm)
+		})
+		.on('keydown.ss-parcel-header', '.parcel-toggle-uncartonized, .parcel-toggle-cartonized', ev => {
+			if (ev.key !== 'Enter' && ev.key !== ' ') return
+			ev.preventDefault()
+			ev.stopPropagation()
+			if ($(ev.currentTarget).hasClass('parcel-toggle-cartonized')) {
+				toggle_cartonized_row_selection(frm)
+			} else {
+				toggle_uncartonized_row_selection(frm)
+			}
+		})
+}
+
+function parcel_header_toggle_icon(attrs) {
+	return $('<span></span>')
+		.addClass(attrs.className)
+		.attr('role', 'button')
+		.attr('tabindex', 0)
+		.attr('title', attrs.title)
+		.css({
+			cursor: 'pointer',
+			display: 'inline-block',
+			lineHeight: 1,
+			padding: '0 3px',
+			verticalAlign: 'middle',
+		})
+		.html(attrs.html)
+}
+
+function refresh_parcel_column_header_when_ready(frm, grid) {
+	function try_parcel_hdr() {
+		strip_leaked_parcel_header_widgets_from_grid_body(grid)
+		const $hdr = items_grid_heading_row_index_cell(grid)
+		if (!$hdr.length) return false
+		refresh_parcel_column_header(frm, grid)
+		return true
+	}
+
+	if (!try_parcel_hdr()) {
+		queueMicrotask(() => try_parcel_hdr())
+	}
+}
+
+function refresh_parcel_column_header(frm, grid) {
+	const $hdr = items_grid_heading_row_index_cell(grid)
+	if (!$hdr.length) return
+
+	$hdr.find('.parcel-header-parcel-block').remove()
+	$hdr.find('.parcel-header-toolbar').remove()
+	$hdr.find('.parcel-toggle-uncartonized, .parcel-toggle-cartonized').remove()
+	$hdr.find('i[class*="octicon"]').remove()
+
+	let $lbl = $hdr.children('span.parcel-col-label').first()
+	if (!$lbl.length) {
+		const $first = $hdr.children('span').first()
+		if ($first.length) {
+			$first.addClass('parcel-col-label')
+			$lbl = $first
+		} else {
+			$lbl = $('<span class="parcel-col-label"></span>')
+			$hdr.prepend($lbl)
+		}
+	}
+	// Screen readers only: avoid a second visible "Parcel" next to Parcel Template columns.
+	$lbl.text(__('Parcel')).css({
+		position: 'absolute',
+		width: '1px',
+		height: '1px',
+		padding: 0,
+		margin: '-1px',
+		overflow: 'hidden',
+		clip: 'rect(0,0,0,0)',
+		whiteSpace: 'nowrap',
+		border: 0,
+	})
+
+	const $toolbar = $('<span class="parcel-header-toolbar"></span>')
+	$toolbar.attr('style', 'display:inline;white-space:nowrap;vertical-align:middle;margin-left:0;line-height:1;')
+
+	const iconUnc = parcel_header_toggle_icon({
+		className: 'parcel-toggle-uncartonized',
+		title: __('Select all unpacked rows, or clear selection if already all selected'),
+		html: parcel_header_package_icon({ opacity: 0.55 }),
+	})
+	const iconCart = parcel_header_toggle_icon({
+		className: 'parcel-toggle-cartonized',
+		title: __('Select all cartonized rows, or clear selection if already all selected'),
+		html: parcel_header_package_icon({ strokeColor: PACKING_SLIP_PURPLE }),
+	})
+
+	$toolbar.append(iconUnc).append(iconCart)
+	$hdr.append($toolbar)
+}
+
+function clear_parcel_column_header(frm, grid) {
+	if (!grid?.wrapper?.length) return
+	grid.wrapper.off('click.ss-parcel-header keydown.ss-parcel-header')
+	strip_leaked_parcel_header_widgets_from_grid_body(grid)
+	const $hdr = items_grid_heading_row_index_cell(grid)
+	if (!$hdr.length) return
+	$hdr.find('.parcel-header-parcel-block').remove()
+	$hdr.find('.parcel-header-toolbar').remove()
+	$hdr.find('.parcel-toggle-uncartonized, .parcel-toggle-cartonized').remove()
+	$hdr.find('i[class*="octicon"]').remove()
+	const $lbl = $hdr.children('span.parcel-col-label').first()
+	if ($lbl.length) {
+		$lbl.removeClass('parcel-col-label').empty().removeAttr('style')
+	}
 }
 
 function render_parcel_indicators(frm) {
@@ -13,8 +251,12 @@ function render_parcel_indicators(frm) {
 
 	update_split_button_state(frm)
 
-	// Rename the "No." column header to "Parcel"
-	$(grid.header_row.wrapper).find('.row-index span').text(__('Parcel'))
+	if (frm._ss_cartonization_enabled) {
+		refresh_parcel_column_header_when_ready(frm, grid)
+		attach_parcel_column_header_handlers(frm)
+	} else {
+		clear_parcel_column_header(frm, grid)
+	}
 
 	const source_map = frm._source_hu_map || {}
 	const items = frm.doc.items || []
@@ -22,6 +264,11 @@ function render_parcel_indicators(frm) {
 		const grid_row = grid.grid_rows[i]
 		if (!grid_row) return
 		const $row_index = $(grid_row.wrapper).find('.row-index')
+		$row_index
+			.find(
+				'.parcel-header-parcel-block, .parcel-header-toolbar, .parcel-toggle-uncartonized, .parcel-toggle-cartonized'
+			)
+			.remove()
 		const $span = $row_index.find('span')
 		$row_index.find('.parcel-indicator').remove()
 
@@ -47,7 +294,7 @@ function render_parcel_indicators(frm) {
 }
 
 function fetch_source_handling_units(frm) {
-	if (!frm.doc.name || frm.doc.__islocal) return
+	if (!frm._ss_cartonization_enabled || !frm.doc.name || frm.doc.__islocal) return
 	frappe.call({
 		method: 'shipstation_integration.beam_integration.get_source_handling_units',
 		args: { packing_slip: frm.doc.name },
@@ -60,39 +307,62 @@ function fetch_source_handling_units(frm) {
 	})
 }
 
+function sync_cartonize_grid_button(frm, $bulk_actions) {
+	if (!$bulk_actions?.length) return
+	const $existing = $bulk_actions.find('.grid-cartonize-rows')
+	if (frm._ss_cartonization_enabled) {
+		if ($existing.length) return
+		const $unpack = $bulk_actions.find('.grid-unpack-rows')
+		if (!$unpack.length) return
+		$('<button type="button" class="grid-cartonize-rows btn btn-xs btn-purple" style="margin-right:4px;">')
+			.text(__('Cartonize'))
+			.on('click', () => cartonize_packing_slip_rows(frm))
+			.insertBefore($unpack)
+	} else {
+		$existing.remove()
+	}
+}
+
 function setup_parcel_buttons(frm) {
-	const $bulk_actions = $(frm.fields_dict.items.grid.wrapper).find('.grid-bulk-actions')
-	if (!$bulk_actions.length || $bulk_actions.find('.grid-pack-rows').length) return
+	const grid = frm.fields_dict.items?.grid
+	if (!grid?.wrapper?.length) return
+	const $bulk_actions = $(grid.wrapper).find('.grid-bulk-actions')
+	if (!$bulk_actions.length) return
 
-	$bulk_actions.prepend(
-		$('<button type="button" class="grid-unpack-rows btn btn-xs btn-warning">')
-			.text(__('Unpack'))
-			.on('click', () => unpack_selected_rows(frm))
-	)
-	$bulk_actions.prepend(
-		$(
-			'<button type="button" class="grid-pack-each-row btn btn-xs" style="margin-right:4px;background-color:#3478F6;border-color:#3478F6;color:#fff;">'
+	if (!$bulk_actions.find('.grid-pack-rows').length) {
+		$bulk_actions.prepend(
+			$('<button type="button" class="grid-unpack-rows btn btn-xs btn-warning">')
+				.text(__('Unpack'))
+				.on('click', () => unpack_selected_rows(frm))
 		)
-			.text(__('Pack Each Row'))
-			.on('click', () => pack_each_row(frm))
-	)
-	$bulk_actions.prepend(
-		$('<button type="button" class="grid-pack-rows btn btn-xs btn-success" style="margin-right:4px;">')
-			.text(__('Pack'))
-			.on('click', () => pack_selected_rows(frm))
-	)
-	$bulk_actions.prepend(
-		$(
-			'<button type="button" class="grid-split-rows btn btn-xs" style="margin-right:4px;background-color:var(--pink);border-color:var(--pink);color:#fff;" disabled>'
+		$bulk_actions.prepend(
+			$(
+				'<button type="button" class="grid-pack-each-row btn btn-xs" style="margin-right:4px;background-color:#3478F6;border-color:#3478F6;color:#fff;">'
+			)
+				.text(__('Pack Each Row'))
+				.on('click', () => pack_each_row(frm))
 		)
-			.text(__('Split'))
-			.on('click', () => split_selected_rows(frm))
-	)
+		$bulk_actions.prepend(
+			$('<button type="button" class="grid-pack-rows btn btn-xs btn-success" style="margin-right:4px;">')
+				.text(__('Pack'))
+				.on('click', () => pack_selected_rows(frm))
+		)
+		$bulk_actions.prepend(
+			$(
+				'<button type="button" class="grid-split-rows btn btn-xs" style="margin-right:4px;background-color:var(--pink);border-color:var(--pink);color:#fff;" disabled>'
+			)
+				.text(__('Split'))
+				.on('click', () => split_selected_rows(frm))
+		)
 
-	// Enable/disable Split based on whether any selected row has qty > 1
-	$(frm.fields_dict.items.grid.wrapper).on('change', '.grid-row-check', () => {
-		update_split_button_state(frm)
-	})
+		$(grid.wrapper)
+			.off('change.ss-split', '.grid-row-check')
+			.on('change.ss-split', '.grid-row-check', () => {
+				update_split_button_state(frm)
+			})
+	}
+
+	sync_cartonize_grid_button(frm, $bulk_actions)
 }
 
 function deselect_all_rows(frm) {
@@ -231,6 +501,61 @@ function unpack_selected_rows(frm) {
 	return false
 }
 
+function cartonize_packing_slip_rows(frm) {
+	if (!frm._ss_cartonization_enabled) {
+		frappe.msgprint(__('Enable cartonization in Shipstation Settings to use this action.'))
+		return false
+	}
+	if (!frappe.boot.inventory_tools_installed) {
+		frappe.msgprint(__('Install Inventory Tools to use cartonization.'))
+		return false
+	}
+
+	if (!frm.doc.name || frm.doc.__islocal) {
+		frappe.msgprint(__('Save the Packing Slip before cartonizing.'))
+		return false
+	}
+
+	const selected = frm.fields_dict.items.grid.get_selected_children()
+	// targetRows is always only the unpacked rows in scope.
+	// Already-packed rows are silently excluded whether selected or not.
+	const targetRows = selected.length
+		? selected.filter(r => !r.parcel_number)
+		: (frm.doc.items || []).filter(r => !r.parcel_number)
+
+	if (!targetRows.length) {
+		frappe.msgprint(
+			selected.length
+				? __('Selected rows are already packed. Unpack them first or choose other rows.')
+				: __('Nothing to cartonize — all rows are already packed.')
+		)
+		return false
+	}
+
+	// When a selection was made, scope the backend call to only the unpacked rows from
+	// that selection.  No selection → null payload → backend cartonizes all unpacked rows.
+	const rowNamesPayload = selected.length ? JSON.stringify(targetRows.map(r => r.name)) : null
+
+	frappe.call({
+		method: 'shipstation_integration.cartonization.apply_cartonization_to_packing_slip',
+		args: {
+			packing_slip_name: frm.doc.name,
+			row_names_json: rowNamesPayload,
+		},
+		freeze: true,
+		callback(r) {
+			const sol = r.message || {}
+			frm.reload_doc().then(() => {
+				render_parcel_indicators(frm)
+				if ((sol.messages || []).length) {
+					frappe.msgprint(sol.messages.join('<br>'))
+				}
+			})
+		},
+	})
+	return false
+}
+
 function split_selected_rows(frm) {
 	const selected = frm.fields_dict.items.grid.get_selected_children()
 	const splittable = selected.filter(r => flt(r.qty) > 1)
@@ -265,6 +590,8 @@ function split_selected_rows(frm) {
 
 frappe.ui.form.on('Packing Slip', {
 	setup: function (frm) {
+		frm._ss_cartonization_enabled = false
+
 		frm.set_query('shipping_address_name', function () {
 			if (frm.doc.delivery_note) {
 				return {
@@ -320,21 +647,28 @@ frappe.ui.form.on('Packing Slip', {
 			load_carrier_services(frm, frm.doc.carrier)
 		}
 
-		setup_shipping_actions(frm)
-		setup_sscc_button(frm)
-		setup_parcel_buttons(frm)
-		render_parcel_indicators(frm)
-		populate_all_parcel_details(frm)
-		fetch_source_handling_units(frm)
+		frappe.call({
+			method: 'shipstation_integration.cartonization.is_cartonization_enabled',
+			callback(r) {
+				frm._ss_cartonization_enabled = !!r.message
+				setup_shipping_actions(frm)
+				setup_sscc_button(frm)
+				setup_parcel_buttons(frm)
+				render_parcel_indicators(frm)
+				populate_all_parcel_details(frm)
+				if (frm._ss_cartonization_enabled) {
+					fetch_source_handling_units(frm)
+				} else {
+					frm._source_hu_map = {}
+				}
 
-		// On form open, populate missing addresses from the linked DN.
-		// The delivery_note change event only fires when the field changes
-		// interactively, so this covers make_packing_slip and reloads.
-		if (frm.doc.delivery_note) {
-			if (!frm.doc.shipping_address_name || !frm.doc.dispatch_address_name) {
-				fetch_delivery_note_defaults(frm)
-			}
-		}
+				if (frm.doc.delivery_note) {
+					if (!frm.doc.shipping_address_name || !frm.doc.dispatch_address_name) {
+						fetch_delivery_note_defaults(frm)
+					}
+				}
+			},
+		})
 	},
 
 	delivery_note: function (frm) {

@@ -12,7 +12,7 @@ app_color = "grey"
 app_email = "support@agritheory.dev"
 app_license = "MIT"
 
-required_apps = ["erpnext", "agritheory/beam"]
+required_apps = ["erpnext", "agritheory/beam", "inventory_tools"]
 
 # Setup Wizard
 # ------------
@@ -47,6 +47,7 @@ doctype_js = {
 
 doctype_list_js = {
 	"Sales Order": "public/js/sales_order_list.js",
+	"Delivery Note": "public/js/delivery_note_list.js",
 }
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -138,9 +139,15 @@ scheduler_events = {
 # 	"Task": "shipstation_integration.task.get_dashboard_data"
 # }
 
+override_whitelisted_methods = {
+	"erpnext.stock.doctype.delivery_note.delivery_note.make_packing_slip": "shipstation_integration.cartonization.make_packing_slip_with_optional_cartonization",
+	"erpnext.stock.doctype.delivery_note.delivery_note.make_shipment": "shipstation_integration.cartonization.make_shipment_with_optional_cartonization",
+}
+
 override_doctype_class = {
 	"Sales Order": "shipstation_integration.shipstation_integration.overrides.sales_order.ShipStationSalesOrder",
 	"Shipment Parcel Template": "shipstation_integration.shipstation_integration.overrides.shipment_parcel_template.ShipstationShipmentParcelTemplate",
+	"Packing Slip": "shipstation_integration.shipstation_integration.overrides.packing_slip.ShipstationPackingSlip",
 }
 
 # Maps a substring of Freight Carrier Settings.base_url to the dotted import path of

@@ -39,13 +39,23 @@ function sdn_attach_grid_change_for_parcel_buttons(frm) {
 	})
 }
 
+function sdn_apply_sdn_grid_parcel_header(frm, grid) {
+	if (!grid?.header_row?.wrapper) return
+	const $span = $(grid.header_row.wrapper).find('.row-index span')
+	if (!$span.length) return
+	if (frm._ss_cartonization_enabled) {
+		$span.text(__('Parcel'))
+	} else {
+		$span.text('')
+	}
+}
+
 function sdn_render_parcel_indicators(frm) {
 	const grid = frm.fields_dict.shipment_delivery_note?.grid
 	if (!grid) return
 
 	sdn_update_split_button_state(frm)
-
-	$(grid.header_row.wrapper).find('.row-index span').text(__('Parcel'))
+	sdn_apply_sdn_grid_parcel_header(frm, grid)
 
 	const rows = frm.doc.shipment_delivery_note || []
 	rows.forEach((row, i) => {
@@ -68,6 +78,22 @@ function sdn_render_parcel_indicators(frm) {
 	})
 }
 
+function sdn_sync_cartonize_grid_button(frm, $bulk_actions) {
+	if (!$bulk_actions?.length) return
+	const $existing = $bulk_actions.find('.sdn-cartonize-rows')
+	if (frm._ss_cartonization_enabled) {
+		if ($existing.length) return
+		const $unpack = $bulk_actions.find('.sdn-unpack-rows')
+		if (!$unpack.length) return
+		$('<button type="button" class="sdn-cartonize-rows btn btn-xs btn-default" style="margin-right:4px;">')
+			.text(__('Cartonize'))
+			.on('click', () => sdn_cartonize_rows(frm))
+			.insertBefore($unpack)
+	} else {
+		$existing.remove()
+	}
+}
+
 function sdn_setup_parcel_buttons(frm) {
 	const grid = frm.fields_dict.shipment_delivery_note?.grid
 	if (!grid?.wrapper) return
@@ -76,13 +102,14 @@ function sdn_setup_parcel_buttons(frm) {
 	if (!$bulk_actions.length) return
 
 	if ($bulk_actions.find('.sdn-pack-rows').length) {
+		sdn_sync_cartonize_grid_button(frm, $bulk_actions)
 		sdn_update_split_button_state(frm)
 		return
 	}
 
 	if (!grid.wrapper.data('sdn-split-check-bound')) {
 		grid.wrapper.data('sdn-split-check-bound', true)
-		grid.wrapper.on('change', '.grid-row-check', () => {
+		grid.wrapper.on('change.sdn-split-check', '.grid-row-check', () => {
 			sdn_update_split_button_state(frm)
 		})
 	}
@@ -112,6 +139,7 @@ function sdn_setup_parcel_buttons(frm) {
 			.on('click', () => sdn_split_selected_rows(frm))
 	)
 
+	sdn_sync_cartonize_grid_button(frm, $bulk_actions)
 	sdn_update_split_button_state(frm)
 }
 
@@ -202,6 +230,56 @@ function sdn_unpack_selected_rows(frm) {
 		sdn_render_parcel_indicators(frm)
 		sdn_deselect_all_rows(frm)
 		frm.dirty()
+	})
+	return false
+}
+
+function sdn_cartonize_rows(frm) {
+	if (!frm._ss_cartonization_enabled) {
+		frappe.msgprint(__('Enable cartonization in Shipstation Settings to use this action.'))
+		return false
+	}
+	if (!frappe.boot.inventory_tools_installed) {
+		frappe.msgprint(__('Install Inventory Tools to use cartonization.'))
+		return false
+	}
+
+	if (!frm.doc.name || frm.doc.__islocal) {
+		frappe.msgprint(__('Save the Shipment before cartonizing.'))
+		return false
+	}
+
+	const grid = frm.fields_dict.shipment_delivery_note?.grid
+	if (!grid) return false
+	const selected = grid.get_selected_children()
+	let rowNamesPayload = null
+	if (selected.length) {
+		rowNamesPayload = JSON.stringify(selected.map(r => r.name))
+		if (!selected.some(r => !r.parcel_number)) {
+			frappe.msgprint(__('Selected rows already have parcels. Unpack first or choose other rows.'))
+			return false
+		}
+	} else if (!(frm.doc.shipment_delivery_note || []).some(r => !r.parcel_number && r.item_code)) {
+		frappe.msgprint(__('Nothing to cartonize — all rows are already assigned.'))
+		return false
+	}
+
+	frappe.call({
+		method: 'shipstation_integration.cartonization.apply_cartonization_to_shipment',
+		args: {
+			shipment_name: frm.doc.name,
+			row_names_json: rowNamesPayload,
+		},
+		freeze: true,
+		callback(r) {
+			const sol = r.message || {}
+			frm.reload_doc().then(() => {
+				sdn_render_parcel_indicators(frm)
+				if ((sol.messages || []).length) {
+					frappe.msgprint(sol.messages.join('<br>'))
+				}
+			})
+		},
 	})
 	return false
 }
@@ -637,7 +715,25 @@ function sdn_show_label_success(frm, results) {
 	frm.refresh_field('shipment_delivery_note')
 }
 
+function sdn_run_pack_refresh_workflow(frm) {
+	sdn_attach_tab_listener_for_parcel_buttons(frm)
+	sdn_attach_grid_change_for_parcel_buttons(frm)
+	sdn_setup_parcel_buttons(frm)
+	setTimeout(() => sdn_setup_parcel_buttons(frm), 0)
+	setTimeout(() => sdn_setup_parcel_buttons(frm), 150)
+	sdn_render_parcel_indicators(frm)
+	sdn_populate_all_parcel_details(frm)
+	sdn_setup_sscc_button(frm)
+	sdn_setup_shipping_actions(frm)
+
+	frm.add_custom_button(__('Delivery Note'), () => fetch_delivery_note_items(frm), __('Get Items From'))
+}
+
 frappe.ui.form.on('Shipment', {
+	setup(frm) {
+		frm._ss_cartonization_enabled = false
+	},
+
 	delivery_to_type: function (frm) {
 		frm.refresh_field('delivery_contact_name')
 	},
@@ -679,17 +775,13 @@ frappe.ui.form.on('Shipment', {
 				: { filters: [['name', '=', '__no_dn_linked__']] }
 		})
 
-		sdn_attach_tab_listener_for_parcel_buttons(frm)
-		sdn_attach_grid_change_for_parcel_buttons(frm)
-		sdn_setup_parcel_buttons(frm)
-		setTimeout(() => sdn_setup_parcel_buttons(frm), 0)
-		setTimeout(() => sdn_setup_parcel_buttons(frm), 150)
-		sdn_render_parcel_indicators(frm)
-		sdn_populate_all_parcel_details(frm)
-		sdn_setup_sscc_button(frm)
-		sdn_setup_shipping_actions(frm)
-
-		frm.add_custom_button(__('Delivery Note'), () => fetch_delivery_note_items(frm), __('Get Items From'))
+		frappe.call({
+			method: 'shipstation_integration.cartonization.is_cartonization_enabled',
+			callback(r) {
+				frm._ss_cartonization_enabled = !!r.message
+				sdn_run_pack_refresh_workflow(frm)
+			},
+		})
 	},
 
 	parcel_template: function (frm) {
