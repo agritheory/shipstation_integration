@@ -273,6 +273,85 @@ def verify_webhook_signature(raw_body: bytes, api_key: str, signature: str) -> b
 	return hashlib.sha256(content.encode("utf-8")).hexdigest() == signature
 
 
+def _parse_event_time(time_utc: str | None) -> str | None:
+	"""Convert ISO UTC string to Frappe Datetime format: '2022-04-04T23:35:22Z' -> '2022-04-04 23:35:22'."""
+	if not time_utc:
+		return None
+	return time_utc.replace("T", " ").rstrip("Z").split("+")[0].strip()
+
+
+def _resolve_coordinates(
+	address: dict, enable_geocoding: bool = True
+) -> tuple[float | None, float | None, str]:
+	"""
+	Return (latitude, longitude, source).
+	Prefers API coordinates; falls back to the seventeen_track_geocode_address hook
+	when enable_geocoding is True.
+	source is 'API', 'Geocoded', or '' when no coordinates could be resolved.
+	"""
+	coords = address.get("coordinates") or {}
+	lat = coords.get("latitude")
+	lon = coords.get("longitude")
+	if lat is not None and lon is not None:
+		return float(lat), float(lon), "API"
+
+	if enable_geocoding:
+		geocode_hooks = frappe.get_hooks("seventeen_track_geocode_address")
+		if geocode_hooks:
+			result = frappe.get_attr(geocode_hooks[-1])(address)
+			if result:
+				return result[0], result[1], "Geocoded"
+
+	return None, None, ""
+
+
+def _sync_tracking_events(tn_doc: Document, track_info: dict, enable_geocoding: bool = True) -> None:
+	"""
+	Parse provider events from track_info and append any new ones to tn_doc.tracking_number_event.
+	Deduplication is based on (event_time, stage, location).
+	"""
+	providers = (track_info.get("tracking") or {}).get("providers") or []
+
+	existing_keys = {
+		(row.event_time, row.stage or "", row.location or "")
+		for row in (tn_doc.tracking_number_event or [])
+	}
+
+	for provider_entry in providers:
+		provider_name = (provider_entry.get("provider") or {}).get("name") or ""
+		for event in (provider_entry.get("events") or []):
+			event_time = _parse_event_time(event.get("time_utc"))
+			stage = event.get("stage") or ""
+			location = event.get("location") or ""
+
+			key = (event_time, stage, location)
+			if key in existing_keys:
+				continue
+			existing_keys.add(key)
+
+			address = event.get("address") or {}
+			lat, lon, source = _resolve_coordinates(address, enable_geocoding)
+
+			tn_doc.append(
+				"tracking_number_event",
+				{
+					"event_time": event_time,
+					"stage": stage,
+					"description": event.get("description") or "",
+					"location": location,
+					"country": address.get("country") or "",
+					"state": address.get("state") or "",
+					"city": address.get("city") or "",
+					"street": address.get("street") or "",
+					"postal_code": address.get("postal_code") or "",
+					"latitude": lat,
+					"longitude": lon,
+					"coordinates_source": source,
+					"provider": provider_name,
+				},
+			)
+
+
 @frappe.whitelist(allow_guest=True)
 def seventeentrack_webhook():
 	try:
@@ -336,6 +415,8 @@ def seventeentrack_webhook():
 
 		tn_doc.seventeen_track_latest_status_time = latest_event.get("time_utc")
 
+		_sync_tracking_events(tn_doc, track_info, enable_geocoding=bool(settings.enable_geocoding))
+
 		if settings.add_updates_as_comments:
 			tn_doc.add_comment(
 				comment_type="Comment",
@@ -356,7 +437,12 @@ def seventeentrack_webhook():
 				),
 			)
 
+		# Submitted documents can't be saved normally — update parent fields directly
+		# and insert new child rows individually.
 		tn_doc.db_update()
+		for row in tn_doc.tracking_number_event:
+			if not row.name:
+				row.db_insert()
 		frappe.db.commit()
 	except Exception:
 		frappe.log_error("17Track Webhook Error", frappe.get_traceback())
