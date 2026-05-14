@@ -16,7 +16,11 @@
   "seventeen_track_description",
   "seventeen_track_latest_status_time",
   "section_references",
-  "references"
+  "references",
+  "section_break_lypc",
+  "tracking_number_event",
+  "section_map",
+  "tracking_map"
  ],
  "fields": [
   {
@@ -93,13 +97,33 @@
    "fieldtype": "Table",
    "label": "References",
    "options": "Tracking Number Reference"
+  },
+  {
+   "fieldname": "section_break_lypc",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "tracking_number_event",
+   "fieldtype": "Table",
+   "label": "Tracking Number Event",
+   "options": "Tracking Number Event"
+  },
+  {
+   "fieldname": "section_map",
+   "fieldtype": "Section Break",
+   "label": "Tracking Map"
+  },
+  {
+   "fieldname": "tracking_map",
+   "fieldtype": "HTML",
+   "label": "Map"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-02 12:45:52.067659",
+ "modified": "2026-05-14 09:47:08.260002",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Tracking Number",
@@ -144,13 +168,8 @@
    "cancel": 1,
    "create": 1,
    "delete": 1,
-   "email": 0,
-   "export": 0,
-   "print": 0,
    "read": 1,
-   "report": 0,
    "role": "17Track Integration",
-   "share": 0,
    "submit": 1,
    "write": 1
   }
