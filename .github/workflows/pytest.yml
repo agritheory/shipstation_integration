@@ -57,13 +57,9 @@ jobs:
           MYSQL_PWD: "admin"
         run: bash ${{ github.workspace }}/.github/helper/install.sh
 
-      # TODO: enable pytest after adding tests
       - name: Run Tests
         working-directory: /home/runner/frappe-bench
-        run: bench --site test_site run-tests --app shipstation_integration
-
-      # - name: Run Tests
-      #   working-directory: /home/runner/frappe-bench
-      #   run: |
-      #     source env/bin/activate
-      #     pytest ./apps/shipstation_integration/shipstation_integration/tests/ --disable-warnings -s
+        run: |
+          set -o pipefail
+          source env/bin/activate
+          pytest ./apps/shipstation_integration/shipstation_integration/tests/ --disable-warnings -s
