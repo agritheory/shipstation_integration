@@ -66,6 +66,4 @@ jobs:
         run: |
           set -o pipefail
           source env/bin/activate
-          cd apps/shipstation_integration
-          poetry install
-          pytest ./shipstation_integration/tests/ --disable-warnings -s
+          pytest ./apps/shipstation_integration/shipstation_integration/tests/ --disable-warnings -s
