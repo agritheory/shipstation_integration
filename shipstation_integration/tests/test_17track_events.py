@@ -94,7 +94,12 @@ def test_resolve_uses_api_coords():
 
 
 def test_resolve_geocodes_when_no_api_coords():
-	address = {"city": "Ontario", "state": "CA", "country": "US", "coordinates": {"latitude": None, "longitude": None}}
+	address = {
+		"city": "Ontario",
+		"state": "CA",
+		"country": "US",
+		"coordinates": {"latitude": None, "longitude": None},
+	}
 	with patch("frappe.get_hooks", return_value=["some.geocode.hook"]), patch(
 		"frappe.get_attr", return_value=lambda a: (34.06, -117.64)
 	):
