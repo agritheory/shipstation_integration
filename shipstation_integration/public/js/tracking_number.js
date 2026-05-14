@@ -9,7 +9,7 @@ frappe.ui.form.on('Tracking Number', {
 
 function get_events_with_coords(frm) {
 	return (frm.doc.tracking_number_event || [])
-		.filter((e) => e.coordinates_source === 'API' || e.coordinates_source === 'Geocoded')
+		.filter(e => e.coordinates_source === 'API' || e.coordinates_source === 'Geocoded')
 		.sort((a, b) => new Date(a.event_time) - new Date(b.event_time))
 }
 
@@ -19,15 +19,13 @@ function render_tracking_map(frm) {
 
 	const all_events = get_events_with_coords(frm)
 	if (!all_events.length) {
-		wrapper.html(
-			`<p class="text-muted" style="padding: 8px;">${__('No location data available yet.')}</p>`
-		)
+		wrapper.html(`<p class="text-muted" style="padding: 8px;">${__('No location data available yet.')}</p>`)
 		return
 	}
 
-	const stages = [...new Set(all_events.map((e) => e.stage).filter(Boolean))]
+	const stages = [...new Set(all_events.map(e => e.stage).filter(Boolean))]
 	const filter_options = stages
-		.map((s) => `<option value="${frappe.utils.escape_html(s)}">${frappe.utils.escape_html(s)}</option>`)
+		.map(s => `<option value="${frappe.utils.escape_html(s)}">${frappe.utils.escape_html(s)}</option>`)
 		.join('')
 
 	wrapper.html(`
@@ -58,7 +56,7 @@ function render_tracking_map(frm) {
 
 	wrapper.find('#tn-stage-filter').on('change', function () {
 		const stage = this.value
-		const filtered = stage ? all_events.filter((e) => e.stage === stage) : all_events
+		const filtered = stage ? all_events.filter(e => e.stage === stage) : all_events
 		draw_events(map, filtered, latest_event_time)
 	})
 }
@@ -78,21 +76,20 @@ function red_pin_icon() {
 
 function draw_events(map, events, latest_event_time) {
 	const to_remove = []
-	map.eachLayer((layer) => {
+	map.eachLayer(layer => {
 		if (!(layer instanceof L.TileLayer)) to_remove.push(layer)
 	})
-	to_remove.forEach((layer) => map.removeLayer(layer))
+	to_remove.forEach(layer => map.removeLayer(layer))
 
 	if (!events.length) return
 
-	const coords = events.map((e) => [e.latitude, e.longitude])
+	const coords = events.map(e => [e.latitude, e.longitude])
 
 	const esc = frappe.utils.escape_html
 	events.forEach((e, i) => {
 		const is_latest = e.event_time === latest_event_time
 		const title = e.stage || `Event ${i + 1}`
-		const location_str =
-			e.location || [e.city, e.state, e.country].filter(Boolean).join(', ')
+		const location_str = e.location || [e.city, e.state, e.country].filter(Boolean).join(', ')
 		const popup = `
 			<b>${esc(title)}</b><br>
 			${esc(e.description || '')}<br>

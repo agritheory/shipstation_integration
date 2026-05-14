@@ -305,7 +305,9 @@ def _resolve_coordinates(
 	return None, None, ""
 
 
-def _sync_tracking_events(tn_doc: Document, track_info: dict, enable_geocoding: bool = True) -> None:
+def _sync_tracking_events(
+	tn_doc: Document, track_info: dict, enable_geocoding: bool = True
+) -> None:
 	"""
 	Parse provider events from track_info and append any new ones to tn_doc.tracking_number_event.
 	Deduplication is based on event_time alone — two events at the same UTC timestamp are the same event.
@@ -313,14 +315,11 @@ def _sync_tracking_events(tn_doc: Document, track_info: dict, enable_geocoding: 
 	"""
 	providers = (track_info.get("tracking") or {}).get("providers") or []
 
-	existing_times = {
-		str(row.event_time or "")[:19]
-		for row in (tn_doc.tracking_number_event or [])
-	}
+	existing_times = {str(row.event_time or "")[:19] for row in (tn_doc.tracking_number_event or [])}
 
 	for provider_entry in providers:
 		provider_name = (provider_entry.get("provider") or {}).get("name") or ""
-		for event in (provider_entry.get("events") or []):
+		for event in provider_entry.get("events") or []:
 			event_time = _parse_event_time(event.get("time_utc"))
 			if not event_time or event_time[:19] in existing_times:
 				continue
