@@ -17,6 +17,75 @@ SEED_TN_WEBHOOK = "1Z2617V10397725789"
 SEED_TN_ONE_REF = "TRK-SEED-0000001"
 SEED_TN_TWO_REF = "TRK-SEED-0000002"
 
+# Events extracted from the mock_17track_webhook.json fixture, geocoded via Nominatim.
+SEED_TN_WEBHOOK_EVENTS = [
+	{
+		"event_time": "2022-03-29 05:43:08",
+		"stage": "InfoReceived",
+		"description": "Shipper created a label, UPS has not received the package yet.",
+		"location": "US",
+		"country": "US",
+		"state": "",
+		"city": "",
+		"latitude": 39.7837304,
+		"longitude": -100.445882,
+		"coordinates_source": "Geocoded",
+		"provider": "UPS",
+	},
+	{
+		"event_time": "2022-03-31 23:36:47",
+		"stage": "",
+		"description": "Origin Scan",
+		"location": "Ontario, CA, US",
+		"country": "US",
+		"state": "CA",
+		"city": "Ontario",
+		"latitude": 34.065846,
+		"longitude": -117.64843,
+		"coordinates_source": "Geocoded",
+		"provider": "UPS",
+	},
+	{
+		"event_time": "2022-04-02 09:15:00",
+		"stage": "",
+		"description": "Arrived at Facility",
+		"location": "Anderson, CA, US",
+		"country": "US",
+		"state": "CA",
+		"city": "Anderson",
+		"latitude": 40.4479345,
+		"longitude": -122.2982544,
+		"coordinates_source": "Geocoded",
+		"provider": "UPS",
+	},
+	{
+		"event_time": "2022-04-04 15:46:06",
+		"stage": "OutForDelivery",
+		"description": "Out For Delivery Today",
+		"location": "Crescent City, CA, US",
+		"country": "US",
+		"state": "CA",
+		"city": "Crescent City",
+		"latitude": 41.7557501,
+		"longitude": -124.2025913,
+		"coordinates_source": "Geocoded",
+		"provider": "UPS",
+	},
+	{
+		"event_time": "2022-04-04 23:35:22",
+		"stage": "Delivered",
+		"description": "DELIVERED",
+		"location": "GASQUET, CA, US",
+		"country": "US",
+		"state": "CA",
+		"city": "GASQUET",
+		"latitude": 41.8399,
+		"longitude": -123.9729,
+		"coordinates_source": "Geocoded",
+		"provider": "UPS",
+	},
+]
+
 
 def read_json(name):
 	"""Read a fixture JSON file from the tests/fixtures directory."""
@@ -364,13 +433,21 @@ def create_test_tracking_numbers():
 	seed_item_2 = "Double Plum Pie"
 	seed_item_3 = "Gooseberry Pie"
 
-	# TN1 — primary webhook test target: submitted but subscription stopped
+	# TN1 — primary webhook test target: submitted, active, with pre-geocoded events for map testing
 	if not frappe.db.exists("Tracking Number", {"tracking_number": SEED_TN_WEBHOOK}):
 		tn = frappe.get_doc({"doctype": "Tracking Number", "tracking_number": SEED_TN_WEBHOOK})
 		tn.flags.ignore_validate = True
 		tn.insert(ignore_permissions=True)
 		frappe.db.set_value("Tracking Number", tn.name, "docstatus", 1)
 		frappe.db.set_value("Tracking Number", tn.name, "subscription_status", "Active")
+
+	tn_name = frappe.db.get_value("Tracking Number", {"tracking_number": SEED_TN_WEBHOOK}, "name")
+	if not frappe.db.exists("Tracking Number Event", {"parent": tn_name}):
+		tn_doc = frappe.get_doc("Tracking Number", tn_name)
+		for event_data in SEED_TN_WEBHOOK_EVENTS:
+			row = tn_doc.append("tracking_number_event", event_data)
+			row.db_insert()
+		frappe.db.commit()
 
 	# TN2 — single reference to an Item
 	if not frappe.db.exists("Tracking Number", {"tracking_number": SEED_TN_ONE_REF}):
