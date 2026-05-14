@@ -52,28 +52,44 @@ function render_tracking_map(frm) {
 	L.tileLayer(frappe.utils.map_defaults.tiles, frappe.utils.map_defaults.options).addTo(map)
 	frm._tn_map = map
 
-	draw_events(map, all_events)
+	const latest_event_time = all_events[all_events.length - 1].event_time
+
+	draw_events(map, all_events, latest_event_time)
 
 	wrapper.find('#tn-stage-filter').on('change', function () {
 		const stage = this.value
 		const filtered = stage ? all_events.filter((e) => e.stage === stage) : all_events
-		draw_events(map, filtered)
+		draw_events(map, filtered, latest_event_time)
 	})
 }
 
-function draw_events(map, events) {
-	map.eachLayer((layer) => {
-		if (!(layer instanceof L.TileLayer)) map.removeLayer(layer)
+function red_pin_icon() {
+	return L.divIcon({
+		className: '',
+		html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25 41" width="25" height="41">
+			<path d="M12.5 0C5.6 0 0 5.6 0 12.5C0 21.9 12.5 41 12.5 41S25 21.9 25 12.5C25 5.6 19.4 0 12.5 0z" fill="#e74c3c" stroke="#c0392b" stroke-width="1"/>
+			<circle cx="12.5" cy="12.5" r="5" fill="white"/>
+		</svg>`,
+		iconSize: [25, 41],
+		iconAnchor: [12, 41],
+		popupAnchor: [1, -34],
 	})
+}
+
+function draw_events(map, events, latest_event_time) {
+	const to_remove = []
+	map.eachLayer((layer) => {
+		if (!(layer instanceof L.TileLayer)) to_remove.push(layer)
+	})
+	to_remove.forEach((layer) => map.removeLayer(layer))
 
 	if (!events.length) return
 
 	const coords = events.map((e) => [e.latitude, e.longitude])
 
-	L.polyline(coords, { color: '#4C72B0', weight: 2, opacity: 0.7 }).addTo(map)
-
 	const esc = frappe.utils.escape_html
 	events.forEach((e, i) => {
+		const is_latest = e.event_time === latest_event_time
 		const title = e.stage || `Event ${i + 1}`
 		const location_str =
 			e.location || [e.city, e.state, e.country].filter(Boolean).join(', ')
@@ -83,7 +99,10 @@ function draw_events(map, events) {
 			<small>${esc(location_str)}</small><br>
 			<small>${esc(e.event_time || '')}</small>
 		`
-		L.marker([e.latitude, e.longitude]).bindPopup(popup).addTo(map)
+		const marker = is_latest
+			? L.marker([e.latitude, e.longitude], { icon: red_pin_icon() })
+			: L.marker([e.latitude, e.longitude])
+		marker.bindPopup(popup).addTo(map)
 	})
 
 	map.fitBounds(L.latLngBounds(coords), { padding: [30, 30] })
