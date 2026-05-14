@@ -3,6 +3,9 @@ name: Pytest CI
 on:
   pull_request:
 
+env:
+    BRANCH_NAME: ${{ github.base_ref || github.ref_name }}
+
 jobs:
   tests:
     name: Server
@@ -55,6 +58,7 @@ jobs:
         env:
           MYSQL_HOST: "localhost"
           MYSQL_PWD: "admin"
+          BRANCH_NAME: ${{ env.BRANCH_NAME}}
         run: bash ${{ github.workspace }}/.github/helper/install.sh
 
       - name: Run Tests
@@ -62,4 +66,6 @@ jobs:
         run: |
           set -o pipefail
           source env/bin/activate
-          pytest ./apps/shipstation_integration/shipstation_integration/tests/ --disable-warnings -s
+          cd apps/shipstation_integration
+          poetry install
+          pytest ./shipstation_integration/tests/ --disable-warnings -s
