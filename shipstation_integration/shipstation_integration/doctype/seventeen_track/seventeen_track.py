@@ -308,12 +308,13 @@ def _resolve_coordinates(
 def _sync_tracking_events(tn_doc: Document, track_info: dict, enable_geocoding: bool = True) -> None:
 	"""
 	Parse provider events from track_info and append any new ones to tn_doc.tracking_number_event.
-	Deduplication is based on (event_time, stage, location).
+	Deduplication is based on event_time alone — two events at the same UTC timestamp are the same event.
+	Both sides are normalized to 'YYYY-MM-DD HH:MM:SS' to avoid microsecond mismatches from the DB.
 	"""
 	providers = (track_info.get("tracking") or {}).get("providers") or []
 
-	existing_keys = {
-		(row.event_time, row.stage or "", row.location or "")
+	existing_times = {
+		str(row.event_time or "")[:19]
 		for row in (tn_doc.tracking_number_event or [])
 	}
 
@@ -321,13 +322,12 @@ def _sync_tracking_events(tn_doc: Document, track_info: dict, enable_geocoding: 
 		provider_name = (provider_entry.get("provider") or {}).get("name") or ""
 		for event in (provider_entry.get("events") or []):
 			event_time = _parse_event_time(event.get("time_utc"))
+			if not event_time or event_time[:19] in existing_times:
+				continue
+			existing_times.add(event_time[:19])
+
 			stage = event.get("stage") or ""
 			location = event.get("location") or ""
-
-			key = (event_time, stage, location)
-			if key in existing_keys:
-				continue
-			existing_keys.add(key)
 
 			address = event.get("address") or {}
 			lat, lon, source = _resolve_coordinates(address, enable_geocoding)
