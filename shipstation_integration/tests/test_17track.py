@@ -15,6 +15,9 @@ from shipstation_integration.shipstation_integration.doctype.seventeen_track.sev
 	get_webhook_callback_uri,
 	seventeentrack_webhook,
 )
+from shipstation_integration.shipstation_integration.doctype.tracking_number.tracking_number import (
+	get_tracking_number_map_data,
+)
 from shipstation_integration.tests.setup import (
 	MOCK_API_KEY,
 	SEED_TN_ONE_REF,
@@ -344,3 +347,71 @@ def test_multiple_references_persisted():
 	assert len(doc.references) == 2
 	ref_names = {r.document_name for r in doc.references}
 	assert ref_names == {"Ambrosia Pie", "Double Plum Pie"}
+
+
+# ---------------------------------------------------------------------------
+# Group 8 — get_tracking_number_map_data
+# ---------------------------------------------------------------------------
+
+
+def test_map_data_returns_feature_collection():
+	result = get_tracking_number_map_data()
+	assert result["type"] == "FeatureCollection"
+	assert isinstance(result["features"], list)
+
+
+def test_map_data_includes_submitted_tn_with_coords():
+	tn_name = frappe.db.get_value("Tracking Number", {"tracking_number": SEED_TN_WEBHOOK}, "name")
+	result = get_tracking_number_map_data()
+	names = [f["properties"]["name"] for f in result["features"]]
+	assert tn_name in names
+
+
+def test_map_data_feature_geometry_and_properties():
+	tn_name = frappe.db.get_value("Tracking Number", {"tracking_number": SEED_TN_WEBHOOK}, "name")
+	result = get_tracking_number_map_data()
+	feature = next(f for f in result["features"] if f["properties"]["name"] == tn_name)
+
+	assert feature["type"] == "Feature"
+	assert feature["geometry"]["type"] == "Point"
+	lon, lat = feature["geometry"]["coordinates"]
+	assert abs(lat - 41.8399) < 0.001
+	assert abs(lon - (-123.9729)) < 0.001
+	assert feature["properties"]["tracking_number"] == SEED_TN_WEBHOOK
+	assert feature["properties"]["status"] == "Delivered"
+	assert feature["properties"]["location"] == "GASQUET, CA, US"
+
+
+def test_map_data_excludes_draft_tracking_number():
+	tn = frappe.get_doc({"doctype": "Tracking Number", "tracking_number": "TEST-DRAFT-MAP-001"})
+	tn.flags.ignore_validate = True
+	tn.insert(ignore_permissions=True)
+	# docstatus stays 0 (draft); give it coords so the only exclusion reason is docstatus
+	frappe.db.set_value("Tracking Number", tn.name, "last_latitude", "34.05")
+	frappe.db.set_value("Tracking Number", tn.name, "last_longitude", "-118.25")
+	frappe.db.commit()
+
+	try:
+		result = get_tracking_number_map_data()
+		names = [f["properties"]["name"] for f in result["features"]]
+		assert tn.name not in names
+	finally:
+		frappe.delete_doc("Tracking Number", tn.name, ignore_permissions=True)
+		frappe.db.commit()
+
+
+def test_map_data_excludes_tn_without_coords():
+	tn = frappe.get_doc({"doctype": "Tracking Number", "tracking_number": "TEST-NOCOORDS-MAP-001"})
+	tn.flags.ignore_validate = True
+	tn.insert(ignore_permissions=True)
+	frappe.db.set_value("Tracking Number", tn.name, "docstatus", 1)
+	frappe.db.set_value("Tracking Number", tn.name, "last_latitude", "")
+	frappe.db.commit()
+
+	try:
+		result = get_tracking_number_map_data()
+		names = [f["properties"]["name"] for f in result["features"]]
+		assert tn.name not in names
+	finally:
+		frappe.db.delete("Tracking Number", {"name": tn.name})
+		frappe.db.commit()

@@ -10,6 +10,13 @@ seventeen_track_status_description_providers = [
 	"shipstation_integration.shipstation_integration.doctype.seventeen_track.status_description_defaults.base_status_description_map",
 ]
 
+# Geocoding hook: called when a tracking event has an address but no coordinates
+# and "Enable Geocoding" is checked on the Seventeen Track settings doc.
+# Default: Nominatim (OpenStreetMap). Suitable for dev and low-volume production.
+seventeen_track_geocode_address = [
+	"shipstation_integration.geocoding.nominatim_geocode",
+]
+
 app_name = "shipstation_integration"
 app_title = "Shipstation Integration"
 app_publisher = "AgriTheory"
@@ -41,6 +48,7 @@ app_include_js = ["shipstation_integration.bundle.js"]
 # include js in doctype views
 
 doctype_js = {
+	"Tracking Number": "public/js/tracking_number.js",
 	"Seventeen Track": "public/js/seventeen_track.js",
 	"Delivery Note": "public/js/delivery_note.js",
 	"Packing Slip": "public/js/packing_slip.js",
@@ -52,6 +60,7 @@ doctype_js = {
 
 doctype_list_js = {
 	"Sales Order": "public/js/sales_order_list.js",
+	"Tracking Number": "public/js/tracking_number_list.js",
 }
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
