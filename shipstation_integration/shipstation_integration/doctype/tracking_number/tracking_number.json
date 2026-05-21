@@ -44,6 +44,7 @@
    "fieldname": "tracking_number",
    "fieldtype": "Data",
    "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "Tracking Number",
    "reqd": 1
   },
@@ -68,6 +69,7 @@
   {
    "fieldname": "seventeen_track_status",
    "fieldtype": "Select",
+   "in_filter": 1,
    "label": "Status",
    "options": "\nNotFound\nInfoReceived\nInTransit\nExpired\nAvailableForPickup\nOutForDelivery\nDeliveryFailure\nDelivered\nException",
    "read_only": 1
@@ -147,7 +149,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-21 09:28:46.481074",
+ "modified": "2026-05-21 10:09:49.467276",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Tracking Number",
