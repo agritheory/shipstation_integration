@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # Tracking Map – Feature Overview
 
 <div class="byline">
-  Lautaro 2026-05-14
+  lauty95 2026-05-14
 </div>
 
 ## Purpose

@@ -522,12 +522,16 @@ def create_test_tracking_numbers():
 			row = tn_doc.append("tracking_number_event", event_data)
 			row.db_insert()
 
-		events_with_coords = [e for e in SEED_TN_WEBHOOK_EVENTS if e.get("coordinates_source") in ("API", "Geocoded")]
+		events_with_coords = [
+			e for e in SEED_TN_WEBHOOK_EVENTS if e.get("coordinates_source") in ("API", "Geocoded")
+		]
 		if events_with_coords:
 			latest = max(events_with_coords, key=lambda e: str(e.get("event_time") or ""))
 			frappe.db.set_value("Tracking Number", tn_name, "last_latitude", str(latest["latitude"]))
 			frappe.db.set_value("Tracking Number", tn_name, "last_longitude", str(latest["longitude"]))
-			frappe.db.set_value("Tracking Number", tn_name, "last_event_location", latest.get("location") or "")
+			frappe.db.set_value(
+				"Tracking Number", tn_name, "last_event_location", latest.get("location") or ""
+			)
 		frappe.db.set_value("Tracking Number", tn_name, "seventeen_track_status", "Delivered")
 
 		frappe.db.commit()
@@ -553,12 +557,16 @@ def create_test_tracking_numbers():
 			row = tn_doc.append("tracking_number_event", event_data)
 			row.db_insert()
 
-		events_with_coords = [e for e in SEED_TN_ONE_REF_EVENTS if e.get("coordinates_source") in ("API", "Geocoded")]
+		events_with_coords = [
+			e for e in SEED_TN_ONE_REF_EVENTS if e.get("coordinates_source") in ("API", "Geocoded")
+		]
 		if events_with_coords:
 			latest = max(events_with_coords, key=lambda e: str(e.get("event_time") or ""))
 			frappe.db.set_value("Tracking Number", tn2_name, "last_latitude", str(latest["latitude"]))
 			frappe.db.set_value("Tracking Number", tn2_name, "last_longitude", str(latest["longitude"]))
-			frappe.db.set_value("Tracking Number", tn2_name, "last_event_location", latest.get("location") or "")
+			frappe.db.set_value(
+				"Tracking Number", tn2_name, "last_event_location", latest.get("location") or ""
+			)
 		frappe.db.set_value("Tracking Number", tn2_name, "seventeen_track_status", "InTransit")
 
 		frappe.db.commit()
@@ -587,12 +595,16 @@ def create_test_tracking_numbers():
 			row = tn_doc.append("tracking_number_event", event_data)
 			row.db_insert()
 
-		events_with_coords = [e for e in SEED_TN_TWO_REF_EVENTS if e.get("coordinates_source") in ("API", "Geocoded")]
+		events_with_coords = [
+			e for e in SEED_TN_TWO_REF_EVENTS if e.get("coordinates_source") in ("API", "Geocoded")
+		]
 		if events_with_coords:
 			latest = max(events_with_coords, key=lambda e: str(e.get("event_time") or ""))
 			frappe.db.set_value("Tracking Number", tn3_name, "last_latitude", str(latest["latitude"]))
 			frappe.db.set_value("Tracking Number", tn3_name, "last_longitude", str(latest["longitude"]))
-			frappe.db.set_value("Tracking Number", tn3_name, "last_event_location", latest.get("location") or "")
+			frappe.db.set_value(
+				"Tracking Number", tn3_name, "last_event_location", latest.get("location") or ""
+			)
 		frappe.db.set_value("Tracking Number", tn3_name, "seventeen_track_status", "OutForDelivery")
 
 		frappe.db.commit()

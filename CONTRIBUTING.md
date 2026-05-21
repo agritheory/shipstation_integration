@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # Contribution Guide
 
 <div class="byline">
-  Ishwarya, Tyler Matteson, and Rohan 2026-02-24
+  Ishwarya, lauty95, Tyler Matteson, and Rohan 2026-05-14
 </div>
 
 

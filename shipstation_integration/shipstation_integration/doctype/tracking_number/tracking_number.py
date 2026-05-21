@@ -72,7 +72,7 @@ def get_tracking_number_map_data(filters=None):
 		],
 	)
 
-	result = {
+	return {
 		"type": "FeatureCollection",
 		"features": [
 			{
@@ -92,5 +92,3 @@ def get_tracking_number_map_data(filters=None):
 			if tn.last_latitude and tn.last_longitude
 		],
 	}
-	print("get_tracking_number_map_data result:", result)
-	return result
