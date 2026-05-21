@@ -15,7 +15,12 @@ from shipstation_integration.shipstation_integration.doctype.seventeen_track.sev
 	_sync_tracking_events,
 	seventeentrack_webhook,
 )
-from shipstation_integration.tests.setup import MOCK_API_KEY, SEED_TN_WEBHOOK, TEST_17TRACK_COMPANY
+from shipstation_integration.tests.setup import (
+	MOCK_API_KEY,
+	SEED_TN_WEBHOOK,
+	SEED_TN_WEBHOOK_EVENTS,
+	TEST_17TRACK_COMPANY,
+)
 
 WEBHOOK_MOCK_PATH = (
 	Path(frappe.get_app_path("shipstation_integration"))
@@ -272,6 +277,44 @@ def test_webhook_no_duplicate_events_on_second_call():
 
 		tn_doc = frappe.get_doc("Tracking Number", tn_name)
 		assert len(tn_doc.tracking_number_event) == 5
+	finally:
+		frappe.db.set_value("Seventeen Track", TEST_17TRACK_COMPANY, "enable_geocoding", 1)
+		frappe.db.commit()
+
+
+def test_webhook_populates_last_coordinates():
+	"""Webhook writes last_latitude / last_longitude / last_event_location from geocoded events."""
+	body_bytes = WEBHOOK_MOCK_PATH.read_bytes()
+	sig = make_signature(body_bytes, MOCK_API_KEY)
+
+	tn_name = _tn_name()
+	assert tn_name, f"Seed Tracking Number {SEED_TN_WEBHOOK!r} not found (docstatus=1)"
+
+	# Clear last_* fields and events, then re-seed events that already carry coordinates.
+	frappe.db.set_value(
+		"Tracking Number",
+		tn_name,
+		{"last_latitude": "", "last_longitude": "", "last_event_location": ""},
+	)
+	frappe.db.delete("Tracking Number Event", {"parent": tn_name})
+	tn_doc = frappe.get_doc("Tracking Number", tn_name)
+	for event_data in SEED_TN_WEBHOOK_EVENTS:
+		row = tn_doc.append("tracking_number_event", event_data)
+		row.db_insert()
+	frappe.db.set_value("Seventeen Track", TEST_17TRACK_COMPANY, "enable_geocoding", 0)
+	frappe.db.commit()
+
+	try:
+		# The webhook deduplicates all 5 events (already present); last_* is still derived
+		# from the pre-existing geocoded rows.
+		with patch.object(frappe.local, "request", mock_request(body_bytes, {"sign": sig}), create=True):
+			seventeentrack_webhook()
+
+		tn_doc = frappe.get_doc("Tracking Number", tn_name)
+		# Latest geocoded event is Delivered in GASQUET (last in SEED_TN_WEBHOOK_EVENTS).
+		assert tn_doc.last_latitude == "41.8399"
+		assert tn_doc.last_longitude == "-123.9729"
+		assert tn_doc.last_event_location == "GASQUET, CA, US"
 	finally:
 		frappe.db.set_value("Seventeen Track", TEST_17TRACK_COMPANY, "enable_geocoding", 1)
 		frappe.db.commit()
