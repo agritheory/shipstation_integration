@@ -3,9 +3,10 @@
 
 frappe.ui.form.on('Tracking Number', {
 	refresh(frm) {
-		if (!frm.is_new()) {
-			render_tracking_map(frm)
-		}
+		frm.fields_dict.tracking_map.$wrapper?.empty()
+		if (frm.is_new()) return
+
+		render_tracking_map(frm)
 	},
 })
 
@@ -17,8 +18,6 @@ function get_events_with_coords(frm) {
 
 function render_tracking_map(frm) {
 	const wrapper = frm.fields_dict.tracking_map.$wrapper
-	wrapper.empty()
-
 	const all_events = get_events_with_coords(frm)
 	if (!all_events.length) {
 		wrapper.html(`<p class="text-muted" style="padding: 8px;">${__('No location data available yet.')}</p>`)
