@@ -3,7 +3,9 @@
 
 frappe.ui.form.on('Tracking Number', {
 	refresh(frm) {
-		render_tracking_map(frm)
+		if (!frm.is_new()) {
+			render_tracking_map(frm)
+		}
 	},
 })
 
