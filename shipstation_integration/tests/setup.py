@@ -447,6 +447,14 @@ def create_test_tracking_numbers():
 		for event_data in SEED_TN_WEBHOOK_EVENTS:
 			row = tn_doc.append("tracking_number_event", event_data)
 			row.db_insert()
+
+		events_with_coords = [e for e in SEED_TN_WEBHOOK_EVENTS if e.get("coordinates_source") in ("API", "Geocoded")]
+		if events_with_coords:
+			latest = max(events_with_coords, key=lambda e: str(e.get("event_time") or ""))
+			frappe.db.set_value("Tracking Number", tn_name, "last_latitude", str(latest["latitude"]))
+			frappe.db.set_value("Tracking Number", tn_name, "last_longitude", str(latest["longitude"]))
+			frappe.db.set_value("Tracking Number", tn_name, "last_event_location", latest.get("location") or "")
+
 		frappe.db.commit()
 
 	# TN2 — single reference to an Item
