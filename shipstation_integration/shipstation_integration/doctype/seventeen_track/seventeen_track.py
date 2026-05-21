@@ -436,6 +436,15 @@ def seventeentrack_webhook():
 				),
 			)
 
+		events_with_coords = [
+			e for e in tn_doc.tracking_number_event if e.coordinates_source in ("API", "Geocoded")
+		]
+		if events_with_coords:
+			latest = max(events_with_coords, key=lambda e: str(e.event_time or ""))
+			tn_doc.last_latitude = str(latest.latitude) if latest.latitude is not None else ""
+			tn_doc.last_longitude = str(latest.longitude) if latest.longitude is not None else ""
+			tn_doc.last_event_location = latest.location or ""
+
 		# Submitted documents can't be saved normally — update parent fields directly
 		# and insert new child rows individually.
 		tn_doc.db_update()
