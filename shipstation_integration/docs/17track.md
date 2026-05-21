@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # 17Track Integration
 
 <div class="byline">
-  lauty95 2026-05-14
+  lauty95 2026-05-21
 </div>
 
 This integration connects [17TRACK](https://www.17track.net/) global shipment tracking with ERPNext via the Shipstation Integration app.  

@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # Parcel Measurement UOM Preference – Feature Overview
 
 <div class="byline">
-  Ishwarya, lauty95, and Tyler Matteson 2026-05-14
+  Ishwarya, lauty95, and Tyler Matteson 2026-05-21
 </div>
 
 ## Purpose
