@@ -36,7 +36,7 @@ import frappe
 import httpx
 from frappe import _
 from frappe.utils import flt, getdate
-from shipstation_integration.base_ltl import BaseLTL
+from shipstation_integration.base_ltl import BaseLTL, require_submitted_shipment_for_ltl
 from shipstation_integration.ltl import ShipstationLTL
 from shipstation_integration.rates import get_state_code
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
@@ -456,11 +456,13 @@ class TrafficTechLTL(BaseLTL):
 		}
 
 	def fetch_ltl_offers(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
+		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
 		load_id, quotes = self.fetch_traffictech_quotes(doc, fc)
 		return [self.normalize_tt_quote(q, load_id) for q in quotes]
 
 	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
+		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
 		load_id, quotes = self.fetch_traffictech_quotes(doc, fc)
 
@@ -495,6 +497,7 @@ class TrafficTechLTL(BaseLTL):
 		return _("{0} TrafficTech carrier quote(s) saved as Shipment Quotation(s).").format(saved)
 
 	def schedule_ltl_pickup(self, doc: Shipment, settings_name: str | None = None) -> str | None:
+		require_submitted_shipment_for_ltl(doc)
 		frappe.throw(
 			_(
 				"TrafficTech shipment booking is not available in this integration yet. "

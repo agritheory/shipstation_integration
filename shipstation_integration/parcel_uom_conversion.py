@@ -18,6 +18,22 @@ NORMALIZE_WEIGHT_FOR_LOOKUP = {
 	"Kilogram": "Kg",
 }
 
+DIM_UOM_ABBR = {
+	"Inch": '"',
+	"Centimeter": "cm",
+	"Foot": "'",
+	"Millimeter": "mm",
+	"Meter": "m",
+}
+
+WEIGHT_UOM_ABBR = {
+	"Pound": "lbs",
+	"Kg": "kg",
+	"Kilogram": "kg",
+	"Ounce": "oz",
+	"Gram": "g",
+}
+
 
 def normalize_weight_uom_name(uom: str | None) -> str | None:
 	if not uom:
@@ -73,6 +89,63 @@ def conversion_factors_storage_to_prefs(
 	dim_f = parcel_uom_factor_no_throw(dim_from, pref_dimension_uom)
 	wt_f = parcel_uom_factor_no_throw(wt_from, wt_pref)
 	return {"dimension_factor": dim_f, "weight_factor": wt_f}
+
+
+def format_parcel_details(row, user: str | None = None) -> str:
+	"""Format parcel dimensions and weight for display from child row fields."""
+	if not row:
+		return ""
+
+	if isinstance(row, str):
+		row = frappe.parse_json(row)
+
+	row = frappe._dict(row)
+	if not row.get("parcel_template"):
+		return ""
+
+	length = row.get("parcel_length")
+	width = row.get("parcel_width")
+	height = row.get("parcel_height")
+	weight = row.get("parcel_weight")
+
+	if not any([length, width, height, weight]):
+		return ""
+
+	user_doc = frappe.get_cached_doc("User", user or frappe.session.user)
+	dim_pref = user_doc.dimension_uom or "Centimeter"
+	wt_pref = normalize_weight_uom_name(user_doc.weight_uom) or user_doc.weight_uom or "Kg"
+
+	factors = conversion_factors_storage_to_prefs(
+		row.get("dimension_uom") or "Centimeter",
+		row.get("parcel_weight_uom") or "Kg",
+		dim_pref,
+		wt_pref,
+	)
+	dim_factor = factors.get("dimension_factor") or 1
+	wt_factor = factors.get("weight_factor") or 1
+	dim_abbr = DIM_UOM_ABBR.get(dim_pref) or dim_pref
+	wt_abbr = WEIGHT_UOM_ABBR.get(wt_pref) or wt_pref
+
+	parts: list[str] = []
+	if length or width or height:
+
+		def fmt(value: float) -> str:
+			value = frappe.utils.flt(value)
+			if value == int(value):
+				return str(int(value))
+			text = f"{value:.2f}".rstrip("0").rstrip(".")
+			return text
+
+		lv = frappe.utils.flt(length or 0) * dim_factor
+		wv = frappe.utils.flt(width or 0) * dim_factor
+		hv = frappe.utils.flt(height or 0) * dim_factor
+		parts.append(f"{fmt(lv)}x{fmt(wv)}x{fmt(hv)}{dim_abbr}")
+
+	if weight:
+		wt_val = frappe.utils.flt(frappe.utils.flt(weight) * wt_factor, 2)
+		parts.append(f"{wt_val}{wt_abbr}")
+
+	return " ".join(parts)
 
 
 @frappe.whitelist()

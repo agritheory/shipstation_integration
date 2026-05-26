@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # Less Than Truckload (LTL)
 
 <div class="byline">
-  Heather Kusmierz and Tyler Matteson 2026-04-29
+  Heather Kusmierz and Tyler Matteson 2026-05-04
 </div>
 
 
@@ -51,7 +51,7 @@ When no Freight Carrier Settings record exists for the shipment, or no entry mat
 
 ## LTL Shipment Workflow
 
-LTL starts from ERPNext's Shipment document with **Freight Type** set to `LTL` and a **Preferred Carrier** selected. Once the pickup, delivery, package, service level, and billing fields are complete, click **Get LTL Quotes** to request contracted rates from the carrier. If the carrier supports spot quotes a checkbox appears to request them instead.
+LTL starts from ERPNext's Shipment document with **Freight Type** set to `LTL` and a **Preferred Carrier** selected. Pack the shipment (assign SDN lines to parcels), **submit** the Shipment, then click **Get LTL Quotes** to request contracted rates from the carrier. If the carrier supports spot quotes a checkbox appears to request them instead.
 
 The app stores each returned rate as a **Shipment Quotation** document and displays a summary to the dispatcher. The dispatcher opens the chosen Shipment Quotation and checks **Accept Quote**. Only one quotation may be accepted per Shipment — to switch, uncheck the first before accepting another. Accepting a quotation writes the carrier's quote ID to the Shipment and enables the **Schedule LTL Pickup** button.
 

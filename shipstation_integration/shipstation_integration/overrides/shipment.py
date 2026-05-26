@@ -20,6 +20,7 @@ import frappe
 from erpnext.stock.doctype.shipment.shipment import Shipment
 from frappe import _
 
+from shipstation_integration.base_ltl import require_submitted_shipment_for_ltl
 from shipstation_integration.ltl import get_ltl_provider
 from shipstation_integration.utils import get_shipstation_settings_optional
 
@@ -38,6 +39,14 @@ class ShipStationShipment(Shipment):
 			)
 		# TODO: if freight_type == "LTL" -> call ltl_class method to show missing but required fields
 		super().validate()
+
+	def on_submit(self):
+		# Shipstation packs on shipment_delivery_note; shipment_parcel is hidden and unused.
+		# Must override here — inheriting Shipment.on_submit would still enforce ERPNext's
+		# shipment_parcel check on sites running stock ERPNext.
+		if self.value_of_goods == 0:
+			frappe.throw(_("Value of goods cannot be 0"))
+		self.db_set("status", "Submitted")
 
 
 @frappe.whitelist()
@@ -205,6 +214,7 @@ def save_selected_ltl_quotes(shipment_name: str, selected_quotes: list | str) ->
 		frappe.throw(_("No quotes selected."))
 
 	doc = frappe.get_doc("Shipment", shipment_name)
+	require_submitted_shipment_for_ltl(doc)
 	saved = 0
 	for raw in parsed:
 		if not isinstance(raw, dict):

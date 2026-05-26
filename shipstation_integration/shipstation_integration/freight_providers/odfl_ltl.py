@@ -51,7 +51,7 @@ from frappe import _
 from frappe.utils import now
 from frappe.utils.file_manager import save_file
 
-from shipstation_integration.base_ltl import BaseLTL
+from shipstation_integration.base_ltl import BaseLTL, require_submitted_shipment_for_ltl
 from shipstation_integration.ltl import ShipstationLTL
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
@@ -378,6 +378,7 @@ class OdflLTL(BaseLTL):
 
 	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Call ODFL SOAP rate service and save one Shipment Quotation."""
+		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
 		soap_xml = self.build_rate_soap(doc, fc)
 		soap_url = "https://www.odfl.com/wsRate_v6/RateService"
@@ -423,6 +424,7 @@ class OdflLTL(BaseLTL):
 
 	def schedule_ltl_pickup(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Create eBOL (gets PRO) then schedule pickup."""
+		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
 
 		accepted_sq_name = doc.accepted_quotation or frappe.db.get_value(

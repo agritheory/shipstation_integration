@@ -51,7 +51,7 @@ from frappe import _
 from frappe.utils import now
 from frappe.utils.file_manager import save_file
 
-from shipstation_integration.base_ltl import BaseLTL
+from shipstation_integration.base_ltl import BaseLTL, require_submitted_shipment_for_ltl
 from shipstation_integration.ltl import ShipstationLTL
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
@@ -712,6 +712,7 @@ class BanyanLTL(BaseLTL):
 
 	def fetch_ltl_offers(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
 		"""Return Banyan quotes as normalized dicts without saving anything."""
+		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
 		load_id, quotes = self.fetch_banyan_offers(doc, fc)
 		results: list[dict[str, Any]] = []
@@ -740,6 +741,7 @@ class BanyanLTL(BaseLTL):
 
 	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""POST /shipments (with ``isEzRate`` when EZ mode is enabled) and save Shipment Quotations."""
+		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
 		load_id, quotes = self.fetch_banyan_offers(doc, fc)
 
@@ -782,8 +784,132 @@ class BanyanLTL(BaseLTL):
 
 		return _("{0} Banyan carrier quote(s) saved as Shipment Quotation(s).").format(saved)
 
+	def banyan_book_error_is_already_booked(self, resp: httpx.Response) -> bool:
+		if resp.status_code != 400:
+			return False
+		try:
+			body = resp.json()
+			if isinstance(body, dict):
+				detail = body.get("detail") or body.get("title") or ""
+				return "already booked" in str(detail).lower()
+		except Exception:
+			pass
+		return "already booked" in (resp.text or "").lower()
+
+	@staticmethod
+	def pro_number_from_banyan_payload(data: dict) -> str:
+		if not isinstance(data, dict):
+			return ""
+		for key in ("proNumber", "ProNumber", "manifestId", "bolNumber"):
+			val = data.get(key)
+			if val:
+				return str(val)
+		awarded = data.get("awardedQuotePricing")
+		if isinstance(awarded, dict):
+			for key in ("proNumber", "manifestId", "bolNumber"):
+				val = awarded.get(key)
+				if val:
+					return str(val)
+		return ""
+
+	@staticmethod
+	def pickup_number_from_banyan_payload(data: dict) -> str:
+		if not isinstance(data, dict):
+			return ""
+		for key in ("pickupNumber", "pickup_id", "confirmationNumber"):
+			val = data.get(key)
+			if val:
+				return str(val)
+		return ""
+
+	def fetch_banyan_shipment(self, fc, load_id: str) -> dict:
+		with httpx.Client() as client:
+			resp = client.get(
+				self.url(fc, f"/shipments/{load_id}"),
+				headers=self.headers(fc),
+				timeout=30,
+			)
+		self.raise_for_status(resp, f"fetch_banyan_shipment GET /shipments/{load_id}")
+		data = resp.json()
+		return data if isinstance(data, dict) else {}
+
+	def attach_banyan_documents(self, doc: Shipment, fc, load_id: str, settings_name=None) -> bool:
+		docs_saved = False
+		try:
+			docs = self.get_documents(doc, settings_name=settings_name, load_id=load_id)
+			now_dt = now().split(".")[0]
+			for d in docs:
+				raw = base64.b64decode(d.get("content") or "")
+				if raw:
+					save_file(
+						f"{doc.name}-{d.get('document_type', 'BOL')}-{now_dt}.pdf",
+						raw,
+						"Shipment",
+						doc.name,
+					)
+			docs_saved = bool(docs)
+		except Exception:
+			frappe.log_error(
+				title="Banyan: Error attaching documents",
+				message=frappe.get_traceback(),
+				reference_doctype="Shipment",
+				reference_name=doc.name,
+			)
+		return docs_saved
+
+	def apply_banyan_booking(
+		self,
+		doc: Shipment,
+		sq,
+		fc,
+		load_id: str,
+		book_data: dict,
+		*,
+		already_booked: bool = False,
+		settings_name=None,
+	) -> str:
+		pro_number = self.pro_number_from_banyan_payload(book_data)
+		if not pro_number:
+			try:
+				shipment_data = self.fetch_banyan_shipment(fc, load_id)
+				pro_number = self.pro_number_from_banyan_payload(shipment_data)
+				if shipment_data:
+					book_data = {**shipment_data, **book_data}
+			except Exception:
+				pass
+
+		pickup_number = self.pickup_number_from_banyan_payload(book_data)
+		dt, dn = doc.doctype, doc.name
+		updates = {
+			"carrier": doc.preferred_carrier,
+			"carrier_service": sq.service_level,
+			"awb_number": pro_number,
+			"shipment_id": load_id,
+		}
+		if pickup_number:
+			updates["pickup_id"] = pickup_number
+		if pro_number or pickup_number:
+			updates["status"] = "Booked"
+		# db.set_value avoids Shipment.validate() resetting status to Draft on draft docs.
+		frappe.db.set_value(dt, dn, updates)
+
+		docs_saved = self.attach_banyan_documents(doc, fc, load_id, settings_name=settings_name)
+
+		if already_booked:
+			msg = _("Banyan load {0} was already booked. ERPNext has been synced.").format(load_id)
+		else:
+			msg = _("Banyan booking confirmed.")
+		if pro_number:
+			msg += " " + _("PRO: {0}").format(pro_number)
+		elif already_booked:
+			msg += " " + _("PRO was not returned by Banyan; check the load in Banyan.")
+		if docs_saved:
+			msg += " " + _("Documents have been attached.")
+		return msg
+
 	def schedule_ltl_pickup(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Book the accepted quote via POST /shipments/{loadId}/book."""
+		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
 
 		accepted_sq_name = doc.accepted_quotation or frappe.db.get_value(
@@ -806,42 +932,31 @@ class BanyanLTL(BaseLTL):
 				headers=self.headers(fc),
 				timeout=60,
 			)
-		self.raise_for_status(resp, "schedule_ltl_pickup POST /book")
-		data = resp.json()
 
-		pro_number = data.get("proNumber") or data.get("bolNumber") or ""
-		dt, dn = doc.doctype, doc.name
-		frappe.set_value(dt, dn, "carrier", doc.preferred_carrier)
-		frappe.set_value(dt, dn, "carrier_service", sq.service_level)
-		frappe.set_value(dt, dn, "awb_number", pro_number)
-		frappe.set_value(dt, dn, "shipment_id", load_id)
-
-		docs_saved = False
-		try:
-			docs = self.get_documents(doc, settings_name=fc.name)
-			now_dt = now().split(".")[0]
-			for d in docs:
-				raw = base64.b64decode(d.get("content") or "")
-				if raw:
-					save_file(
-						f"{doc.name}-{d.get('document_type','BOL')}-{now_dt}.pdf",
-						raw,
-						"Shipment",
-						doc.name,
-					)
-			docs_saved = bool(docs)
-		except Exception:
-			frappe.log_error(
-				title="Banyan: Error attaching documents",
-				message=frappe.get_traceback(),
-				reference_doctype="Shipment",
-				reference_name=doc.name,
+		if self.banyan_book_error_is_already_booked(resp):
+			shipment_data = self.fetch_banyan_shipment(fc, load_id)
+			return self.apply_banyan_booking(
+				doc,
+				sq,
+				fc,
+				load_id,
+				shipment_data,
+				already_booked=True,
+				settings_name=settings_name or fc.name,
 			)
 
-		msg = _("Banyan booking confirmed. PRO: {0}").format(pro_number)
-		if docs_saved:
-			msg += " " + _("Documents have been attached.")
-		return msg
+		self.raise_for_status(resp, "schedule_ltl_pickup POST /book")
+		data = resp.json()
+		if not isinstance(data, dict):
+			data = {}
+		return self.apply_banyan_booking(
+			doc,
+			sq,
+			fc,
+			load_id,
+			data,
+			settings_name=settings_name or fc.name,
+		)
 
 	def cancel_shipment(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""POST /shipments/{loadId}/cancel."""
@@ -881,10 +996,12 @@ class BanyanLTL(BaseLTL):
 		self.raise_for_status(resp, "track_shipment GET /tracking/statuses")
 		return resp.json()
 
-	def get_documents(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
+	def get_documents(
+		self, doc: Shipment, settings_name: str | None = None, load_id: str | None = None
+	) -> list[dict]:
 		"""GET /shipments/{loadId}/documents."""
 		fc = self.get_fcs(doc, settings_name)
-		load_id = doc.get("shipment_id") or ""
+		load_id = load_id or doc.get("shipment_id") or ""
 		if not load_id:
 			return []
 

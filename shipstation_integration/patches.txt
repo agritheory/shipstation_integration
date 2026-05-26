@@ -6,3 +6,4 @@ shipstation_integration.patches.add_user_uom_fields
 execute:frappe.delete_doc_if_exists("Doctype", 'Parcel Dimensions')
 shipstation_integration.patches.populate_shipment_delivery_note_items
 shipstation_integration.patches.migrate_alternative_ltl_to_freight_carrier_settings
+shipstation_integration.patches.allow_ltl_fields_on_submit

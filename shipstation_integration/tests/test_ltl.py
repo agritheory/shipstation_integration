@@ -105,13 +105,18 @@ def configure_ltl_shipment_for_parcel_tests(shipment):
 		)
 
 	shipment.package_type_code = "pkg"
-	shipment.save()
-	shipment.reload()
+	if shipment.docstatus == 0:
+		shipment.save()
+		shipment.reload()
 
 	return {"package_type_code": original_package_type_code, "sdn_rows": original_sdn_rows}
 
 
 def restore_ltl_shipment(shipment, original):
+	if shipment.docstatus == 1:
+		# Parcel tests only mutate the in-memory doc; submitted SDN rows stay in the DB.
+		shipment.reload()
+		return
 	shipment.reload()
 	shipment.shipment_delivery_note = []
 	for row_data in original["sdn_rows"]:
@@ -258,6 +263,7 @@ def test_build_packages_raises_on_missing_dimensions(problem):
 def test_shipstation_schedule_ltl_pickup_via_api(monkeypatch):
 	reset_ltl_shipment_quotation_test_state()
 	shipment = get_draft_ltl_shipment_for_tests()
+	assert shipment.docstatus == 1
 	pickup_fixture = ltl_pickup_response_for_tests()
 	ltl = ShipstationLTL()
 	ltl.save_ltl_quotes_as_shipment_quotations_and_display(

@@ -311,139 +311,10 @@ function sdn_split_selected_rows(frm) {
 
 	grid.refresh()
 	sdn_render_parcel_indicators(frm)
-	sdn_populate_all_parcel_details(frm)
+	refresh_parcel_details_display(frm, 'shipment_delivery_note')
 	sdn_deselect_all_rows(frm)
 	frm.dirty()
 	return false
-}
-
-const SDN_DIM_UOM_ABBR = {
-	Inch: '"',
-	Centimeter: 'cm',
-	Foot: "'",
-	Millimeter: 'mm',
-	Meter: 'm',
-}
-
-const SDN_WEIGHT_UOM_ABBR = {
-	Pound: 'lbs',
-	Kg: 'kg',
-	Kilogram: 'kg',
-	Ounce: 'oz',
-	Gram: 'g',
-}
-
-function sdn_user_pref_parcel_abbrs() {
-	const p = frappe.boot.parcel_uom || {}
-	const dim_pref = p.dimension_uom || 'Centimeter'
-	const wt_pref = p.weight_uom || 'Kg'
-	return {
-		dimAbbr: SDN_DIM_UOM_ABBR[dim_pref] || dim_pref || '',
-		wtAbbr: SDN_WEIGHT_UOM_ABBR[wt_pref] || wt_pref || '',
-	}
-}
-
-function sdn_apply_parcel_detail_string(
-	frm,
-	cdt,
-	cdn,
-	row,
-	opts = { dimension_factor: 1, weight_factor: 1, dim_abbr: '', wt_abbr: '' }
-) {
-	const l = row.parcel_length
-	const w = row.parcel_width
-	const h = row.parcel_height
-	const wt = row.parcel_weight
-	const dim_f = opts.dimension_factor != null ? opts.dimension_factor : 1
-	const wt_f = opts.weight_factor != null ? opts.weight_factor : 1
-	const dim_abbr = opts.dim_abbr || ''
-	const wt_abbr = opts.wt_abbr || ''
-
-	const parts = []
-	if (l || w || h) {
-		const fmt = v => (v % 1 === 0 ? v : flt(v, 2))
-		const lv = flt((l || 0) * dim_f)
-		const wv = flt((w || 0) * dim_f)
-		const hv = flt((h || 0) * dim_f)
-		parts.push(`${fmt(lv)}x${fmt(wv)}x${fmt(hv)}${dim_abbr}`)
-	}
-	if (wt) {
-		parts.push(`${flt(flt(wt) * wt_f, 2)}${wt_abbr}`)
-	}
-
-	frappe.model.set_value(cdt, cdn, 'parcel_details', parts.join(' '))
-	if (frm) {
-		frm.refresh_field('shipment_delivery_note')
-	}
-}
-
-function sdn_populate_all_parcel_details(frm) {
-	;(frm.doc.shipment_delivery_note || []).forEach(row => {
-		sdn_update_parcel_details(frm, row.doctype, row.name)
-	})
-}
-
-function sdn_update_parcel_details(frm, cdt, cdn) {
-	const row = locals[cdt][cdn]
-	const l = row.parcel_length
-	const w = row.parcel_width
-	const h = row.parcel_height
-	const wt = row.parcel_weight
-
-	if (!l && !w && !h && !wt) {
-		frappe.model.set_value(cdt, cdn, 'parcel_details', '')
-		frm.refresh_field('shipment_delivery_note')
-		return
-	}
-
-	const p = frappe.boot.parcel_uom || {}
-	const dim_map = p.to_dimension_pref || {}
-	const wt_map = p.to_weight_pref || {}
-	const abbr = sdn_user_pref_parcel_abbrs()
-	const dk = row.dimension_uom || 'Centimeter'
-	const wk = row.parcel_weight_uom || 'Kg'
-
-	const has_dims = !!(l || w || h)
-	let dim_factor = has_dims ? dim_map[dk] : 1
-	if (dim_factor === undefined || dim_factor === null) dim_factor = has_dims ? null : 1
-
-	let wt_factor = wt ? wt_map[wk] : 1
-	if (wt_factor === undefined || wt_factor === null) wt_factor = wt ? null : 1
-
-	if (dim_factor !== null && wt_factor !== null) {
-		sdn_apply_parcel_detail_string(frm, cdt, cdn, row, {
-			dimension_factor: dim_factor,
-			weight_factor: wt_factor,
-			dim_abbr: abbr.dimAbbr,
-			wt_abbr: abbr.wtAbbr,
-		})
-		return
-	}
-
-	frappe.call({
-		method: 'shipstation_integration.parcel_uom_conversion.get_parcel_detail_factors_for_storage_uoms',
-		args: {
-			storage_dimension_uom: dk,
-			storage_weight_uom: wk,
-		},
-		callback(r) {
-			const msg = r.message || {}
-			const df =
-				has_dims && msg.dimension_factor != null && msg.dimension_factor !== undefined && msg.dimension_factor !== ''
-					? Number(msg.dimension_factor)
-					: 1
-			const wf =
-				wt && msg.weight_factor != null && msg.weight_factor !== undefined && msg.weight_factor !== ''
-					? Number(msg.weight_factor)
-					: 1
-			sdn_apply_parcel_detail_string(frm, cdt, cdn, row, {
-				dimension_factor: has_dims ? df : 1,
-				weight_factor: wt ? wf : 1,
-				dim_abbr: abbr.dimAbbr,
-				wt_abbr: abbr.wtAbbr,
-			})
-		},
-	})
 }
 
 function sdn_check_template_match(frm, cdt, cdn) {
@@ -802,7 +673,7 @@ function sdn_run_pack_refresh_workflow(frm) {
 	setTimeout(() => sdn_setup_parcel_buttons(frm), 0)
 	setTimeout(() => sdn_setup_parcel_buttons(frm), 150)
 	sdn_render_parcel_indicators(frm)
-	sdn_populate_all_parcel_details(frm)
+	refresh_parcel_details_display(frm, 'shipment_delivery_note')
 	sdn_setup_sscc_button(frm)
 	sdn_setup_shipping_actions(frm)
 
@@ -885,7 +756,7 @@ frappe.ui.form.on('Shipment', {
 
 			Promise.all(updates).then(() => {
 				frm.refresh_field('shipment_delivery_note')
-				;(frm.doc.shipment_delivery_note || []).forEach(row => sdn_update_parcel_details(frm, row.doctype, row.name))
+				refresh_parcel_details_display(frm, 'shipment_delivery_note')
 				frm.dirty()
 			})
 		})
@@ -940,34 +811,34 @@ frappe.ui.form.on('Shipment Delivery Note', {
 				parcel_weight_uom: 'Kg',
 			})
 			frm.refresh_field('shipment_delivery_note')
-			sdn_update_parcel_details(frm, cdt, cdn)
+			refresh_parcel_details_display(frm, 'shipment_delivery_note', cdn)
 		})
 	},
 
 	parcel_length: function (frm, cdt, cdn) {
 		sdn_check_template_match(frm, cdt, cdn)
-		sdn_update_parcel_details(frm, cdt, cdn)
+		refresh_parcel_details_display(frm, 'shipment_delivery_note', cdn)
 	},
 
 	parcel_width: function (frm, cdt, cdn) {
 		sdn_check_template_match(frm, cdt, cdn)
-		sdn_update_parcel_details(frm, cdt, cdn)
+		refresh_parcel_details_display(frm, 'shipment_delivery_note', cdn)
 	},
 
 	parcel_height: function (frm, cdt, cdn) {
 		sdn_check_template_match(frm, cdt, cdn)
-		sdn_update_parcel_details(frm, cdt, cdn)
+		refresh_parcel_details_display(frm, 'shipment_delivery_note', cdn)
 	},
 
 	dimension_uom: function (frm, cdt, cdn) {
-		sdn_update_parcel_details(frm, cdt, cdn)
+		refresh_parcel_details_display(frm, 'shipment_delivery_note', cdn)
 	},
 
 	parcel_weight: function (frm, cdt, cdn) {
-		sdn_update_parcel_details(frm, cdt, cdn)
+		refresh_parcel_details_display(frm, 'shipment_delivery_note', cdn)
 	},
 
 	parcel_weight_uom: function (frm, cdt, cdn) {
-		sdn_update_parcel_details(frm, cdt, cdn)
+		refresh_parcel_details_display(frm, 'shipment_delivery_note', cdn)
 	},
 })

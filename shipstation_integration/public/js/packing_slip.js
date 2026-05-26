@@ -582,7 +582,7 @@ function split_selected_rows(frm) {
 
 	frm.fields_dict.items.grid.refresh()
 	render_parcel_indicators(frm)
-	populate_all_parcel_details(frm)
+	refresh_parcel_details_display(frm, 'items')
 	deselect_all_rows(frm)
 	frm.dirty()
 	return false
@@ -655,7 +655,7 @@ frappe.ui.form.on('Packing Slip', {
 				setup_sscc_button(frm)
 				setup_parcel_buttons(frm)
 				render_parcel_indicators(frm)
-				populate_all_parcel_details(frm)
+				refresh_parcel_details_display(frm, 'items')
 				if (frm._ss_cartonization_enabled) {
 					fetch_source_handling_units(frm)
 				} else {
@@ -742,7 +742,7 @@ frappe.ui.form.on('Packing Slip', {
 					frm.set_value('carrier', template.carrier)
 				}
 				frm.refresh_field('items')
-				populate_all_parcel_details(frm)
+				refresh_parcel_details_display(frm, 'items')
 				frm.dirty()
 			})
 		})
@@ -790,7 +790,7 @@ frappe.ui.form.on('Packing Slip Item', {
 				frm.set_value('carrier', template.carrier)
 			}
 
-			update_parcel_details(frm, cdt, cdn)
+			refresh_parcel_details_display(frm, 'items', cdn)
 		})
 	},
 
@@ -803,29 +803,29 @@ frappe.ui.form.on('Packing Slip Item', {
 
 	parcel_length: function (frm, cdt, cdn) {
 		check_template_match(frm, cdt, cdn)
-		update_parcel_details(frm, cdt, cdn)
+		refresh_parcel_details_display(frm, 'items', cdn)
 	},
 
 	parcel_width: function (frm, cdt, cdn) {
 		check_template_match(frm, cdt, cdn)
-		update_parcel_details(frm, cdt, cdn)
+		refresh_parcel_details_display(frm, 'items', cdn)
 	},
 
 	parcel_height: function (frm, cdt, cdn) {
 		check_template_match(frm, cdt, cdn)
-		update_parcel_details(frm, cdt, cdn)
+		refresh_parcel_details_display(frm, 'items', cdn)
 	},
 
 	dimension_uom: function (frm, cdt, cdn) {
-		update_parcel_details(frm, cdt, cdn)
+		refresh_parcel_details_display(frm, 'items', cdn)
 	},
 
 	parcel_weight: function (frm, cdt, cdn) {
-		update_parcel_details(frm, cdt, cdn)
+		refresh_parcel_details_display(frm, 'items', cdn)
 	},
 
 	parcel_weight_uom: function (frm, cdt, cdn) {
-		update_parcel_details(frm, cdt, cdn)
+		refresh_parcel_details_display(frm, 'items', cdn)
 	},
 })
 
@@ -1320,135 +1320,6 @@ function generate_sscc(frm) {
 		},
 		error: function (err) {
 			frappe.msgprint(__('Error generating SSCC: {0}', [err.message || 'Unknown error']))
-		},
-	})
-}
-
-const DIM_UOM_ABBR = {
-	Inch: '"',
-	Centimeter: 'cm',
-	Foot: "'",
-	Millimeter: 'mm',
-	Meter: 'm',
-}
-
-const WEIGHT_UOM_ABBR = {
-	Pound: 'lbs',
-	Kg: 'kg',
-	Kilogram: 'kg', // legacy alias
-	Ounce: 'oz',
-	Gram: 'g',
-}
-
-function user_pref_parcel_abbrs() {
-	const p = frappe.boot.parcel_uom || {}
-	const dimPref = p.dimension_uom || 'Centimeter'
-	const wtPref = p.weight_uom || 'Kg'
-	return {
-		dimAbbr: DIM_UOM_ABBR[dimPref] || dimPref || '',
-		wtAbbr: WEIGHT_UOM_ABBR[wtPref] || wtPref || '',
-	}
-}
-
-function apply_parcel_detail_string(
-	frm,
-	cdt,
-	cdn,
-	row,
-	opts = { dimension_factor: 1, weight_factor: 1, dim_abbr: '', wt_abbr: '' }
-) {
-	const l = row.parcel_length
-	const w = row.parcel_width
-	const h = row.parcel_height
-	const wt = row.parcel_weight
-	const dim_f = opts.dimension_factor != null ? opts.dimension_factor : 1
-	const wt_f = opts.weight_factor != null ? opts.weight_factor : 1
-	const dim_abbr = opts.dim_abbr || ''
-	const wt_abbr = opts.wt_abbr || ''
-
-	const parts = []
-	if (l || w || h) {
-		const fmt = v => (v % 1 === 0 ? v : flt(v, 2))
-		const lv = flt((l || 0) * dim_f)
-		const wv = flt((w || 0) * dim_f)
-		const hv = flt((h || 0) * dim_f)
-		parts.push(`${fmt(lv)}x${fmt(wv)}x${fmt(hv)}${dim_abbr}`)
-	}
-	if (wt) {
-		parts.push(`${flt(flt(wt) * wt_f, 2)}${wt_abbr}`)
-	}
-
-	frappe.model.set_value(cdt, cdn, 'parcel_details', parts.join(' '))
-	if (frm) {
-		frm.refresh_field('items')
-	}
-}
-
-function populate_all_parcel_details(frm) {
-	;(frm.doc.items || []).forEach(row => {
-		update_parcel_details(frm, row.doctype, row.name)
-	})
-}
-
-function update_parcel_details(frm, cdt, cdn) {
-	const row = locals[cdt][cdn]
-	const l = row.parcel_length
-	const w = row.parcel_width
-	const h = row.parcel_height
-	const wt = row.parcel_weight
-
-	if (!l && !w && !h && !wt) {
-		frappe.model.set_value(cdt, cdn, 'parcel_details', '')
-		frm.refresh_field('items')
-		return
-	}
-
-	const p = frappe.boot.parcel_uom || {}
-	const dim_map = p.to_dimension_pref || {}
-	const wt_map = p.to_weight_pref || {}
-	const abbr = user_pref_parcel_abbrs()
-	const dk = row.dimension_uom || 'Centimeter'
-	const wk = row.parcel_weight_uom || 'Kg'
-
-	const has_dims = !!(l || w || h)
-	let dim_factor = has_dims ? dim_map[dk] : 1
-	if (dim_factor === undefined || dim_factor === null) dim_factor = has_dims ? null : 1
-
-	let wt_factor = wt ? wt_map[wk] : 1
-	if (wt_factor === undefined || wt_factor === null) wt_factor = wt ? null : 1
-
-	if (dim_factor !== null && wt_factor !== null) {
-		apply_parcel_detail_string(frm, cdt, cdn, row, {
-			dimension_factor: dim_factor,
-			weight_factor: wt_factor,
-			dim_abbr: abbr.dimAbbr,
-			wt_abbr: abbr.wtAbbr,
-		})
-		return
-	}
-
-	frappe.call({
-		method: 'shipstation_integration.parcel_uom_conversion.get_parcel_detail_factors_for_storage_uoms',
-		args: {
-			storage_dimension_uom: dk,
-			storage_weight_uom: wk,
-		},
-		callback(r) {
-			const msg = r.message || {}
-			const df =
-				has_dims && msg.dimension_factor != null && msg.dimension_factor !== undefined && msg.dimension_factor !== ''
-					? Number(msg.dimension_factor)
-					: 1
-			const wf =
-				wt && msg.weight_factor != null && msg.weight_factor !== undefined && msg.weight_factor !== ''
-					? Number(msg.weight_factor)
-					: 1
-			apply_parcel_detail_string(frm, cdt, cdn, row, {
-				dimension_factor: has_dims ? df : 1,
-				weight_factor: wt ? wf : 1,
-				dim_abbr: abbr.dimAbbr,
-				wt_abbr: abbr.wtAbbr,
-			})
 		},
 	})
 }

@@ -177,6 +177,25 @@ SHIPMENTS_RESPONSE = MockResponse(
 
 BOOK_RESPONSE = MockResponse(json_data={"proNumber": "PRO-BAN-001", "bolNumber": "BOL-BAN-001"})
 
+ALREADY_BOOKED_RESPONSE = MockResponse(
+	status_code=400,
+	json_data={
+		"type": "https://httpstatuses.io/400",
+		"title": "Bad Request",
+		"status": 400,
+		"detail": "Specified shipment '88508955' cannot be booked. Shipment is already Booked.",
+	},
+)
+
+GET_SHIPMENT_BOOKED_RESPONSE = MockResponse(
+	json_data={
+		"loadId": 88508955,
+		"status": "Booked",
+		"manifestId": "PRO-BAN-ALREADY",
+		"pickupNumber": "1677520735",
+	}
+)
+
 DOCUMENTS_RESPONSE = MockResponse(
 	json_data=[{"documentType": "BOL", "content": "JVBERi0=", "fileName": "bol_banyan.pdf"}]
 )
@@ -378,6 +397,54 @@ def run_banyan_story(
 	assert "CANCEL-BAN-001" in str(BanyanLTL().cancel_shipment(shipment, settings_name=settings_name))
 
 
+@pytest.mark.order(61)
+def test_banyan_schedule_pickup_already_booked_syncs(monkeypatch):
+	settings_name = get_banyan_settings_name()
+	assert settings_name, "Missing Banyan Freight Carrier Settings"
+
+	reset_ltl_shipment_quotation_test_state()
+	shipment = get_draft_ltl_shipment_for_tests()
+	assert shipment.docstatus == 1
+	monkeypatch.setattr("httpx.Client", lambda: MockHttpxClient([SHIPMENTS_RESPONSE]))
+	BanyanLTL().get_ltl_quotes(shipment, settings_name=settings_name)
+	saved = frappe.get_all(
+		"Shipment Quotation",
+		filters={"shipment": shipment.name},
+		pluck="name",
+	)
+	assert saved
+	frappe.get_doc("Shipment Quotation", saved[0]).submit()
+	frappe.db.set_value("Shipment", shipment.name, "accepted_quotation", saved[0])
+
+	shared_client = MockHttpxClient(
+		[ALREADY_BOOKED_RESPONSE, GET_SHIPMENT_BOOKED_RESPONSE, DOCUMENTS_RESPONSE]
+	)
+	monkeypatch.setattr("httpx.Client", lambda: shared_client)
+	msg = BanyanLTL().schedule_ltl_pickup(shipment, settings_name=settings_name)
+	shipment.reload()
+	assert shipment.get("awb_number") == "PRO-BAN-ALREADY"
+	assert shipment.get("shipment_id") == "load-banyan-001"
+	assert shipment.get("pickup_id") == "1677520735"
+	assert shipment.get("status") == "Booked"
+	assert "already booked" in msg.lower()
+
+
+@pytest.mark.order(62)
+def test_get_ltl_quotes_requires_submitted_shipment():
+	settings_name = get_banyan_settings_name()
+	assert settings_name, "Missing Banyan Freight Carrier Settings"
+
+	submitted = get_draft_ltl_shipment_for_tests()
+	draft = frappe.copy_doc(submitted)
+	draft.insert(ignore_permissions=True)
+	try:
+		with pytest.raises(frappe.ValidationError) as exc_info:
+			BanyanLTL().get_ltl_quotes(draft, settings_name=settings_name)
+		assert "submit" in str(exc_info.value).lower()
+	finally:
+		frappe.delete_doc("Shipment", draft.name, force=True)
+
+
 def run_odfl_story(
 	shipment, settings_name: str, monkeypatch: pytest.MonkeyPatch, *, freight_terminal: bool = False
 ) -> None:
@@ -482,13 +549,12 @@ def test_ltl_full_dispatch_lifecycle(carrier, delivery_type, monkeypatch):
 		)
 	finally:
 		delete_all_quotations(shipment)
-		frappe.db.set_value(
-			"Shipment",
-			shipment.name,
-			{
-				"awb_number": None,
-				"shipment_id": None,
-				"pickup_id": None,
-				"accepted_quotation": None,
-			},
-		)
+		cleanup = {
+			"awb_number": None,
+			"shipment_id": None,
+			"pickup_id": None,
+			"accepted_quotation": None,
+		}
+		if shipment.docstatus == 1:
+			cleanup["status"] = "Submitted"
+		frappe.db.set_value("Shipment", shipment.name, cleanup)

@@ -23,8 +23,14 @@ required_apps = ["erpnext", "agritheory/beam", "inventory_tools"]
 extend_bootinfo = "shipstation_integration.shipstation_integration.boot.boot_session"
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/shipstation_integration/css/shipstation_integration.css"
+app_include_css = "/assets/shipstation_integration/css/shipstation_integration.css"
 app_include_js = ["shipstation_integration.bundle.js"]
+
+jinja = {
+	"methods": [
+		"shipstation_integration.parcel_uom_conversion.format_parcel_details",
+	]
+}
 
 # include js, css files in header of web template
 # web_include_css = "/assets/shipstation_integration/css/shipstation_integration.css"
@@ -37,8 +43,12 @@ app_include_js = ["shipstation_integration.bundle.js"]
 
 doctype_js = {
 	"Delivery Note": "public/js/delivery_note.js",
-	"Packing Slip": "public/js/packing_slip.js",
-	"Shipment": ["public/js/shipment_custom.js", "public/js/shipment_pack.js"],
+	"Packing Slip": ["public/js/parcel_details.js", "public/js/packing_slip.js"],
+	"Shipment": [
+		"public/js/parcel_details.js",
+		"public/js/shipment_custom.js",
+		"public/js/shipment_pack.js",
+	],
 	"Sales Order": "public/js/sales_order.js",
 	"Supplier": "public/js/supplier.js",
 	"Customer": "public/js/customer.js",

@@ -21,7 +21,7 @@ from frappe import _
 from frappe.utils import add_days, comma_or, flt, get_link_to_form, now
 from frappe.utils.file_manager import save_file
 
-from shipstation_integration.base_ltl import BaseLTL
+from shipstation_integration.base_ltl import BaseLTL, require_submitted_shipment_for_ltl
 from shipstation_integration.carriers import get_or_create_transporter
 from shipstation_integration.rates import DIMENSION_UOM_MAP, WEIGHT_UOM_MAP
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
@@ -442,6 +442,7 @@ class ShipstationLTL(BaseLTL):
 		Returns:
 		Message string to display in UI or throws an error if encountered
 		"""
+		require_submitted_shipment_for_ltl(doc)
 		self.validate_carrier_and_id(doc, settings_name)
 		carrier_id = doc.carrier_id
 
@@ -484,6 +485,7 @@ class ShipstationLTL(BaseLTL):
 		``service_level``, ``total_price``, ``currency``, ``transit_days``,
 		``estimated_delivery_date``, ``expiration_date``, ``is_spot_quote``, ``charges``.
 		"""
+		require_submitted_shipment_for_ltl(doc)
 		self.validate_carrier_and_id(doc, settings_name)
 		carrier_id = doc.carrier_id
 
@@ -654,7 +656,7 @@ class ShipstationLTL(BaseLTL):
 		Returns:
 		Message string to display in UI or throws an error if encountered
 		"""
-
+		require_submitted_shipment_for_ltl(doc)
 		self.validate_carrier_and_id(doc, settings_name)
 		if not self.supports_scheduled_pickup(doc, settings_name).get("supports_pickup"):
 			return f"{doc.preferred_carrier} does not support scheduling a pickup through the API - please contact them directly to schedule a pickup."

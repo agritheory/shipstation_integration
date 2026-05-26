@@ -2,7 +2,7 @@
   "custom_fields": [
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -88,7 +88,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -131,7 +131,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -174,7 +174,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -350,7 +350,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -395,7 +395,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -482,7 +482,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -525,7 +525,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -568,7 +568,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -695,7 +695,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -738,7 +738,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -908,7 +908,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -951,7 +951,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1038,7 +1038,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1081,7 +1081,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1124,7 +1124,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1167,7 +1167,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1210,7 +1210,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1253,7 +1253,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1296,7 +1296,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1339,7 +1339,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1382,7 +1382,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1425,7 +1425,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1554,7 +1554,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1597,7 +1597,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1640,7 +1640,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1684,7 +1684,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1727,7 +1727,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1772,7 +1772,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1815,7 +1815,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1901,7 +1901,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1944,7 +1944,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -1988,7 +1988,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -2031,7 +2031,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -2074,7 +2074,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -2117,7 +2117,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -2160,7 +2160,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -2203,7 +2203,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -2246,7 +2246,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -2289,7 +2289,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -2332,7 +2332,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -2504,7 +2504,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -2547,7 +2547,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -2762,7 +2762,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -2805,7 +2805,7 @@
     },
     {
       "allow_in_quick_entry": 0,
-      "allow_on_submit": 0,
+      "allow_on_submit": 1,
       "bold": 0,
       "collapsible": 0,
       "columns": 0,
@@ -3057,6 +3057,78 @@
       "property": "options",
       "property_type": "Text",
       "value": "Company\nCustomer\nSupplier\nContact"
+    },
+    {
+      "doc_type": "Shipment",
+      "doctype_or_field": "DocField",
+      "field_name": "awb_number",
+      "idx": 0,
+      "is_system_generated": 0,
+      "module": "Shipstation Integration",
+      "name": "Shipment-awb_number-allow_on_submit",
+      "property": "allow_on_submit",
+      "property_type": "Check",
+      "value": "1"
+    },
+    {
+      "doc_type": "Shipment",
+      "doctype_or_field": "DocField",
+      "field_name": "carrier",
+      "idx": 0,
+      "is_system_generated": 0,
+      "module": "Shipstation Integration",
+      "name": "Shipment-carrier-allow_on_submit",
+      "property": "allow_on_submit",
+      "property_type": "Check",
+      "value": "1"
+    },
+    {
+      "doc_type": "Shipment",
+      "doctype_or_field": "DocField",
+      "field_name": "carrier_service",
+      "idx": 0,
+      "is_system_generated": 0,
+      "module": "Shipstation Integration",
+      "name": "Shipment-carrier_service-allow_on_submit",
+      "property": "allow_on_submit",
+      "property_type": "Check",
+      "value": "1"
+    },
+    {
+      "doc_type": "Shipment",
+      "doctype_or_field": "DocField",
+      "field_name": "shipment_id",
+      "idx": 0,
+      "is_system_generated": 0,
+      "module": "Shipstation Integration",
+      "name": "Shipment-shipment_id-allow_on_submit",
+      "property": "allow_on_submit",
+      "property_type": "Check",
+      "value": "1"
+    },
+    {
+      "doc_type": "Shipment",
+      "doctype_or_field": "DocField",
+      "field_name": "tracking_url",
+      "idx": 0,
+      "is_system_generated": 0,
+      "module": "Shipstation Integration",
+      "name": "Shipment-tracking_url-allow_on_submit",
+      "property": "allow_on_submit",
+      "property_type": "Check",
+      "value": "1"
+    },
+    {
+      "doc_type": "Shipment",
+      "doctype_or_field": "DocField",
+      "field_name": "status",
+      "idx": 0,
+      "is_system_generated": 0,
+      "module": "Shipstation Integration",
+      "name": "Shipment-status-allow_on_submit",
+      "property": "allow_on_submit",
+      "property_type": "Check",
+      "value": "1"
     }
   ],
   "sync_on_migrate": 1

@@ -59,7 +59,7 @@ from frappe import _
 from frappe.utils import flt, get_time, now, getdate
 from frappe.utils.file_manager import save_file
 
-from shipstation_integration.base_ltl import BaseLTL
+from shipstation_integration.base_ltl import BaseLTL, require_submitted_shipment_for_ltl
 from shipstation_integration.ltl import ShipstationLTL
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
@@ -565,6 +565,7 @@ class WwexLTL(BaseLTL):
 
 	def fetch_ltl_offers(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
 		"""Return WWEX shopFlow offers as normalized dicts without saving anything."""
+		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
 		offers = self.fetch_wwex_offers(doc, fc)
 		results: list[dict[str, Any]] = []
@@ -618,6 +619,7 @@ class WwexLTL(BaseLTL):
 
 	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Call shopFlow and create one Shipment Quotation per carrier offer returned."""
+		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
 		offers = self.fetch_wwex_offers(doc, fc)
 
@@ -672,6 +674,7 @@ class WwexLTL(BaseLTL):
 
 	def schedule_ltl_pickup(self, doc: Shipment, settings_name: str | None = None) -> str | None:
 		"""Book the accepted offer via quoteOrderFlow and attach the BOL."""
+		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
 
 		accepted_sq_name = doc.accepted_quotation or frappe.db.get_value(

@@ -1008,7 +1008,6 @@ def create_packing_slips(settings):
 
 def create_shipments(settings):
 	create_shipment_for_ltl(settings)
-	create_shipment_for_small_parcel(settings)
 	create_shipment_for_freight_terminal(settings)
 
 
@@ -1027,14 +1026,15 @@ def get_ltl_carrier():
 
 
 def create_shipment_for_ltl(settings):
-	"""Draft LTL Shipment spanning both customers[0] Delivery Notes.
+	"""Submitted LTL Shipment spanning both customers[0] Delivery Notes.
 
 	Seeded with Shipment Delivery Note rows (parcel data included) so tests can
 	call ``get_ltl_quotes`` or ``build_packages_from_sdn`` without extra setup.
+	The document is submitted after insert because LTL quotes require docstatus 1.
 
 	Billing: Shipper / Prepaid — triggers Purchase Invoice creation on SQ submit.
 	"""
-	if frappe.db.exists("Shipment", {"freight_type": "LTL", "docstatus": 0}):
+	if frappe.db.exists("Shipment", {"freight_type": "LTL", "delivery_to_type": "Customer"}):
 		return
 
 	company_address = get_company_address(settings)
@@ -1132,100 +1132,14 @@ def create_shipment_for_ltl(settings):
 			)
 		parcel_number += 1
 
-	shipment.save()
-
-
-def create_shipment_for_small_parcel(settings):
-	"""Draft small-parcel Shipment for customers[1].
-
-	Billing: Shipper / Collect — no Purchase Invoice is auto-created on SQ submit.
-	"""
-	if frappe.db.exists("Shipment", {"freight_type": "Small Parcel", "docstatus": 0}):
-		return
-
-	company_address = get_company_address(settings)
-	customer_address = frappe.get_value(
-		"Address", {"address_title": f"{customers[1]} - Boston"}, "name"
-	)
-	delivery_contact_name = frappe.get_value(
-		"Contact", {"first_name": "Bean", "last_name": "Buyer"}, "name"
-	)
-	so_name = get_so_with_items(customers[1], settings.company, ["Ambrosia Pie", "Double Plum Pie"])
-	dn_name = frappe.db.get_value(
-		"Delivery Note Item", {"against_sales_order": so_name, "docstatus": 0}, "parent"
-	)
-	if not dn_name:
-		return
-	dn = frappe.get_doc("Delivery Note", dn_name)
-
-	shipment = frappe.new_doc("Shipment")
-	shipment.posting_date = settings.day
-	shipment.pickup_date = today_safe_shipment_pickup_date(settings)
-	shipment.pickup_from = "08:00:00"
-	shipment.pickup_to = "17:00:00"
-	shipment.pickup_from_type = "Company"
-	shipment.pickup_company = settings.company
-	shipment.pickup_address_name = company_address
-	shipment.pickup_contact_person = "Administrator"
-	shipment.delivery_to_type = "Customer"
-	shipment.delivery_customer = customers[1]
-	shipment.delivery_address_name = customer_address
-	shipment.delivery_contact_name = delivery_contact_name
-	shipment.preferred_carrier = frappe.get_value(
-		"Supplier", {"supplier_name": "USPS", "is_transporter": 1}, "name"
-	)
-	shipment.freight_type = "Small Parcel"
-	shipment.value_of_goods = 150.00
-	shipment.description_of_content = "Baked goods - assorted pies"
-	shipment.billing_type = "Shipper"
-	shipment.payment_terms = "Collect"
-
-	shipment.append(
-		"shipment_parcel",
-		{
-			"length": 12,
-			"width": 9,
-			"height": 6,
-			"weight": 6,
-			"count": 2,
-			"length_uom": "Inch",
-			"weight_uom": "Pound",
-		},
-	)
-
-	if dn:
-		dn_items = frappe.get_all(
-			"Delivery Note Item",
-			filters={"parent": dn.name},
-			fields=["name", "item_code", "item_name", "qty", "stock_uom"],
-		)
-		for idx, item in enumerate(dn_items):
-			shipment.append(
-				"shipment_delivery_note",
-				{
-					"delivery_note": dn.name,
-					"dn_detail": item.name,
-					"item_code": item.item_code,
-					"item_name": item.item_name,
-					"qty": item.qty,
-					"stock_uom": item.stock_uom,
-					"parcel_number": idx + 1,
-					"parcel_length": 12,
-					"parcel_width": 9,
-					"parcel_height": 6,
-					"dimension_uom": "Inch",
-					"parcel_weight": 3,
-					"parcel_weight_uom": "Pound",
-				},
-			)
-
-	shipment.save()
+	shipment.flags.ignore_permissions = True
+	shipment.submit()
 
 
 def create_shipment_for_freight_terminal(settings):
 	if frappe.db.exists(
 		"Shipment",
-		{"freight_type": "LTL", "delivery_to_type": "Contact", "docstatus": 0},
+		{"freight_type": "LTL", "delivery_to_type": "Contact"},
 	):
 		return
 
@@ -1317,7 +1231,19 @@ def create_shipment_for_freight_terminal(settings):
 				},
 			)
 
-	shipment.save()
+	shipment.flags.ignore_permissions = True
+	shipment.submit()
+
+
+def ensure_ltl_shipment_submitted(shipment):
+	"""Submit the seed LTL Shipment when tests need quotes or booking (docstatus 1)."""
+	shipment.reload()
+	if shipment.docstatus == 1:
+		return shipment
+	shipment.flags.ignore_permissions = True
+	shipment.submit()
+	shipment.reload()
+	return shipment
 
 
 def load_ltl_json_fixture(filename: str) -> dict:
@@ -1336,32 +1262,36 @@ def ltl_pickup_response_for_tests() -> dict:
 
 
 def get_draft_ltl_shipment_for_tests():
-	"""Draft LTL Shipment (customers[0], two DNs, prepaid) created by setup."""
+	"""Submitted LTL Shipment (customers[0], two DNs, prepaid) created by setup.
+
+	LTL quotes and pickup scheduling require a submitted Shipment; setup submits the seed
+	document once. Legacy name kept so existing tests keep importing this helper.
+	"""
 	shipment = frappe.get_last_doc(
 		"Shipment",
-		filters={"freight_type": "LTL", "delivery_to_type": "Customer", "docstatus": 0},
+		filters={"freight_type": "LTL", "delivery_to_type": "Customer"},
 	)
 	shipment.reload()
-	return ensure_seed_shipment_pickup_date_current(shipment)
+	shipment = ensure_seed_shipment_pickup_date_current(shipment)
+	return ensure_ltl_shipment_submitted(shipment)
 
 
-def get_small_parcel_shipment_for_tests():
-	"""Draft small-parcel Shipment (customers[1], collect billing) created by setup."""
-	shipment = frappe.get_last_doc(
-		"Shipment", filters={"freight_type": "Small Parcel", "docstatus": 0}
-	)
-	shipment.reload()
-	return ensure_seed_shipment_pickup_date_current(shipment)
+def get_small_parcel_packing_slip_for_tests():
+	"""Draft small-parcel Packing Slip (customers[1], USPS) created by setup."""
+	ps = frappe.get_last_doc("Packing Slip", filters={"freight_type": "Small Parcel", "docstatus": 0})
+	ps.reload()
+	return ps
 
 
 def get_freight_terminal_shipment_for_tests():
-	"""Draft LTL Shipment to freight terminal (delivery_to_type=Contact) created by setup."""
+	"""Submitted LTL Shipment to freight terminal (delivery_to_type=Contact) created by setup."""
 	shipment = frappe.get_last_doc(
 		"Shipment",
-		filters={"freight_type": "LTL", "delivery_to_type": "Contact", "docstatus": 0},
+		filters={"freight_type": "LTL", "delivery_to_type": "Contact"},
 	)
 	shipment.reload()
-	return ensure_seed_shipment_pickup_date_current(shipment)
+	shipment = ensure_seed_shipment_pickup_date_current(shipment)
+	return ensure_ltl_shipment_submitted(shipment)
 
 
 LTL_SHIPMENT_QUOTATION_RESET_FIELDS = (
@@ -1397,6 +1327,8 @@ def reset_ltl_shipment_quotation_test_state() -> None:
 	reset_values["shipment_amount"] = 0
 	reset_values["payment_terms"] = "Prepaid"  # Reset to initial value, not None
 	reset_values["pickup_date"] = getdate()
+	if shipment.docstatus == 1:
+		reset_values["status"] = "Submitted"
 	frappe.db.set_value("Shipment", shipment.name, reset_values)
 
 

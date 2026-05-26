@@ -3,6 +3,21 @@
 
 import frappe
 from erpnext.stock.doctype.shipment.shipment import Shipment
+from frappe import _
+
+
+def require_submitted_shipment_for_ltl(doc: Shipment) -> None:
+	"""LTL quotes and booking run after the Shipment is submitted (packed and locked)."""
+	docstatus = (
+		doc.docstatus
+		if doc.docstatus is not None
+		else frappe.db.get_value("Shipment", doc.name, "docstatus")
+	)
+	if docstatus != 1:
+		frappe.throw(
+			_("Submit the Shipment before requesting LTL quotes or scheduling pickup."),
+			title=_("Shipment not submitted"),
+		)
 
 
 class BaseLTL:
