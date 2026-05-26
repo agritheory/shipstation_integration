@@ -1340,6 +1340,50 @@ const WEIGHT_UOM_ABBR = {
 	Gram: 'g',
 }
 
+function user_pref_parcel_abbrs() {
+	const p = frappe.boot.parcel_uom || {}
+	const dimPref = p.dimension_uom || 'Centimeter'
+	const wtPref = p.weight_uom || 'Kg'
+	return {
+		dimAbbr: DIM_UOM_ABBR[dimPref] || dimPref || '',
+		wtAbbr: WEIGHT_UOM_ABBR[wtPref] || wtPref || '',
+	}
+}
+
+function apply_parcel_detail_string(
+	frm,
+	cdt,
+	cdn,
+	row,
+	opts = { dimension_factor: 1, weight_factor: 1, dim_abbr: '', wt_abbr: '' }
+) {
+	const l = row.parcel_length
+	const w = row.parcel_width
+	const h = row.parcel_height
+	const wt = row.parcel_weight
+	const dim_f = opts.dimension_factor != null ? opts.dimension_factor : 1
+	const wt_f = opts.weight_factor != null ? opts.weight_factor : 1
+	const dim_abbr = opts.dim_abbr || ''
+	const wt_abbr = opts.wt_abbr || ''
+
+	const parts = []
+	if (l || w || h) {
+		const fmt = v => (v % 1 === 0 ? v : flt(v, 2))
+		const lv = flt((l || 0) * dim_f)
+		const wv = flt((w || 0) * dim_f)
+		const hv = flt((h || 0) * dim_f)
+		parts.push(`${fmt(lv)}x${fmt(wv)}x${fmt(hv)}${dim_abbr}`)
+	}
+	if (wt) {
+		parts.push(`${flt(flt(wt) * wt_f, 2)}${wt_abbr}`)
+	}
+
+	frappe.model.set_value(cdt, cdn, 'parcel_details', parts.join(' '))
+	if (frm) {
+		frm.refresh_field('items')
+	}
+}
+
 function populate_all_parcel_details(frm) {
 	;(frm.doc.items || []).forEach(row => {
 		update_parcel_details(frm, row.doctype, row.name)
@@ -1355,22 +1399,58 @@ function update_parcel_details(frm, cdt, cdn) {
 
 	if (!l && !w && !h && !wt) {
 		frappe.model.set_value(cdt, cdn, 'parcel_details', '')
+		frm.refresh_field('items')
 		return
 	}
 
-	const dim_abbr = DIM_UOM_ABBR[row.dimension_uom] || row.dimension_uom || ''
-	const wt_abbr = WEIGHT_UOM_ABBR[row.parcel_weight_uom] || row.parcel_weight_uom || ''
+	const p = frappe.boot.parcel_uom || {}
+	const dim_map = p.to_dimension_pref || {}
+	const wt_map = p.to_weight_pref || {}
+	const abbr = user_pref_parcel_abbrs()
+	const dk = row.dimension_uom || 'Centimeter'
+	const wk = row.parcel_weight_uom || 'Kg'
 
-	let parts = []
-	if (l || w || h) {
-		const fmt = v => (v % 1 === 0 ? v : flt(v, 2))
-		parts.push(`${fmt(l || 0)}x${fmt(w || 0)}x${fmt(h || 0)}${dim_abbr}`)
-	}
-	if (wt) {
-		parts.push(`${flt(wt, 2)}${wt_abbr}`)
+	const has_dims = !!(l || w || h)
+	let dim_factor = has_dims ? dim_map[dk] : 1
+	if (dim_factor === undefined || dim_factor === null) dim_factor = has_dims ? null : 1
+
+	let wt_factor = wt ? wt_map[wk] : 1
+	if (wt_factor === undefined || wt_factor === null) wt_factor = wt ? null : 1
+
+	if (dim_factor !== null && wt_factor !== null) {
+		apply_parcel_detail_string(frm, cdt, cdn, row, {
+			dimension_factor: dim_factor,
+			weight_factor: wt_factor,
+			dim_abbr: abbr.dimAbbr,
+			wt_abbr: abbr.wtAbbr,
+		})
+		return
 	}
 
-	frappe.model.set_value(cdt, cdn, 'parcel_details', parts.join(' '))
+	frappe.call({
+		method: 'shipstation_integration.parcel_uom_conversion.get_parcel_detail_factors_for_storage_uoms',
+		args: {
+			storage_dimension_uom: dk,
+			storage_weight_uom: wk,
+		},
+		callback(r) {
+			const msg = r.message || {}
+			const df =
+				has_dims && msg.dimension_factor != null && msg.dimension_factor !== undefined && msg.dimension_factor !== ''
+					? Number(msg.dimension_factor)
+					: 1
+			const wf =
+				wt && msg.weight_factor != null && msg.weight_factor !== undefined && msg.weight_factor !== ''
+					? Number(msg.weight_factor)
+					: 1
+			apply_parcel_detail_string(frm, cdt, cdn, row, {
+				dimension_factor: has_dims ? df : 1,
+				weight_factor: wt ? wf : 1,
+				dim_abbr: abbr.dimAbbr,
+				wt_abbr: abbr.wtAbbr,
+			})
+		},
+	})
 }
 
 function check_template_match(frm, cdt, cdn) {

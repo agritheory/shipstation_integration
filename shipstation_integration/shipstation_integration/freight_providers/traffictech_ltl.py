@@ -14,13 +14,17 @@ Workflow
 2. User accepts one quotation (submits SQ).
 
 3. ``schedule_ltl_pickup`` / ``book_shipment`` / ``cancel_shipment``
-   Not implemented — TrafficTech documents booking separately from the rate API.
+   Not implemented. Per TrafficTech LTL Quoting API (April 2026, Section 9):
+   "Booking, BOL retrieval, and Tracking follow a similar pattern and will be
+   documented separately as they are enabled for your account." Expected pattern:
+   ``POST {base}?message-type=LTLBook`` when enabled.
 
 Authentication
 --------------
 - ``subscription-key`` header: Freight Carrier Settings **LTL API Key** (password field).
 - JSON body: ``customerId`` from **Account Number**; portal login fields from
   **Client ID** (email) and **Client Secret** (password), per TrafficTech spec.
+- Static outbound IP(s) must be whitelisted by TrafficTech before API access works.
 """
 from __future__ import annotations
 

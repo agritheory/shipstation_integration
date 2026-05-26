@@ -279,7 +279,9 @@ class ShipstationLTL(BaseLTL):
 		"""
 		if not carrier_id:
 			return []
-		packages = self.list_ltl_carrier_package_types(carrier_id, settings_name, doc)
+		packages = self.list_ltl_carrier_package_types(
+			carrier_id, settings_name, doc, raise_on_error=False
+		)
 		options = []
 		for pkg in packages:
 			label = pkg.get("name", pkg.get("code", ""))
@@ -320,7 +322,7 @@ class ShipstationLTL(BaseLTL):
 			)
 			return options
 
-		svc_levels = self.list_ltl_carrier_services(carrier_id, settings_name, doc)
+		svc_levels = self.list_ltl_carrier_services(carrier_id, settings_name, doc, raise_on_error=False)
 		for svc in svc_levels:
 			label = svc.get("name", svc.get("code", ""))
 			if not label:
@@ -359,7 +361,9 @@ class ShipstationLTL(BaseLTL):
 			)
 			return default
 
-		accessorial_svcs = self.list_ltl_carrier_accessorial_services(carrier_id, settings_name, doc)
+		accessorial_svcs = self.list_ltl_carrier_accessorial_services(
+			carrier_id, settings_name, doc, raise_on_error=False
+		)
 		supported = []
 		for acc_svc in accessorial_svcs:
 			code = acc_svc.get("code", "").upper()
@@ -422,7 +426,7 @@ class ShipstationLTL(BaseLTL):
 			)
 			return default
 
-		feats = self.list_ltl_carrier_features(carrier_id, settings_name, doc)
+		feats = self.list_ltl_carrier_features(carrier_id, settings_name, doc, raise_on_error=False)
 		return {"supports_quote": "quote" in feats, "supports_spot_quote": "spot_quote" in feats}
 
 	def get_ltl_quotes(self, doc: Shipment, settings_name: str | None = None) -> str | None:
@@ -768,6 +772,20 @@ class ShipstationLTL(BaseLTL):
 			err_msg = errors.get("message", err_msg)
 		return err_type, err_msg
 
+	def log_ltl_api_failure(
+		self,
+		*,
+		log_title: str,
+		log_message: str,
+		user_message: str,
+		raise_on_error: bool,
+		default,
+	):
+		frappe.log_error(title=log_title, message=log_message)
+		if raise_on_error:
+			frappe.throw(user_message)
+		return default
+
 	def format_ltl_carrier(self, carrier) -> dict:
 		"""Format LTL carrier data for consistent output."""
 		carrier["carrier_code"] = carrier.get("scac")
@@ -803,7 +821,12 @@ class ShipstationLTL(BaseLTL):
 		return
 
 	def get_ltl_carrier(
-		self, carrier_id: str, settings_name: str | None = None, doc: Shipment | None = None
+		self,
+		carrier_id: str,
+		settings_name: str | None = None,
+		doc: Shipment | None = None,
+		*,
+		raise_on_error: bool = True,
 	) -> dict:
 		"""
 		Get details for a specific LTL carrier.
@@ -830,25 +853,36 @@ class ShipstationLTL(BaseLTL):
 				return self.format_ltl_carrier(data)
 		except httpx.HTTPStatusError as e:
 			err_type, err_msg = self.get_api_response_error_info(data)
-			frappe.log_error(
-				title="Error getting LTL carrier",
-				message=f"Carrier ID: {carrier_id}\nError Type: {err_type}\nError Message: {err_msg}\nResponse: {e.response.text}",
-			)
-			frappe.throw(
-				_("Failed to get LTL carrier - error type: {0}, message: {1}, error: {2}").format(
+			return self.log_ltl_api_failure(
+				log_title="Error getting LTL carrier",
+				log_message=(
+					f"Carrier ID: {carrier_id}\nError Type: {err_type}\nError Message: {err_msg}\n"
+					f"Response: {e.response.text}"
+				),
+				user_message=_("Failed to get LTL carrier - error type: {0}, message: {1}, error: {2}").format(
 					err_type, err_msg, str(e)
-				)
+				),
+				raise_on_error=raise_on_error,
+				default={},
 			)
-			return {}
 
 		except Exception as e:
 			error_msg = get_error_message(e)
-			frappe.log_error(title="Error getting carrier", message=error_msg)
-			frappe.throw(_("Failed to get carrier: {0}").format(error_msg))
-			return {}
+			return self.log_ltl_api_failure(
+				log_title="Error getting carrier",
+				log_message=error_msg,
+				user_message=_("Failed to get carrier: {0}").format(error_msg),
+				raise_on_error=raise_on_error,
+				default={},
+			)
 
 	def list_ltl_carrier_accessorial_services(
-		self, carrier_id: str, settings_name: str | None = None, doc: Shipment | None = None
+		self,
+		carrier_id: str,
+		settings_name: str | None = None,
+		doc: Shipment | None = None,
+		*,
+		raise_on_error: bool = True,
 	) -> list[dict]:
 		"""
 		List all options aka accessorial services (e.g. Hazardous Material, Perishable, Inside Pickup)
@@ -876,25 +910,36 @@ class ShipstationLTL(BaseLTL):
 
 		except httpx.HTTPStatusError as e:
 			err_type, err_msg = self.get_api_response_error_info(data)
-			frappe.log_error(
-				title="Error listing LTL carrier options",
-				message=f"Carrier ID: {carrier_id}\nError Type: {err_type}\nError Message: {err_msg}\nResponse: {e.response.text}",
+			return self.log_ltl_api_failure(
+				log_title="Error listing LTL carrier options",
+				log_message=(
+					f"Carrier ID: {carrier_id}\nError Type: {err_type}\nError Message: {err_msg}\n"
+					f"Response: {e.response.text}"
+				),
+				user_message=_(
+					"Failed to list LTL carrier options - error type: {0}, message: {1}, error: {2}"
+				).format(err_type, err_msg, str(e)),
+				raise_on_error=raise_on_error,
+				default=[],
 			)
-			frappe.throw(
-				_("Failed to list LTL carrier options - error type: {0}, message: {1}, error: {2}").format(
-					err_type, err_msg, str(e)
-				)
-			)
-			return []
 
 		except Exception as e:
 			error_msg = get_error_message(e)
-			frappe.log_error(title="Error listing LTL carrier options", message=error_msg)
-			frappe.throw(_("Failed to list LTL carrier options: {0}").format(error_msg))
-			return []
+			return self.log_ltl_api_failure(
+				log_title="Error listing LTL carrier options",
+				log_message=error_msg,
+				user_message=_("Failed to list LTL carrier options: {0}").format(error_msg),
+				raise_on_error=raise_on_error,
+				default=[],
+			)
 
 	def list_ltl_carrier_features(
-		self, carrier_id: str, settings_name: str | None = None, doc: Shipment | None = None
+		self,
+		carrier_id: str,
+		settings_name: str | None = None,
+		doc: Shipment | None = None,
+		*,
+		raise_on_error: bool = True,
 	) -> list[str]:
 		"""
 		Convenience function to list all features (e.g. "spot_quote", "tracking", "scheduled_pickup")
@@ -908,11 +953,21 @@ class ShipstationLTL(BaseLTL):
 		Returns:
 		List of feature strings
 		"""
-		carrier_data = self.get_ltl_carrier(carrier_id=carrier_id, settings_name=settings_name, doc=doc)
+		carrier_data = self.get_ltl_carrier(
+			carrier_id=carrier_id,
+			settings_name=settings_name,
+			doc=doc,
+			raise_on_error=raise_on_error,
+		)
 		return carrier_data.get("features", [])
 
 	def list_ltl_carrier_package_types(
-		self, carrier_id: str, settings_name: str | None = None, doc: Shipment | None = None
+		self,
+		carrier_id: str,
+		settings_name: str | None = None,
+		doc: Shipment | None = None,
+		*,
+		raise_on_error: bool = True,
 	) -> list[dict]:
 		"""
 		List all package aka container types (e.g. "Bag", "Skid", or "Piece") for a specific LTL
@@ -940,22 +995,28 @@ class ShipstationLTL(BaseLTL):
 
 		except httpx.HTTPStatusError as e:
 			err_type, err_msg = self.get_api_response_error_info(data)
-			frappe.log_error(
-				title="Error listing LTL carrier package/container types",
-				message=f"Carrier ID: {carrier_id}\nError Type: {err_type}\nError Message: {err_msg}\nResponse: {e.response.text}",
-			)
-			frappe.throw(
-				_(
+			return self.log_ltl_api_failure(
+				log_title="Error listing LTL carrier package/container types",
+				log_message=(
+					f"Carrier ID: {carrier_id}\nError Type: {err_type}\nError Message: {err_msg}\n"
+					f"Response: {e.response.text}"
+				),
+				user_message=_(
 					"Failed to list LTL carrier package/container types - error type: {0}, message: {1}, error: {2}"
-				).format(err_type, err_msg, str(e))
+				).format(err_type, err_msg, str(e)),
+				raise_on_error=raise_on_error,
+				default=[],
 			)
-			return []
 
 		except Exception as e:
 			error_msg = get_error_message(e)
-			frappe.log_error(title="Error listing LTL carrier package/container types", message=error_msg)
-			frappe.throw(_("Failed to list LTL carrier package/container types: {0}").format(error_msg))
-			return []
+			return self.log_ltl_api_failure(
+				log_title="Error listing LTL carrier package/container types",
+				log_message=error_msg,
+				user_message=_("Failed to list LTL carrier package/container types: {0}").format(error_msg),
+				raise_on_error=raise_on_error,
+				default=[],
+			)
 
 	def get_all_ltl_carrier_package_types(
 		self,
@@ -1002,21 +1063,18 @@ class ShipstationLTL(BaseLTL):
 
 		result = {}
 		for carrier_id in carrier_ids:
-			try:
-				packages = self.list_ltl_carrier_package_types(carrier_id, doc=auth)
-				result[carrier_id] = packages
-			except Exception as e:
-				# Log but don't fail for individual carriers
-				frappe.log_error(
-					title=f"Error fetching packages for LTL carrier {carrier_id}",
-					message=str(e),
-				)
-				result[carrier_id] = []
+			packages = self.list_ltl_carrier_package_types(carrier_id, doc=auth, raise_on_error=False)
+			result[carrier_id] = packages
 
 		return result
 
 	def list_ltl_carrier_services(
-		self, carrier_id: str, settings_name: str | None = None, doc: Shipment | None = None
+		self,
+		carrier_id: str,
+		settings_name: str | None = None,
+		doc: Shipment | None = None,
+		*,
+		raise_on_error: bool = True,
 	) -> list[dict]:
 		"""
 		List all service levels (e.g. Guaranteed Morning, Guaranteed Noon, Standard) for a specific
@@ -1044,22 +1102,28 @@ class ShipstationLTL(BaseLTL):
 
 		except httpx.HTTPStatusError as e:
 			err_type, err_msg = self.get_api_response_error_info(data)
-			frappe.log_error(
-				title="Error listing LTL carrier options",
-				message=f"Carrier ID: {carrier_id}\nError Type: {err_type}\nError Message: {err_msg}\nResponse: {e.response.text}",
+			return self.log_ltl_api_failure(
+				log_title="Error listing LTL carrier services",
+				log_message=(
+					f"Carrier ID: {carrier_id}\nError Type: {err_type}\nError Message: {err_msg}\n"
+					f"Response: {e.response.text}"
+				),
+				user_message=_(
+					"Failed to list LTL carrier services - error type: {0}, message: {1}, error: {2}"
+				).format(err_type, err_msg, str(e)),
+				raise_on_error=raise_on_error,
+				default=[],
 			)
-			frappe.throw(
-				_("Failed to list LTL carrier options - error type: {0}, message: {1}, error: {2}").format(
-					err_type, err_msg, str(e)
-				)
-			)
-			return []
 
 		except Exception as e:
 			error_msg = get_error_message(e)
-			frappe.log_error(title="Error listing LTL carrier options", message=error_msg)
-			frappe.throw(_("Failed to list LTL carrier options: {0}").format(error_msg))
-			return []
+			return self.log_ltl_api_failure(
+				log_title="Error listing LTL carrier services",
+				log_message=error_msg,
+				user_message=_("Failed to list LTL carrier services: {0}").format(error_msg),
+				raise_on_error=raise_on_error,
+				default=[],
+			)
 
 	def resolve_package_type_code(
 		self, doc, carrier_id: str, settings_name: str | None = None

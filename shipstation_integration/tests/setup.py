@@ -393,8 +393,26 @@ def create_inventory_with_handling_units(settings):
 
 def ensure_administrator_has_phone():
 	user = frappe.get_doc("User", "Administrator")
+	meta = frappe.get_meta("User")
+	changed = False
 	if not user.phone:
 		user.phone = "(508) 555-0100"
+		changed = True
+	if (
+		meta.has_field("dimension_uom")
+		and frappe.db.exists("UOM", "Inch")
+		and getattr(user, "dimension_uom", None) != "Inch"
+	):
+		user.dimension_uom = "Inch"
+		changed = True
+	if (
+		meta.has_field("weight_uom")
+		and frappe.db.exists("UOM", "Pound")
+		and getattr(user, "weight_uom", None) != "Pound"
+	):
+		user.weight_uom = "Pound"
+		changed = True
+	if changed:
 		user.save(ignore_permissions=True)
 
 
@@ -713,7 +731,7 @@ def create_parcel_templates():
 			"length": 30.48,  # 12 in
 			"width": 30.48,  # 12 in
 			"height": 30.48,  # 12 in  (3 × 4 in pie boxes)
-			"weight": 4.08,  # ~9 lb capacity
+			"weight": 15.0,
 			"package_code": "pie_triple_stack",
 		},
 	]
@@ -744,10 +762,24 @@ def ensure_parcel_template_interior_physical_dimensions():
 				"dimension_type": "Interior",
 			},
 		)
-		if exists:
-			continue
-
 		box = frappe.get_doc("Shipment Parcel Template", name)
+
+		if exists:
+			rp = frappe.get_doc("Physical Dimension", exists)
+			changed = False
+			for row_field, box_col in (
+				("item_length", box.length),
+				("item_width", box.width),
+				("item_height", box.height),
+				("item_weight", box.weight),
+			):
+				if float(getattr(rp, row_field) or 0) != float(box_col or 0):
+					rp.set(row_field, float(box_col))
+					changed = True
+			if changed:
+				rp.flags.ignore_validate = True
+				rp.save()
+			continue
 
 		pd = frappe.new_doc("Physical Dimension")
 		pd.reference_doctype = "Shipment Parcel Template"

@@ -57,10 +57,9 @@ def test_cartonize_packing_slip_cafe27_pies_into_triple_stack_boxes():
 	  Pie box:   30.48 × 30.48 × 10.16 cm = 0.3048 × 0.3048 × 0.1016 m³
 
 	The solver pre-splits each 10-unit row into chunks of 3 (3, 3, 3, 1) before
-	the First-Fit-Decreasing pass.  FDF then packs:
-	  - 6 chunks of 3 → 6 fully packed bins (qty_line 3.0 each)
-	  - The two single-pie remainders share one bin via best_chunk_container
-	  → 7 bins, qty total 20.0, 0 skipped.
+	the First-Fit-Decreasing pass, then places two pies per Pie Triple Stack bin
+	(about 70% volumetric utilization). For 20 pies total that yields 10 bins with
+	qty 2.0 each and nothing skipped.
 	"""
 	so_name = get_so_with_items(
 		customers[2], "Ambrosia Pie Company", ["Gooseberry Pie", "Kaduka Key Lime Pie"]
@@ -113,10 +112,13 @@ def test_cartonize_packing_slip_cafe27_pies_into_triple_stack_boxes():
 		total_qty = sum(item.get("qty", 0) for b in bins for item in (b.get("items") or []))
 		assert total_qty == pytest.approx(20.0), f"Expected qty_line total 20.0, got {total_qty}"
 
-		assert len(bins) == 7, f"Expected 7 bins (6 × 3 pies + 1 × 2-pie remainder), got {len(bins)}"
+		assert len(bins) == 10, f"Expected 10 bins (2 pies each), got {len(bins)}"
 
 		for b in bins:
 			bin_qty = sum(item.get("qty", 0) for item in (b.get("items") or []))
+			assert bin_qty == pytest.approx(
+				2.0
+			), f"Bin {b.get('bin_number')} holds {bin_qty} pies (expected 2)"
 			assert bin_qty <= 3 + 1e-9, f"Bin {b.get('bin_number')} holds {bin_qty} pies (max 3)"
 
 	finally:
@@ -128,9 +130,8 @@ def test_apply_cartonization_to_packing_slip_splits_rows_into_bins():
 	"""
 	Multi-bin packing replaces each source Packing Slip Item with one row per
 	physical parcel where needed (qty, parcel_number, parcel_template). For two
-	10-unit pie lines and Pie Triple Stack (3 pies per box), expect eight child
-	rows sharing seven parcel numbers, with the two one-pie remainders combined
-	in parcel 7.
+	10-unit pie lines and Pie Triple Stack, the solver yields 10 parcels with
+	2 pies each (5 parcels per item).
 	"""
 	so_name = get_so_with_items(
 		customers[2], "Ambrosia Pie Company", ["Gooseberry Pie", "Kaduka Key Lime Pie"]
@@ -149,40 +150,34 @@ def test_apply_cartonization_to_packing_slip_splits_rows_into_bins():
 		apply_cartonization_to_packing_slip(ps.name)
 		ps.reload()
 
-		assert len(ps.items) == 8, f"Expected 8 rows (4 per item) after cartonize, got {len(ps.items)}"
+		assert len(ps.items) == 10, f"Expected 10 rows (5 per item) after cartonize, got {len(ps.items)}"
 
 		parcel_numbers = sorted({row.parcel_number for row in ps.items})
-		assert parcel_numbers == [
-			1,
-			2,
-			3,
-			4,
-			5,
-			6,
-			7,
-		], f"Expected parcel numbers 1-7, got {parcel_numbers}"
+		assert parcel_numbers == list(
+			range(1, 11)
+		), f"Expected parcel numbers 1-10, got {parcel_numbers}"
 
 		for row in ps.items:
 			assert row.parcel_template == "Pie Triple Stack", (
 				f"{row.item_code} parcel {row.parcel_number}: "
 				f"expected Pie Triple Stack, got {row.parcel_template}"
 			)
+			assert row.qty == pytest.approx(
+				2.0
+			), f"{row.item_code} parcel {row.parcel_number}: expected qty 2, got {row.qty}"
 
-		qty_by_parcel: dict[int, float] = {}
+		qty_by_item: dict[str, float] = {}
 		for row in ps.items:
-			qty_by_parcel[row.parcel_number] = qty_by_parcel.get(row.parcel_number, 0) + row.qty
+			qty_by_item[row.item_code] = qty_by_item.get(row.item_code, 0) + row.qty
 
-		for p in range(1, 7):
-			assert qty_by_parcel[p] == pytest.approx(
-				3.0
-			), f"Parcel {p} should hold 3 pies, got {qty_by_parcel[p]}"
-		assert qty_by_parcel[7] == pytest.approx(
-			2.0
-		), f"Parcel 7 should hold 2 remainder pies, got {qty_by_parcel.get(7)}"
+		assert qty_by_item["Gooseberry Pie"] == pytest.approx(10.0)
+		assert qty_by_item["Kaduka Key Lime Pie"] == pytest.approx(10.0)
 
-		parcel_7_items = {row.item_code for row in ps.items if row.parcel_number == 7}
-		assert "Gooseberry Pie" in parcel_7_items, "Gooseberry remainder missing from parcel 7"
-		assert "Kaduka Key Lime Pie" in parcel_7_items, "Kaduka remainder missing from parcel 7"
+		parcels_by_item: dict[str, set[int]] = {}
+		for row in ps.items:
+			parcels_by_item.setdefault(row.item_code, set()).add(row.parcel_number)
+		assert len(parcels_by_item["Gooseberry Pie"]) == 5
+		assert len(parcels_by_item["Kaduka Key Lime Pie"]) == 5
 
 	finally:
 		frappe.delete_doc("Packing Slip", ps.name, force=True)

@@ -12,7 +12,50 @@ from shipstation_integration.shipstation_integration.freight_providers.trafficte
 	TrafficTechLTL,
 )
 from shipstation_integration.shipstation_integration.freight_providers.wwex_ltl import WwexLTL
-from shipstation_integration.tests.setup import get_draft_ltl_shipment_for_tests
+from shipstation_integration.tests.setup import (
+	get_draft_ltl_shipment_for_tests,
+	ltl_pickup_response_for_tests,
+	ltl_quotes_response_for_tests,
+	reset_ltl_shipment_quotation_test_state,
+)
+
+
+class MockHttpxResponse:
+	def __init__(self, json_data=None, status_code=200):
+		self._json = json_data
+		self.status_code = status_code
+		self.text = ""
+		self.request = None
+
+	def json(self):
+		return self._json
+
+	def raise_for_status(self):
+		if self.status_code >= 400:
+			raise Exception(f"HTTP {self.status_code}")
+
+
+class MockHttpxClient:
+	def __init__(self, responses):
+		self.responses = list(responses)
+		self.index = 0
+
+	def __enter__(self):
+		return self
+
+	def __exit__(self, *args):
+		pass
+
+	def next_response(self):
+		resp = self.responses[self.index % len(self.responses)]
+		self.index += 1
+		return resp
+
+	def get(self, *args, **kwargs):
+		return self.next_response()
+
+	def post(self, *args, **kwargs):
+		return self.next_response()
 
 
 def supplier_name(carrier_supplier_name):
@@ -128,6 +171,34 @@ def test_get_ltl_provider_resolves_by_fcs_type(case, expected_cls):
 		assert isinstance(get_ltl_provider(doc), expected_cls)
 
 
+@pytest.mark.order(54)
+def test_get_accessorial_service_fields_degrades_on_shipengine_error(monkeypatch):
+	doc = frappe._dict(
+		preferred_carrier=supplier_name("Test LTL Carrier"),
+		carrier_id="aa5d80c5-31db-40d2-b046-3450880e8b2e",
+		pickup_from_type="Company",
+		pickup_company="Ambrosia Pie Company",
+	)
+	ltl = ShipstationLTL()
+	error_response = MockHttpxResponse(
+		json_data={"errors": [{"error_type": "security", "message": "Access denied."}]},
+		status_code=401,
+	)
+	monkeypatch.setattr(
+		"httpx.Client",
+		lambda: MockHttpxClient([error_response]),
+	)
+	monkeypatch.setattr(
+		ShipstationLTL,
+		"get_base_url_and_headers",
+		lambda self, doc: ("https://api.shipengine.com", {"Api-Key": "test"}),
+	)
+
+	result = ltl.get_accessorial_service_fields(doc)
+	assert result["supported"] == []
+	assert result["unsupported"] == list(ltl.accessorial_services_map.keys())
+
+
 @pytest.mark.order(52)
 @pytest.mark.parametrize("problem", ("zero_dimensions", "zero_weight"))
 def test_build_packages_raises_on_missing_dimensions(problem):
@@ -181,3 +252,50 @@ def test_build_packages_raises_on_missing_dimensions(problem):
 			for item_code, wp in items_before.items():
 				frappe.db.set_value("Item", item_code, "weight_per_unit", wp)
 		restore_ltl_shipment(shipment, original)
+
+
+@pytest.mark.order(53)
+def test_shipstation_schedule_ltl_pickup_via_api(monkeypatch):
+	reset_ltl_shipment_quotation_test_state()
+	shipment = get_draft_ltl_shipment_for_tests()
+	pickup_fixture = ltl_pickup_response_for_tests()
+	ltl = ShipstationLTL()
+	ltl.save_ltl_quotes_as_shipment_quotations_and_display(
+		shipment, ltl_quotes_response_for_tests()[:1]
+	)
+
+	sq = frappe.get_last_doc("Shipment Quotation", filters={"shipment": shipment.name})
+	sq.submit()
+	shipment.reload()
+
+	carrier_response = MockHttpxResponse(
+		json_data={
+			"carrier_id": "aa5d80c5-31db-40d2-b046-3450880e8b2e",
+			"scac": "TEST",
+			"features": ["scheduled_pickup"],
+			"packages": [],
+		}
+	)
+	pickup_response = MockHttpxResponse(json_data=pickup_fixture)
+	shared_client = MockHttpxClient([carrier_response, pickup_response])
+	monkeypatch.setattr(
+		"httpx.Client",
+		lambda: shared_client,
+	)
+
+	msg = ltl.schedule_ltl_pickup(shipment)
+
+	shipment.reload()
+	assert shipment.get("pickup_id") == pickup_fixture["pickup_id"]
+	assert shipment.get("awb_number") == pickup_fixture["pro_number"]
+	assert shipment.get("shipment_id") == pickup_fixture["shipment_id"]
+
+	attachments = frappe.get_all(
+		"File",
+		filters={"attached_to_doctype": "Shipment", "attached_to_name": shipment.name},
+		fields=["file_name"],
+	)
+	assert len(attachments) >= 1
+	assert any("bill_of_lading" in (a.file_name or "").lower() for a in attachments)
+	assert pickup_fixture["pickup_id"] in msg
+	assert pickup_fixture["pro_number"] in msg

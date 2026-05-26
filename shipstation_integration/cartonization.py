@@ -12,7 +12,10 @@ from erpnext.stock.doctype.delivery_note.delivery_note import (
 )
 from frappe import _
 from frappe.utils import cint, flt
-from inventory_tools.cartonization import get_physical_dimension, solve_cartonization
+from inventory_tools.cartonization import (
+	get_physical_dimension,
+	solve_cartonization,
+)
 
 
 def inventory_tools_cartonization_installed() -> bool:
@@ -210,10 +213,11 @@ def cartonize_mapped_packing_slip_from_delivery_note(ps):
 	types = parse_container_doctypes_json(ss.get("default_container_doctypes_json"))
 	kwargs = solver_kwargs_from_shipstation_settings(ss)
 
+	company_ps = company_from_packing_slip(ps)
 	solution = solve_cartonization(
 		items,
 		container_doctypes=types,
-		company=company_from_packing_slip(ps),
+		company=company_ps,
 		settings=kwargs,
 	)
 	assign_bins_to_child_rows(ps, "items", solution.get("bins"))
