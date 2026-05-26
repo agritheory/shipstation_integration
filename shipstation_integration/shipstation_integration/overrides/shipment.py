@@ -39,6 +39,12 @@ class ShipStationShipment(Shipment):
 		# TODO: if freight_type == "LTL" -> call ltl_class method to show missing but required fields
 		super().validate()
 
+	def on_submit(self):
+		# Shipstation packs on shipment_delivery_note; shipment_parcel is hidden and unused.
+		if self.value_of_goods == 0:
+			frappe.throw(_("Value of goods cannot be 0"))
+		self.db_set("status", "Submitted")
+
 
 @frappe.whitelist()
 def get_carrier_id_for_supplier(

@@ -108,6 +108,8 @@ doc_events = {
 		"before_validate": (
 			"shipstation_integration.shipstation_integration.overrides.delivery_note.before_validate_shipment"
 		),
+		"before_submit": "shipstation_integration.shipment_pack.before_submit",
+		"on_submit": "shipstation_integration.shipment_pack.on_submit",
 	},
 }
 
@@ -146,6 +148,7 @@ override_whitelisted_methods = {
 
 override_doctype_class = {
 	"Sales Order": "shipstation_integration.shipstation_integration.overrides.sales_order.ShipStationSalesOrder",
+	"Shipment": "shipstation_integration.shipstation_integration.overrides.shipment.ShipStationShipment",
 	"Shipment Parcel Template": "shipstation_integration.shipstation_integration.overrides.shipment_parcel_template.ShipstationShipmentParcelTemplate",
 	"Packing Slip": "shipstation_integration.shipstation_integration.overrides.packing_slip.ShipstationPackingSlip",
 }

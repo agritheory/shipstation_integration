@@ -1023,7 +1023,7 @@
       "name": "Shipment-freight_type",
       "no_copy": 0,
       "non_negative": 0,
-      "options": "\nSmall Parcel\nLTL\nFull Truckload\nContainer",
+      "options": "\nLTL\nFull Truckload\nContainer",
       "permlevel": 0,
       "print_hide": 0,
       "print_hide_if_no_value": 0,
