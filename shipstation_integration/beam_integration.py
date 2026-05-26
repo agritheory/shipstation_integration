@@ -32,6 +32,8 @@ import frappe
 from frappe import _
 from frappe.utils import flt, today
 
+from shipstation_integration.utils import get_shipment_company_for_ltl
+
 
 def is_beam_installed() -> bool:
 	"""Return True if the BEAM app's Handling Unit doctype is present."""
@@ -388,8 +390,16 @@ def on_shipment_submit(doc) -> None:
 	if not packed_rows:
 		return
 
-	# Determine company from the Shipment's own company field
-	company = doc.company
+	# Shipment has no ERPNext ``company`` field; resolve from addressing or linked DNs.
+	company = get_shipment_company_for_ltl(doc)
+	if not company:
+		for row in packed_rows:
+			if row.delivery_note:
+				company = frappe.db.get_value("Delivery Note", row.delivery_note, "company")
+				if company:
+					break
+	if not company:
+		return
 
 	if beam_handling_units_enabled(company):
 		create_shipment_repack_entry(doc, company)

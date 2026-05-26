@@ -97,7 +97,8 @@ def assign_shipment_sscc_codes(doc) -> list[str]:
 	"""
 	settings = get_sscc_settings()
 	prefix = settings.gs1_company_prefix
-	abbr = frappe.db.get_value("Company", doc.company, "abbr")
+	company = get_shipment_company_for_ltl(doc)
+	abbr = frappe.db.get_value("Company", company, "abbr")
 	parcels: dict[int, list] = {}
 	for row in doc.shipment_delivery_note or []:
 		if row.parcel_number:
