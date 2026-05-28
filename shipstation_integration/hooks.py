@@ -12,7 +12,7 @@ app_color = "grey"
 app_email = "support@agritheory.dev"
 app_license = "MIT"
 
-required_apps = ["erpnext", "agritheory/beam", "inventory_tools"]
+required_apps = ["frappe/erpnext", "agritheory/beam", "agritheory/inventory_tools"]
 
 # Setup Wizard
 # ------------
