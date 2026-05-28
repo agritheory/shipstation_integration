@@ -59,7 +59,11 @@ from frappe import _
 from frappe.utils import flt, get_time, now, getdate
 from frappe.utils.file_manager import save_file
 
-from shipstation_integration.base_ltl import BaseLTL, require_submitted_shipment_for_ltl
+from shipstation_integration.base_ltl import (
+	BaseLTL,
+	persist_shipment_ltl_fields,
+	require_submitted_shipment_for_ltl,
+)
 from shipstation_integration.ltl import ShipstationLTL
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
@@ -725,12 +729,15 @@ class WwexLTL(BaseLTL):
 		pickup_txn_id = result.get("pickupTxnId") or result.get("pickupTransactionId") or ""
 
 		dt, dn = doc.doctype, doc.name
-		frappe.set_value(dt, dn, "carrier", doc.preferred_carrier)
-		frappe.set_value(dt, dn, "carrier_service", sq.service_level)
-		frappe.set_value(dt, dn, "awb_number", pro_number or bol_number)
+		updates = {
+			"carrier": doc.preferred_carrier,
+			"carrier_service": sq.service_level,
+			"awb_number": pro_number or bol_number,
+			"shipment_id": txn_id,
+		}
 		if pickup_txn_id:
-			frappe.set_value(dt, dn, "pickup_id", pickup_txn_id)
-		frappe.set_value(dt, dn, "shipment_id", txn_id)
+			updates["pickup_id"] = pickup_txn_id
+		persist_shipment_ltl_fields(dt, dn, updates)
 
 		# Attempt to download and attach the BOL immediately
 		docs_saved = False

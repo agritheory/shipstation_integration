@@ -51,7 +51,11 @@ from frappe import _
 from frappe.utils import now
 from frappe.utils.file_manager import save_file
 
-from shipstation_integration.base_ltl import BaseLTL, require_submitted_shipment_for_ltl
+from shipstation_integration.base_ltl import (
+	BaseLTL,
+	persist_shipment_ltl_fields,
+	require_submitted_shipment_for_ltl,
+)
 from shipstation_integration.ltl import ShipstationLTL
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
@@ -890,8 +894,7 @@ class BanyanLTL(BaseLTL):
 			updates["pickup_id"] = pickup_number
 		if pro_number or pickup_number:
 			updates["status"] = "Booked"
-		# db.set_value avoids Shipment.validate() resetting status to Draft on draft docs.
-		frappe.db.set_value(dt, dn, updates)
+		persist_shipment_ltl_fields(dt, dn, updates)
 
 		docs_saved = self.attach_banyan_documents(doc, fc, load_id, settings_name=settings_name)
 

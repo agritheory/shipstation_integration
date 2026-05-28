@@ -21,7 +21,11 @@ from frappe import _
 from frappe.utils import add_days, comma_or, flt, get_link_to_form, now
 from frappe.utils.file_manager import save_file
 
-from shipstation_integration.base_ltl import BaseLTL, require_submitted_shipment_for_ltl
+from shipstation_integration.base_ltl import (
+	BaseLTL,
+	persist_shipment_ltl_fields,
+	require_submitted_shipment_for_ltl,
+)
 from shipstation_integration.carriers import get_or_create_transporter
 from shipstation_integration.rates import DIMENSION_UOM_MAP, WEIGHT_UOM_MAP
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
@@ -663,18 +667,20 @@ class ShipstationLTL(BaseLTL):
 
 		pu_response = self.schedule_ltl_pickup_with_quote_id(doc, settings_name)
 		dt, dn = doc.doctype, doc.name
-		frappe.set_value(dt, dn, "carrier", doc.preferred_carrier)
+		updates = {"carrier": doc.preferred_carrier}
 
 		accepted_sq = doc.accepted_quotation or frappe.db.get_value(
 			"Shipment Quotation", {"shipment": doc.name, "docstatus": 1}, "name"
 		)
 		if accepted_sq:
 			sl = frappe.db.get_value("Shipment Quotation", accepted_sq, "service_level")
-			frappe.set_value(dt, dn, "carrier_service", sl)
+			if sl:
+				updates["carrier_service"] = sl
 
-		frappe.set_value(dt, dn, "shipment_id", pu_response.get("shipment_id"))
-		frappe.set_value(dt, dn, "pickup_id", pu_response.get("pickup_id"))
-		frappe.set_value(dt, dn, "awb_number", pu_response.get("pro_number"))
+		updates["shipment_id"] = pu_response.get("shipment_id")
+		updates["pickup_id"] = pu_response.get("pickup_id")
+		updates["awb_number"] = pu_response.get("pro_number")
+		persist_shipment_ltl_fields(dt, dn, updates)
 
 		# Attach generated documents to Shipment doc
 		docs_saved = False
@@ -1320,7 +1326,7 @@ class ShipstationLTL(BaseLTL):
 			"Shipment Quotation", doc.accepted_quotation, "estimated_delivery_date"
 		)
 		if not doc.get("estimated_delivery_date"):
-			frappe.set_value(doc.doctype, doc.name, "estimated_delivery_date", delivery_date)
+			persist_shipment_ltl_fields(doc.doctype, doc.name, {"estimated_delivery_date": delivery_date})
 
 		data: dict = {}
 		try:

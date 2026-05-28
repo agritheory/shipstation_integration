@@ -20,6 +20,13 @@ def require_submitted_shipment_for_ltl(doc: Shipment) -> None:
 		)
 
 
+def persist_shipment_ltl_fields(doctype: str, name: str, updates: dict) -> None:
+	"""Update LTL booking or quote fields on a submitted Shipment."""
+	if not updates:
+		return
+	frappe.set_value(doctype, name, updates)
+
+
 class BaseLTL:
 	def book_shipment(self, doc, settings_name: str | None = None) -> dict:
 		"""

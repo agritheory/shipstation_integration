@@ -340,8 +340,9 @@ function add_schedule_pickup_button(frm) {
 				},
 				freeze: true,
 				callback: function (r) {
-					if (r) {
-						frappe.msgprint(__(r))
+					if (r && r.message) {
+						frappe.msgprint(__(r.message))
+						frm.reload()
 					}
 				},
 			})

@@ -51,7 +51,11 @@ from frappe import _
 from frappe.utils import now
 from frappe.utils.file_manager import save_file
 
-from shipstation_integration.base_ltl import BaseLTL, require_submitted_shipment_for_ltl
+from shipstation_integration.base_ltl import (
+	BaseLTL,
+	persist_shipment_ltl_fields,
+	require_submitted_shipment_for_ltl,
+)
 from shipstation_integration.ltl import ShipstationLTL
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
@@ -452,10 +456,16 @@ class OdflLTL(BaseLTL):
 		bol_number = bol_data.get("bolNumber") or pro_number
 
 		dt, dn = doc.doctype, doc.name
-		frappe.set_value(dt, dn, "carrier", doc.preferred_carrier or "Old Dominion")
-		frappe.set_value(dt, dn, "carrier_service", "LTL")
-		frappe.set_value(dt, dn, "awb_number", pro_number)
-		frappe.set_value(dt, dn, "shipment_id", pro_number)
+		persist_shipment_ltl_fields(
+			dt,
+			dn,
+			{
+				"carrier": doc.preferred_carrier or "Old Dominion",
+				"carrier_service": "LTL",
+				"awb_number": pro_number,
+				"shipment_id": pro_number,
+			},
+		)
 
 		# Attach BOL if returned inline
 		docs_saved = False
@@ -505,7 +515,7 @@ class OdflLTL(BaseLTL):
 				pickup_data.get("pickupConfirmationNumber") or pickup_data.get("confirmationNumber") or ""
 			)
 			if pickup_confirmation:
-				frappe.set_value(dt, dn, "pickup_id", pickup_confirmation)
+				persist_shipment_ltl_fields(dt, dn, {"pickup_id": pickup_confirmation})
 		except Exception:
 			frappe.log_error(
 				title="ODFL: Pickup scheduling failed",
