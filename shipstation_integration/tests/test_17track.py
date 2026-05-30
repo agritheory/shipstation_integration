@@ -76,7 +76,7 @@ def test_build_webhook_callback_uri_includes_api_method_suffix():
 
 
 def test_webhook_callback_uri_stored_after_create_seventeen_track_settings():
-	create_seventeen_track_settings()
+	create_seventeen_track_settings(TEST_17TRACK_COMPANY)
 	stored = frappe.db.get_value("Seventeen Track", TEST_17TRACK_COMPANY, "webhook_callback_uri")
 	assert stored
 	assert stored == build_seventeen_track_webhook_callback_uri()
@@ -326,7 +326,7 @@ def test_no_api_key_raises_error():
 		with pytest.raises(frappe.exceptions.ValidationError, match="not configured"):
 			tn.submit()
 	finally:
-		create_seventeen_track_settings()
+		create_seventeen_track_settings(TEST_17TRACK_COMPANY)
 
 
 @pytest.mark.order(24)
