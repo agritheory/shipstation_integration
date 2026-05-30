@@ -1,6 +1,6 @@
 [project]
 name = "shipstation_integration"
-version = "1.13.0"
+version = "1.14.0"
 authors = [
     { name = "AgriTheory", email = "support@agritheory.dev"}
 ]
@@ -56,6 +56,9 @@ use_parentheses = true
 ensure_newline_before_comments = true
 indent = "\t"
 
+# Shared by pre-commit and .github/workflows/lint.yaml (same command + version).
+# Frappe / ERPNext are not typed in this environment; the legacy modules are not fully annotated.
+# Tighten disable_error_code over time as the codebase gains types.
 [tool.mypy]
 python_version = "3.10"
 show_error_codes = true

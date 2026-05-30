@@ -9,6 +9,7 @@
   "sb_webhook",
   "api_key",
   "add_updates_as_comments",
+  "enable_geocoding",
   "seventeen_track_user",
   "column_break_emvk",
   "webhook_callback_uri"
@@ -50,6 +51,13 @@
    "label": "Add Updates as Comments"
   },
   {
+   "default": "1",
+   "description": "Call the configured geocoding service to resolve coordinates for events that the carrier did not provide. Disable if you have not configured a provider or want to avoid external calls.",
+   "fieldname": "enable_geocoding",
+   "fieldtype": "Check",
+   "label": "Enable Geocoding"
+  },
+  {
    "fieldname": "seventeen_track_user",
    "fieldtype": "Link",
    "label": "17Track User",
@@ -63,7 +71,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-02 13:07:00.905336",
+ "modified": "2026-05-14 12:48:00.905336",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Seventeen Track",

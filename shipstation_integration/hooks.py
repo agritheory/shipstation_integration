@@ -3,6 +3,20 @@
 
 from . import __version__ as app_version
 
+# Each path is a callable () -> dict[tuple[str, str], str]. Results are merged in install order; later keys win.
+# Custom apps: append dotted paths to `seventeen_track_status_description_providers`, or use legacy
+# `extend_seventeen_track_status_descriptions` (merged after the providers list).
+seventeen_track_status_description_providers = [
+	"shipstation_integration.shipstation_integration.doctype.seventeen_track.status_description_defaults.base_status_description_map",
+]
+
+# Geocoding hook: called when a tracking event has an address but no coordinates
+# and "Enable Geocoding" is checked on the Seventeen Track settings doc.
+# Default: Nominatim (OpenStreetMap). Suitable for dev and low-volume production.
+seventeen_track_geocode_address = [
+	"shipstation_integration.geocoding.nominatim_geocode",
+]
+
 app_name = "shipstation_integration"
 app_title = "Shipstation Integration"
 app_publisher = "AgriTheory"
@@ -42,6 +56,8 @@ jinja = {
 # include js in doctype views
 
 doctype_js = {
+	"Tracking Number": "public/js/tracking_number.js",
+	"Seventeen Track": "public/js/seventeen_track.js",
 	"Delivery Note": "public/js/delivery_note.js",
 	"Packing Slip": ["public/js/parcel_details.js", "public/js/packing_slip.js"],
 	"Shipment": [
@@ -58,6 +74,7 @@ doctype_js = {
 doctype_list_js = {
 	"Sales Order": "public/js/sales_order_list.js",
 	"Delivery Note": "public/js/delivery_note_list.js",
+	"Tracking Number": "public/js/tracking_number_list.js",
 }
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -84,7 +101,10 @@ doctype_list_js = {
 
 # Installation
 # ------------
-after_migrate = ["shipstation_integration.install.add_custom_queue"]
+after_migrate = [
+	"shipstation_integration.install.add_custom_queue",
+	"shipstation_integration.install.ensure_17track_integration_role",
+]
 after_install = "shipstation_integration.install.after_install"
 
 # Desk Notifications

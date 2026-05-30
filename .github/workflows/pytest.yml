@@ -62,10 +62,12 @@ jobs:
         env:
           MYSQL_HOST: "localhost"
           MYSQL_PWD: "admin"
+          BRANCH_NAME: ${{ env.BRANCH_NAME}}
         run: bash ${{ github.workspace }}/.github/helper/install.sh
 
       - name: Run Tests
         working-directory: /home/runner/frappe-bench
         run: |
+          set -o pipefail
           source env/bin/activate
           pytest ./apps/shipstation_integration/shipstation_integration/tests/ ./apps/shipstation_integration/shipstation_integration/shipstation_integration/doctype/ --disable-warnings -s

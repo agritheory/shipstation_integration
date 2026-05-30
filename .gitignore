@@ -5,5 +5,7 @@
 tags
 shipstation_integration/docs/current
 shipstation_integration/public/dist
+shipstation_integration/public/node_modules
+node_modules
 .cursor
 *.log
