@@ -14,7 +14,7 @@ from frappe.utils.file_manager import save_file
 from httpx import HTTPError
 from shipstation.models import ShipStationAddress, ShipStationOrder, ShipStationWeight
 
-from shipstation_integration.shipments import cancel_voided_shipments, create_erpnext_shipment
+from shipstation_integration.api.shipments import cancel_voided_shipments, create_erpnext_shipment
 
 if TYPE_CHECKING:
 	from frappe.core.doctype.file.file import File
@@ -81,7 +81,7 @@ def create_shipping_label_folder():
 
 def create_shipping_label_v2(doc: frappe._dict, values: frappe._dict, user: str = ""):
 	"""Create shipping label using ShipStation API v2 with rate_id or direct shipment."""
-	from shipstation_integration.labels import create_label_for_delivery_note
+	from shipstation_integration.api.labels import create_label_for_delivery_note
 
 	settings_name = get_shipstation_settings(doc)
 	if not settings_name:
@@ -304,7 +304,7 @@ def get_rates_for_document(doctype: str, docname: str):
 
 	This provides rate shopping functionality using ShipStation API v2.
 	"""
-	from shipstation_integration.rates import get_rates_for_delivery_note
+	from shipstation_integration.api.rates import get_rates_for_delivery_note
 
 	if doctype == "Delivery Note":
 		return get_rates_for_delivery_note(docname)

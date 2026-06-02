@@ -130,16 +130,10 @@ after_install = "shipstation_integration.install.after_install"
 # Hook on document methods and events
 
 doc_events = {
-	"Packing Slip": {
-		"before_submit": "shipstation_integration.packing_slip.before_submit",
-		"on_submit": "shipstation_integration.packing_slip.on_submit",
-	},
 	"Shipment": {
 		"before_validate": (
 			"shipstation_integration.shipstation_integration.overrides.delivery_note.before_validate_shipment"
 		),
-		"before_submit": "shipstation_integration.shipment_pack.before_submit",
-		"on_submit": "shipstation_integration.shipment_pack.on_submit",
 	},
 }
 
@@ -148,9 +142,9 @@ doc_events = {
 
 scheduler_events = {
 	"all": [
-		"shipstation_integration.tags.queue_tags",
-		"shipstation_integration.orders.queue_orders",
-		"shipstation_integration.shipments.queue_shipments",
+		"shipstation_integration.api.tags.queue_tags",
+		"shipstation_integration.api.orders.queue_orders",
+		"shipstation_integration.api.shipments.queue_shipments",
 	]
 }
 

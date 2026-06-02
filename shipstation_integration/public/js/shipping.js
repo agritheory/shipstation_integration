@@ -12,12 +12,12 @@ shipping.build_carrier_options = frm => {
 	// since we may only have the Shipstation Store reference, and Frappe doesn't let
 	// you query child tables from the frontend, making a server call
 	frappe.call({
-		method: 'shipstation_integration.shipping.get_shipstation_settings',
+		method: 'shipstation_integration.api.shipping.get_shipstation_settings',
 		args: { doc: frm.doc },
 		callback: r => {
 			if (r.message) {
 				frappe.call({
-					method: 'shipstation_integration.shipping.get_carrier_services',
+					method: 'shipstation_integration.api.shipping.get_carrier_services',
 					args: { settings: r.message },
 					callback: services => {
 						if (services.message) {
@@ -36,7 +36,7 @@ shipping.add_label_button = frm => {
 	if (frm.doc.docstatus !== 1) return
 
 	frappe.call({
-		method: 'shipstation_integration.shipping.get_shipstation_settings',
+		method: 'shipstation_integration.api.shipping.get_shipstation_settings',
 		args: { doc: frm.doc },
 		callback: r => {
 			if (r.message) {
@@ -125,7 +125,7 @@ shipping.dialog = frm => {
 
 shipping.create_shipping_label = (frm, values) => {
 	frappe.call({
-		method: 'shipstation_integration.shipping.create_shipping_label',
+		method: 'shipstation_integration.api.shipping.create_shipping_label',
 		args: { doc: frm.doc, values: values },
 		freeze: true,
 		callback: r => {

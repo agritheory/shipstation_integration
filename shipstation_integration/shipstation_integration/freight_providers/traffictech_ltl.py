@@ -38,7 +38,7 @@ from frappe import _
 from frappe.utils import flt, getdate
 from shipstation_integration.base_ltl import BaseLTL, require_submitted_shipment_for_ltl
 from shipstation_integration.ltl import ShipstationLTL
-from shipstation_integration.rates import get_state_code
+from shipstation_integration.api.rates import get_state_code
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
 )

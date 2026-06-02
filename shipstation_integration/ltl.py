@@ -26,8 +26,8 @@ from shipstation_integration.base_ltl import (
 	persist_shipment_ltl_fields,
 	require_submitted_shipment_for_ltl,
 )
-from shipstation_integration.carriers import get_or_create_transporter
-from shipstation_integration.rates import DIMENSION_UOM_MAP, WEIGHT_UOM_MAP
+from shipstation_integration.api.carriers import get_or_create_transporter
+from shipstation_integration.api.rates import DIMENSION_UOM_MAP, WEIGHT_UOM_MAP
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
 )

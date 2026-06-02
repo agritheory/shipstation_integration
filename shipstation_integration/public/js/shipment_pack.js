@@ -475,7 +475,7 @@ function sdn_setup_sscc_button(frm) {
 
 function sdn_generate_sscc(frm) {
 	frappe.call({
-		method: 'shipstation_integration.sscc.generate_shipment_sscc',
+		method: 'shipstation_integration.shipstation_integration.overrides.sscc.generate_shipment_sscc',
 		args: { shipment: frm.doc.name },
 		freeze: true,
 		freeze_message: __('Generating SSCC codes...'),
@@ -541,7 +541,7 @@ function sdn_get_shipping_rates(frm) {
 	}
 
 	frappe.call({
-		method: 'shipstation_integration.rates.get_rates_for_shipment',
+		method: 'shipstation_integration.api.rates.get_rates_for_shipment',
 		args: { shipment: frm.doc.name },
 		freeze: true,
 		freeze_message: __('Fetching shipping rates...'),
@@ -615,7 +615,7 @@ function sdn_create_label(frm) {
 	}
 
 	frappe.call({
-		method: 'shipstation_integration.carriers.get_carrier_id_for_supplier',
+		method: 'shipstation_integration.api.carriers.get_carrier_id_for_supplier',
 		args: { supplier_name: carrier },
 		callback: function (r) {
 			if (!r.message) {
@@ -629,7 +629,7 @@ function sdn_create_label(frm) {
 
 function sdn_create_label_with_rate(frm, carrier_id, service_code) {
 	frappe.call({
-		method: 'shipstation_integration.labels.create_label_for_shipment',
+		method: 'shipstation_integration.api.labels.create_label_for_shipment',
 		args: {
 			shipment: frm.doc.name,
 			carrier_id,

@@ -14,10 +14,10 @@ from shipstation.models import ShipStationWebhook
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	sync_ltl_api_credentials_from_shipstation_settings,
 )
-from shipstation_integration.items import create_item
-from shipstation_integration.orders import list_orders
-from shipstation_integration.shipments import list_shipments
-from shipstation_integration.tags import list_tags
+from shipstation_integration.api.orders import list_orders
+from shipstation_integration.api.shipments import list_shipments
+from shipstation_integration.api.tags import list_tags
+from shipstation_integration.shipstation_integration.overrides.items import create_item
 from shipstation_integration.utils import get_marketplace
 
 
@@ -280,7 +280,7 @@ class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comi
 	@frappe.whitelist()
 	def sync_carrier_packages(self):
 		"""Sync carrier package types with detailed dimensions from ShipEngine API."""
-		from shipstation_integration.carriers import sync_carrier_package_types
+		from shipstation_integration.api.carriers import sync_carrier_package_types
 
 		return sync_carrier_package_types(self.name)
 
@@ -551,7 +551,7 @@ class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comi
 
 		# Only register v1 webhooks if legacy API is enabled
 		if self.enable_legacy_api:
-			WEBHOOK_RECEIVER_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.webhook_receiver.shipstation_webhook"
+			WEBHOOK_RECEIVER_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.api.webhook_receiver.shipstation_webhook"
 			WEBHOOK_TYPES = [
 				"ORDER_NOTIFY",
 				"SHIP_NOTIFY",
@@ -597,7 +597,7 @@ class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comi
 			if not api_key:
 				return
 
-			WEBHOOK_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.webhook_receiver.shipstation_api_webhook"
+			WEBHOOK_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.api.webhook_receiver.shipstation_api_webhook"
 			V2_WEBHOOK_EVENTS = ["batch", "track"]
 
 			headers = {

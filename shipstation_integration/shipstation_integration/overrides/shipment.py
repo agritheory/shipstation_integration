@@ -22,6 +22,9 @@ from frappe import _
 
 from shipstation_integration.base_ltl import require_submitted_shipment_for_ltl
 from shipstation_integration.ltl import get_ltl_provider
+from shipstation_integration.shipstation_integration.overrides.handling_unit import (
+	on_shipment_submit,
+)
 from shipstation_integration.utils import get_shipstation_settings_optional
 
 
@@ -40,6 +43,32 @@ class ShipStationShipment(Shipment):
 		# TODO: if freight_type == "LTL" -> call ltl_class method to show missing but required fields
 		super().validate()
 
+	def before_submit(self):
+		"""
+		Validate that every Shipment Delivery Note item has been assigned to a
+		parcel before the Shipment is submitted.
+
+		This validation only applies when the SDN table has item-level rows
+		(i.e. any row has dn_detail or item_code populated). Pure DN-link rows
+		without item details are allowed through unpacked.
+		"""
+		item_level_rows = [
+			row
+			for row in (self.shipment_delivery_note or [])
+			if row.get("item_code") or row.get("dn_detail")
+		]
+		if not item_level_rows:
+			return
+
+		unpacked = [row for row in item_level_rows if not row.parcel_number]
+		if unpacked:
+			frappe.throw(
+				_(
+					"All Shipment Delivery Note items must be assigned to a parcel before submitting. "
+					"{0} item(s) are not yet packed."
+				).format(len(unpacked))
+			)
+
 	def on_submit(self):
 		# Shipstation packs on shipment_delivery_note; shipment_parcel is hidden and unused.
 		# Must override here — inheriting Shipment.on_submit would still enforce ERPNext's
@@ -47,6 +76,7 @@ class ShipStationShipment(Shipment):
 		if self.value_of_goods == 0:
 			frappe.throw(_("Value of goods cannot be 0"))
 		self.db_set("status", "Submitted")
+		on_shipment_submit(self)
 
 
 @frappe.whitelist()

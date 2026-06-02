@@ -93,7 +93,7 @@ def create_handling_unit_for_sscc(sscc_code: str) -> str | None:
 
 def on_packing_slip_submit(doc) -> None:
 	"""
-	Called from ``shipstation_integration.packing_slip.on_submit``.
+	Called from ``ShipstationPackingSlip.on_submit``.
 
 	When BEAM handling units are enabled the sequence is:
 	  1. Create and save the Repack SE as a draft (no HUs yet).
@@ -369,7 +369,7 @@ def update_dn_item_handling_units(doc) -> None:
 
 def on_shipment_submit(doc) -> None:
 	"""
-	Called from ``shipstation_integration.shipment_pack.on_submit``.
+	Called from ``ShipStationShipment.on_submit``.
 
 	Mirrors the Packing Slip flow but operates on Shipment Delivery Note rows
 	instead of Packing Slip Item rows.  When BEAM handling units are enabled:

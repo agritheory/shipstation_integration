@@ -9,7 +9,7 @@ from frappe import _
 from frappe.utils import getdate
 from shipstation.models import ShipStationOrder
 
-from shipstation_integration.orders import validate_order
+from shipstation_integration.api.orders import validate_order
 
 
 @frappe.whitelist(allow_guest=True)
@@ -56,7 +56,7 @@ def shipstation_webhook():
 				continue
 
 			frappe.enqueue(
-				method="shipstation_integration.orders.create_order_from_webhook",
+				method="shipstation_integration.api.orders.create_order_from_webhook",
 				queue="shipstation",
 				order=order,
 				store=store.name,
@@ -93,7 +93,7 @@ def shipstation_webhook():
 				continue
 
 			frappe.enqueue(
-				method="shipstation_integration.shipments.create_shipment_from_webhook",
+				method="shipstation_integration.api.shipments.create_shipment_from_webhook",
 				queue="shipstation",
 				shipment=shipment,
 				store=store.name,

@@ -296,7 +296,7 @@ function render_parcel_indicators(frm) {
 function fetch_source_handling_units(frm) {
 	if (!frm._ss_cartonization_enabled || !frm.doc.name || frm.doc.__islocal) return
 	frappe.call({
-		method: 'shipstation_integration.beam_integration.get_source_handling_units',
+		method: 'shipstation_integration.shipstation_integration.overrides.handling_unit.get_source_handling_units',
 		args: { packing_slip: frm.doc.name },
 		callback: function (r) {
 			if (r.message && Object.keys(r.message).length) {
@@ -411,7 +411,7 @@ function fetch_delivery_note_defaults(frm) {
 
 			if (!frm.doc.carrier) {
 				frappe.call({
-					method: 'shipstation_integration.carriers.get_shipping_accounts',
+					method: 'shipstation_integration.api.carriers.get_shipping_accounts',
 					args: { delivery_note: frm.doc.delivery_note },
 					callback: function (r) {
 						const accounts = r.message || []
@@ -834,14 +834,14 @@ function load_carrier_services(frm, supplier_name) {
 
 	// Resolve ERPNext supplier → ShipEngine carrier_id, then fetch live services.
 	frappe.call({
-		method: 'shipstation_integration.carriers.get_carrier_id_for_supplier',
+		method: 'shipstation_integration.api.carriers.get_carrier_id_for_supplier',
 		args: { supplier_name },
 		callback: function (r) {
 			if (!r.message) return
 			const carrier_id = r.message
 
 			frappe.call({
-				method: 'shipstation_integration.carriers.list_carrier_services',
+				method: 'shipstation_integration.api.carriers.list_carrier_services',
 				args: { carrier_id },
 				callback: function (r2) {
 					const services = r2.message || []
@@ -945,7 +945,7 @@ function get_shipping_rates(frm) {
 	}
 
 	frappe.call({
-		method: 'shipstation_integration.rates.get_rates_for_packing_slip',
+		method: 'shipstation_integration.api.rates.get_rates_for_packing_slip',
 		args: { packing_slip: frm.doc.name },
 		freeze: true,
 		freeze_message: __('Fetching shipping rates...'),
@@ -1013,7 +1013,7 @@ function build_rates_html(rates) {
 
 function create_label_with_rate(frm, carrier_id, service_code) {
 	frappe.call({
-		method: 'shipstation_integration.labels.create_label_for_packing_slip',
+		method: 'shipstation_integration.api.labels.create_label_for_packing_slip',
 		args: {
 			packing_slip: frm.doc.name,
 			carrier_id,
@@ -1051,7 +1051,7 @@ function create_label_direct(frm) {
 	}
 
 	frappe.call({
-		method: 'shipstation_integration.carriers.get_carrier_id_for_supplier',
+		method: 'shipstation_integration.api.carriers.get_carrier_id_for_supplier',
 		args: { supplier_name: carrier_supplier },
 		callback: function (r) {
 			if (r.message) {
@@ -1097,7 +1097,7 @@ function create_label_pick_service(frm) {
 	const carrier_supplier = frm.doc.carrier || get_carrier_from_items(frm)
 
 	frappe.call({
-		method: 'shipstation_integration.carriers.resolve_carrier_for_label',
+		method: 'shipstation_integration.api.carriers.resolve_carrier_for_label',
 		args: { supplier_name: carrier_supplier },
 		callback: function (r) {
 			const result = r.message || {}
@@ -1143,7 +1143,7 @@ function create_label_pick_service(frm) {
 
 function create_shipping_label(frm) {
 	frappe.call({
-		method: 'shipstation_integration.carriers.list_carriers',
+		method: 'shipstation_integration.api.carriers.list_carriers',
 		callback: function (r) {
 			if (!r.message || r.message.length === 0) {
 				frappe.msgprint(__('No carriers configured. Please set up carriers in Shipstation Settings.'))
@@ -1220,7 +1220,7 @@ function load_shipping_accounts(frm, dialog) {
 	if (!frm.doc.delivery_note) return
 
 	frappe.call({
-		method: 'shipstation_integration.carriers.get_shipping_accounts',
+		method: 'shipstation_integration.api.carriers.get_shipping_accounts',
 		args: { delivery_note: frm.doc.delivery_note },
 		callback(r) {
 			const accounts = r.message || []
@@ -1241,7 +1241,7 @@ function load_shipping_accounts(frm, dialog) {
 
 function load_services_for_dialog(dialog, carrier_id) {
 	frappe.call({
-		method: 'shipstation_integration.carriers.list_carrier_services',
+		method: 'shipstation_integration.api.carriers.list_carrier_services',
 		args: { carrier_id },
 		callback: function (r) {
 			if (r.message && r.message.length > 0) {
@@ -1287,7 +1287,7 @@ function setup_sscc_button(frm) {
 
 function generate_sscc(frm) {
 	frappe.call({
-		method: 'shipstation_integration.sscc.generate_packing_slip_sscc',
+		method: 'shipstation_integration.shipstation_integration.overrides.sscc.generate_packing_slip_sscc',
 		args: { packing_slip: frm.doc.name },
 		freeze: true,
 		freeze_message: __('Generating SSCC codes...'),

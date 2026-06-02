@@ -8,7 +8,9 @@ from erpnext.stock.doctype.delivery_note.delivery_note import make_packing_slip
 from beam.beam.handling_unit import generate_handling_units
 from frappe.utils import flt, today
 
-from shipstation_integration.beam_integration import create_handling_unit_for_sscc
+from shipstation_integration.shipstation_integration.overrides.handling_unit import (
+	create_handling_unit_for_sscc,
+)
 
 SSCC_CREATE_TEST = "106141410099900011"
 SSCC_REPACK_MAIN = "106141410099900035"

@@ -7,8 +7,8 @@ from pathlib import Path
 import frappe
 import pytest
 
-from shipstation_integration.labels import create_label_for_packing_slip
-from shipstation_integration.rates import get_rates_for_packing_slip
+from shipstation_integration.api.labels import create_label_for_packing_slip
+from shipstation_integration.api.rates import get_rates_for_packing_slip
 
 
 def get_label_response():
@@ -108,7 +108,7 @@ def test_create_label_happy_path(monkeypatch, shipstation_api_client_mock):
 		api_client.create_label_from_shipment.return_value = label_response
 
 		monkeypatch.setattr(
-			"shipstation_integration.labels.download_and_attach_label", lambda *a, **kw: None
+			"shipstation_integration.api.labels.download_and_attach_label", lambda *a, **kw: None
 		)
 
 		results = create_label_for_packing_slip(
@@ -194,7 +194,7 @@ def test_existing_label_blocks_unless_forced(monkeypatch, shipstation_api_client
 		api_client.create_label_from_shipment.return_value = label_response
 
 		monkeypatch.setattr(
-			"shipstation_integration.labels.download_and_attach_label", lambda *a, **kw: None
+			"shipstation_integration.api.labels.download_and_attach_label", lambda *a, **kw: None
 		)
 
 		results = create_label_for_packing_slip(

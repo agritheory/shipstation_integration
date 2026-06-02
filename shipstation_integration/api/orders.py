@@ -12,8 +12,11 @@ from frappe.utils.safe_exec import is_job_queued
 from httpx import HTTPError
 
 from shipstation.models import ShipStationOrder
-from shipstation_integration.customer import create_customer, get_billing_address
-from shipstation_integration.items import create_item
+from shipstation_integration.shipstation_integration.overrides.customer import (
+	create_customer,
+	get_billing_address,
+)
+from shipstation_integration.shipstation_integration.overrides.items import create_item
 
 if TYPE_CHECKING:
 	from erpnext.selling.doctype.sales_order.sales_order import SalesOrder
@@ -28,9 +31,9 @@ if TYPE_CHECKING:
 
 
 def queue_orders():
-	if not is_job_queued("shipstation_integration.orders.list_orders", queue="shipstation"):
+	if not is_job_queued("shipstation_integration.api.orders.list_orders", queue="shipstation"):
 		frappe.enqueue(
-			method="shipstation_integration.orders.list_orders",
+			method="shipstation_integration.api.orders.list_orders",
 			queue="shipstation",
 		)
 

@@ -13,9 +13,9 @@ if TYPE_CHECKING:
 
 
 def queue_tags():
-	if not is_job_queued("shipstation_integration.tags.list_tags", queue="shipstation"):
+	if not is_job_queued("shipstation_integration.api.tags.list_tags", queue="shipstation"):
 		frappe.enqueue(
-			method="shipstation_integration.tags.list_tags",
+			method="shipstation_integration.api.tags.list_tags",
 			queue="shipstation",
 		)
 

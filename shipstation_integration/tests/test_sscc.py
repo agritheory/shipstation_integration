@@ -4,7 +4,10 @@
 import frappe
 import pytest
 
-from shipstation_integration.sscc import generate_packing_slip_sscc, gs1_check_digit
+from shipstation_integration.shipstation_integration.overrides.sscc import (
+	generate_packing_slip_sscc,
+	gs1_check_digit,
+)
 
 
 def get_draft_packing_slip():

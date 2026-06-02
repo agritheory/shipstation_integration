@@ -19,7 +19,7 @@ from frappe.utils import flt
 from frappe.utils.file_manager import save_file
 from shipengine.errors import ShipEngineError
 
-from shipstation_integration.rates import (
+from shipstation_integration.api.rates import (
 	DIMENSION_UOM_MAP,
 	WEIGHT_UOM_MAP,
 	get_fallback_package,
@@ -743,7 +743,7 @@ def build_shipment_from_shipment_doc(
 	delivery_address_name (ship to).  Package dimensions are sourced from SDN
 	rows assigned to parcel_number.
 	"""
-	from shipstation_integration.rates import get_state_code
+	from shipstation_integration.api.rates import get_state_code
 
 	ship_from_address = frappe.get_doc("Address", doc.pickup_address_name)
 	ship_to_address = frappe.get_doc("Address", doc.delivery_address_name)
