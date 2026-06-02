@@ -57,9 +57,9 @@ def test_cartonize_packing_slip_cafe27_pies_into_triple_stack_boxes():
 	  Pie box:   30.48 × 30.48 × 10.16 cm = 0.3048 × 0.3048 × 0.1016 m³
 
 	The solver pre-splits each 10-unit row into chunks of 3 (3, 3, 3, 1) before
-	the First-Fit-Decreasing pass, then places two pies per Pie Triple Stack bin
-	(about 70% volumetric utilization). For 20 pies total that yields 10 bins with
-	qty 2.0 each and nothing skipped.
+	the First-Fit-Decreasing pass, then packs three pies per Pie Triple Stack bin.
+	For 20 pies total that yields 7 bins (six with qty 3, one with qty 2) and
+	nothing skipped.
 	"""
 	so_name = get_so_with_items(
 		customers[2], "Ambrosia Pie Company", ["Gooseberry Pie", "Kaduka Key Lime Pie"]
@@ -112,13 +112,14 @@ def test_cartonize_packing_slip_cafe27_pies_into_triple_stack_boxes():
 		total_qty = sum(item.get("qty", 0) for b in bins for item in (b.get("items") or []))
 		assert total_qty == pytest.approx(20.0), f"Expected qty_line total 20.0, got {total_qty}"
 
-		assert len(bins) == 10, f"Expected 10 bins (2 pies each), got {len(bins)}"
+		assert len(bins) == 7, f"Expected 7 bins (6 × 3 + 1 × 2), got {len(bins)}"
+
+		bin_qtys = sorted(sum(item.get("qty", 0) for item in (b.get("items") or [])) for b in bins)
+		assert bin_qtys.count(3) == 6, f"Expected six bins with 3 pies, got qtys {bin_qtys}"
+		assert bin_qtys.count(2) == 1, f"Expected one bin with 2 pies, got qtys {bin_qtys}"
 
 		for b in bins:
 			bin_qty = sum(item.get("qty", 0) for item in (b.get("items") or []))
-			assert bin_qty == pytest.approx(
-				2.0
-			), f"Bin {b.get('bin_number')} holds {bin_qty} pies (expected 2)"
 			assert bin_qty <= 3 + 1e-9, f"Bin {b.get('bin_number')} holds {bin_qty} pies (max 3)"
 
 	finally:
@@ -130,8 +131,8 @@ def test_apply_cartonization_to_packing_slip_splits_rows_into_bins():
 	"""
 	Multi-bin packing replaces each source Packing Slip Item with one row per
 	physical parcel where needed (qty, parcel_number, parcel_template). For two
-	10-unit pie lines and Pie Triple Stack, the solver yields 10 parcels with
-	2 pies each (5 parcels per item).
+	10-unit pie lines and Pie Triple Stack, the solver yields 7 parcels (mostly
+	3 pies each) and 8 item rows (four per pie line: 3 + 3 + 3 + 1).
 	"""
 	so_name = get_so_with_items(
 		customers[2], "Ambrosia Pie Company", ["Gooseberry Pie", "Kaduka Key Lime Pie"]
@@ -150,21 +151,19 @@ def test_apply_cartonization_to_packing_slip_splits_rows_into_bins():
 		apply_cartonization_to_packing_slip(ps.name)
 		ps.reload()
 
-		assert len(ps.items) == 10, f"Expected 10 rows (5 per item) after cartonize, got {len(ps.items)}"
+		assert len(ps.items) == 8, f"Expected 8 rows (4 per item) after cartonize, got {len(ps.items)}"
 
 		parcel_numbers = sorted({row.parcel_number for row in ps.items})
-		assert parcel_numbers == list(
-			range(1, 11)
-		), f"Expected parcel numbers 1-10, got {parcel_numbers}"
+		assert parcel_numbers == list(range(1, 8)), f"Expected parcel numbers 1-7, got {parcel_numbers}"
 
 		for row in ps.items:
 			assert row.parcel_template == "Pie Triple Stack", (
 				f"{row.item_code} parcel {row.parcel_number}: "
 				f"expected Pie Triple Stack, got {row.parcel_template}"
 			)
-			assert row.qty == pytest.approx(
-				2.0
-			), f"{row.item_code} parcel {row.parcel_number}: expected qty 2, got {row.qty}"
+			assert row.qty in (1, 3), (
+				f"{row.item_code} parcel {row.parcel_number}: " f"expected qty 1 or 3, got {row.qty}"
+			)
 
 		qty_by_item: dict[str, float] = {}
 		for row in ps.items:
@@ -176,8 +175,14 @@ def test_apply_cartonization_to_packing_slip_splits_rows_into_bins():
 		parcels_by_item: dict[str, set[int]] = {}
 		for row in ps.items:
 			parcels_by_item.setdefault(row.item_code, set()).add(row.parcel_number)
-		assert len(parcels_by_item["Gooseberry Pie"]) == 5
-		assert len(parcels_by_item["Kaduka Key Lime Pie"]) == 5
+		assert len(parcels_by_item["Gooseberry Pie"]) == 4
+		assert len(parcels_by_item["Kaduka Key Lime Pie"]) == 4
+
+		qtys_by_item: dict[str, list[float]] = {}
+		for row in ps.items:
+			qtys_by_item.setdefault(row.item_code, []).append(row.qty)
+		for item_code, qtys in qtys_by_item.items():
+			assert sorted(qtys) == [1, 3, 3, 3], f"{item_code}: expected [1, 3, 3, 3], got {sorted(qtys)}"
 
 	finally:
 		frappe.delete_doc("Packing Slip", ps.name, force=True)
