@@ -3,20 +3,6 @@
 
 from . import __version__ as app_version
 
-# Each path is a callable () -> dict[tuple[str, str], str]. Results are merged in install order; later keys win.
-# Custom apps: append dotted paths to `seventeen_track_status_description_providers`, or use legacy
-# `extend_seventeen_track_status_descriptions` (merged after the providers list).
-seventeen_track_status_description_providers = [
-	"shipstation_integration.shipstation_integration.doctype.seventeen_track.status_description_defaults.base_status_description_map",
-]
-
-# Geocoding hook: called when a tracking event has an address but no coordinates
-# and "Enable Geocoding" is checked on the Seventeen Track settings doc.
-# Default: Nominatim (OpenStreetMap). Suitable for dev and low-volume production.
-seventeen_track_geocode_address = [
-	"shipstation_integration.geocoding.nominatim_geocode",
-]
-
 app_name = "shipstation_integration"
 app_title = "Shipstation Integration"
 app_publisher = "AgriTheory"
@@ -191,3 +177,17 @@ ltl_providers = {
 	"traffictech.com": "shipstation_integration.shipstation_integration.freight_providers.traffictech_ltl.TrafficTechLTL",
 	"odfl.com": "shipstation_integration.shipstation_integration.freight_providers.odfl_ltl.OdflLTL",
 }
+
+# Each path is a callable () -> dict[tuple[str, str], str]. Results are merged in install order; later keys win.
+# Custom apps: append dotted paths to `seventeen_track_status_description_providers`, or use legacy
+# `extend_seventeen_track_status_descriptions` (merged after the providers list).
+seventeen_track_status_description_providers = [
+	"shipstation_integration.shipstation_integration.doctype.seventeen_track.status_description_defaults.base_status_description_map",
+]
+
+# Geocoding hook: called when a tracking event has an address but no coordinates
+# and "Enable Geocoding" is checked on the Seventeen Track settings doc.
+# Default: Nominatim (OpenStreetMap). Suitable for dev and low-volume production.
+seventeen_track_geocode_address = [
+	"shipstation_integration.geocoding.nominatim_geocode",
+]

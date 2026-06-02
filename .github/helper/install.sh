@@ -85,6 +85,7 @@ get_app_with_fallback() {
 get_app_with_fallback "erpnext" "https://github.com/frappe/erpnext" "${BRANCH_NAME}" "version-15"
 get_app_with_fallback "hrms" "https://github.com/frappe/hrms" "${BRANCH_NAME}" "version-15"
 get_app_with_fallback "beam" "https://github.com/agritheory/beam" "${BRANCH_NAME}" "version-15"
+get_app_with_fallback "inventory_tools" "https://github.com/agritheory/inventory_tools" "${BRANCH_NAME}" "version-15"
 
 # Get the local app
 bench get-app shipstation_integration "${GITHUB_WORKSPACE}" --skip-assets
