@@ -84,8 +84,8 @@ get_app_with_fallback() {
 # Get apps with fallback branches
 get_app_with_fallback "erpnext" "https://github.com/frappe/erpnext" "${BRANCH_NAME}" "version-15"
 get_app_with_fallback "hrms" "https://github.com/frappe/hrms" "${BRANCH_NAME}" "version-15"
-get_app_with_fallback "payments" "https://github.com/frappe/payments" "${BRANCH_NAME}"
-get_app_with_fallback "webshop" "https://github.com/frappe/webshop" "${BRANCH_NAME}"
+get_app_with_fallback "payments" "https://github.com/frappe/payments" "${BRANCH_NAME}" "version-15"
+get_app_with_fallback "webshop" "https://github.com/frappe/webshop" "${BRANCH_NAME}" "version-15"
 get_app_with_fallback "beam" "https://github.com/agritheory/beam" "${BRANCH_NAME}" "version-15"
 get_app_with_fallback "inventory_tools" "https://github.com/agritheory/inventory_tools" "${BRANCH_NAME}" "version-15"
 
