@@ -162,8 +162,8 @@ class OdflLTL(BaseLTL):
 
 	def credentials(self, fc) -> tuple[str, str]:
 		"""Return (username, password) from FCS client_id / client_secret."""
-		username = fc.client_id or ""
-		password = fc.get_password("client_secret") if hasattr(fc, "get_password") else ""
+		username = fc.get_password("client_id", raise_exception=False) or ""
+		password = fc.get_password("client_secret", raise_exception=False) or ""
 		if not username or not password:
 			frappe.throw(
 				_(
