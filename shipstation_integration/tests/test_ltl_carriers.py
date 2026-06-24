@@ -617,6 +617,33 @@ def test_wwex_shop_flow_diagnostic_messages():
 
 
 @pytest.mark.order(59)
+def test_odfl_build_ebol_payload_nmfta_shape():
+	settings_name = get_odfl_settings_name()
+	assert settings_name, "Missing ODFL Freight Carrier Settings"
+
+	frappe.db.set_value("Freight Carrier Settings", settings_name, "account_number", "123456789")
+	shipment = get_draft_ltl_shipment_for_tests()
+	fc = frappe.get_doc("Freight Carrier Settings", settings_name)
+	payload = OdflLTL().build_ebol_payload(shipment, fc, reference_number="REF-ODFL-001")
+
+	assert payload["version"] == "2.1.0"
+	assert payload["bol"]["function"] == "Create"
+	assert payload["bol"]["requestorRole"] == "Shipper"
+	assert payload["payment"]["terms"] == "Prepaid"
+	assert payload["commodities"]["lineItemLayout"] == "Nested"
+	assert "origin" in payload
+	assert "destination" in payload
+	assert "shipper" not in payload
+	assert "consignee" not in payload
+	assert payload["referenceNumbers"]["quoteId"] == "REF-ODFL-001"
+	hu = payload["commodities"]["handlingUnits"][0]
+	assert hu["type"] == "PAT"
+	assert hu["weightUnit"] == "Pounds"
+	assert hu["lineItems"][0]["pieces"] >= 1
+	assert hu["lineItems"][0]["packagingType"] == "PAT"
+
+
+@pytest.mark.order(59)
 def test_odfl_package_weight_to_pounds():
 	assert OdflLTL.package_weight_to_pounds({"value": 400, "unit": "kilograms"}) == 882
 	assert OdflLTL.package_weight_to_pounds({"value": 125, "unit": "pounds"}) == 125

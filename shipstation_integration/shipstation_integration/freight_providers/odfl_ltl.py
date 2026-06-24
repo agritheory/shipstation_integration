@@ -327,11 +327,61 @@ class OdflLTL(BaseLTL):
 				)
 				if invalid_creds:
 					message = f"{message}\n\n{self.token_auth_hint(fc)}"
+			if context == "eBOL create" and resp.status_code >= 500:
+				message = f"{message}\n\n" + _(
+					"The eBOL request payload is logged on this Shipment's Error Log entry "
+					"('ODFL eBOL request payload'). Verify origin/destination postal codes and "
+					"phone numbers, and that parcel dimensions are realistic."
+				)
 			frappe.throw(message, title=_("ODFL LTL Error"))
 
 	@staticmethod
 	def iso3_country(two_letter: str) -> str:
 		return ISO2_TO_ISO3.get((two_letter or "").upper(), "USA")
+
+	@staticmethod
+	def odfl_payment_terms(doc) -> str:
+		billing = (doc.get("billing_type") or "Shipper").strip()
+		if billing == "Consignee":
+			return "Collect"
+		return "Prepaid"
+
+	@staticmethod
+	def odfl_requestor_role(doc) -> str:
+		billing = (doc.get("billing_type") or "Shipper").strip()
+		return {
+			"Shipper": "Shipper",
+			"Consignee": "Consignee",
+			"Third Party": "Third Party",
+		}.get(billing, "Shipper")
+
+	@staticmethod
+	def validate_odfl_ebol_address(block: dict, label: str) -> None:
+		postal = (block.get("postalCode") or "").strip()
+		if not postal:
+			frappe.throw(
+				_("ODFL eBOL requires a postal code on the {0} address.").format(label),
+				title=_("ODFL LTL Error"),
+			)
+		phone = ((block.get("contact") or {}).get("phone") or "").strip()
+		if len(re.sub(r"\D", "", phone)) < 10:
+			frappe.throw(
+				_("ODFL eBOL requires a 10-digit phone number on the {0} address.").format(label),
+				title=_("ODFL LTL Error"),
+			)
+
+	@staticmethod
+	def parse_ebol_create_response(payload: dict) -> tuple[str, str, dict]:
+		refs = payload.get("referenceNumbers") or {}
+		pro_number = str(
+			payload.get("proNumber") or refs.get("pro") or refs.get("proNumber") or ""
+		).strip()
+		bol_number = str(payload.get("bolNumber") or "").strip()
+		if not bol_number and isinstance(refs.get("bol"), list) and refs["bol"]:
+			bol_number = str(refs["bol"][0]).strip()
+		if not bol_number:
+			bol_number = pro_number
+		return pro_number, bol_number, payload.get("images") or {}
 
 	@staticmethod
 	def odfl_address(info: dict, account: str = "") -> dict:
@@ -628,71 +678,83 @@ class OdflLTL(BaseLTL):
 		return [self.normalize_odfl_rate(doc, rate)]
 
 	def build_ebol_payload(self, doc: Shipment, fc, reference_number: str = "") -> dict:
-		"""Build the REST eBOL creation payload."""
+		"""Build the ODFL NMFTA v2.1 eBOL JSON for bol-external-per-standards."""
 		ltl = ShipstationLTL()
 		origin_info = ltl.get_address_and_contact_info(doc, ship_from=True)
 		dest_info = ltl.get_address_and_contact_info(doc, ship_from=False)
 		packages = ltl.build_packages_from_sdn(doc)
 
-		billing_type = doc.get("billing_type") or "Shipper"
-		payment_map = {"Shipper": "PPD", "Consignee": "CC", "Third Party": "TP"}
-		account = fc.account_number or ""
+		account = self.odfl_customer_account(fc.account_number or "")
+		origin = self.odfl_address(origin_info, account=account)
+		destination = self.odfl_address(dest_info)
+		self.validate_odfl_ebol_address(origin, _("origin"))
+		self.validate_odfl_ebol_address(destination, _("destination"))
 
+		payment_terms = self.odfl_payment_terms(doc)
 		accessorial_codes = [code for field, code in ODFL_ACCESSORIAL_CODES.items() if doc.get(field)]
 
-		line_items = []
+		handling_units = []
 		for pkg in packages:
 			dims = pkg.get("dimensions") or {}
-			item = {
-				"weight": self.package_weight_to_pounds(pkg["weight"]),
-				"weightUnit": "LBS",
+			weight_lb = self.package_weight_to_pounds(pkg["weight"])
+			line_item: dict[str, Any] = {
+				"weight": weight_lb,
 				"classification": str(pkg.get("freight_class", "50")),
-				"description": pkg.get("description") or "",
-				"count": int(pkg.get("quantity", 1)),
-				"length": self.package_dimension_to_inches(dims.get("length"), dims.get("unit")),
-				"width": self.package_dimension_to_inches(dims.get("width"), dims.get("unit")),
-				"height": self.package_dimension_to_inches(dims.get("height"), dims.get("unit")),
-				"dimensionsUnit": "IN",
-				"stackable": False,
+				"description": (pkg.get("description") or doc.get("description_of_content") or "Freight")[:50],
 				"hazardous": bool(doc.get("hazardous_material")),
+				"pieces": max(int(pkg.get("quantity", 1)), 1),
+				"packagingType": "PAT",
 			}
 			if pkg.get("nmfc_code"):
-				item["nmfc"] = pkg["nmfc_code"]
-			line_items.append(item)
+				nmfc_parts = str(pkg["nmfc_code"]).split("-", 1)
+				line_item["nmfc"] = nmfc_parts[0]
+				if len(nmfc_parts) > 1:
+					line_item["nmfcSub"] = nmfc_parts[1]
 
-		shipper = self.odfl_address(origin_info, account=account)
-		consignee = self.odfl_address(dest_info)
+			handling_units.append(
+				{
+					"count": max(int(pkg.get("quantity", 1)), 1),
+					"type": "PAT",
+					"weight": weight_lb,
+					"weightUnit": "Pounds",
+					"length": self.package_dimension_to_inches(dims.get("length"), dims.get("unit")),
+					"width": self.package_dimension_to_inches(dims.get("width"), dims.get("unit")),
+					"height": self.package_dimension_to_inches(dims.get("height"), dims.get("unit")),
+					"dimensionsUnit": "inches",
+					"stackable": False,
+					"lineItems": [line_item],
+				}
+			)
+
+		bol: dict[str, Any] = {
+			"function": "Create",
+			"requestedPickupDate": str(doc.get("pickup_date") or ""),
+			"requestorRole": self.odfl_requestor_role(doc),
+			"specialInstructions": doc.get("description_of_content") or "",
+			"isTest": self.is_qa_environment(fc),
+		}
 
 		payload: dict[str, Any] = {
-			"shipper": shipper,
-			"consignee": consignee,
-			"payment": {
-				"terms": payment_map.get(billing_type, "PPD"),
-				"account": account,
-			},
+			"version": "2.1.0",
+			"bol": bol,
+			"origin": origin,
+			"destination": destination,
+			"payment": {"terms": payment_terms},
 			"commodities": {
-				"handlingUnits": [
-					{
-						"type": "PLT",
-						"count": sum(p.get("quantity", 1) for p in packages),
-						"lineItems": line_items,
-					}
-				]
+				"lineItemLayout": "Nested",
+				"handlingUnits": handling_units,
 			},
-			"pickupDate": str(doc.get("pickup_date") or ""),
-			"specialInstructions": doc.get("description_of_content") or "",
 			"referenceNumbers": {
 				"shipperRefNumber": doc.name,
 			},
 			"images": {
 				"includeBol": True,
-				"includeShippingLabels": True,
+				"includeShippingLabels": False,
 			},
 		}
-		if billing_type in ("Shipper", "Third Party"):
+		if payment_terms == "Prepaid":
 			payload["billTo"] = self.odfl_address(origin_info, account=account)
-		if self.is_qa_environment(fc):
-			payload["isTest"] = True
+			self.validate_odfl_ebol_address(payload["billTo"], _("bill-to"))
 		if reference_number:
 			payload["referenceNumbers"]["quoteId"] = reference_number
 		if accessorial_codes:
@@ -730,11 +792,15 @@ class OdflLTL(BaseLTL):
 				headers=self.rest_headers(fc),
 				timeout=60,
 			)
-		self.raise_for_odfl_rest(bol_resp, "eBOL create")
-		bol_data = bol_resp.json()
-
-		pro_number = bol_data.get("proNumber") or bol_data.get("PRO") or ""
-		bol_number = bol_data.get("bolNumber") or pro_number
+		if bol_resp.is_error:
+			frappe.log_error(
+				title="ODFL eBOL request payload",
+				message=frappe.as_json(bol_payload, indent=2),
+				reference_doctype="Shipment",
+				reference_name=doc.name,
+			)
+		self.raise_for_odfl_rest(bol_resp, "eBOL create", fc=fc)
+		pro_number, bol_number, images = self.parse_ebol_create_response(bol_resp.json())
 
 		dt, dn = doc.doctype, doc.name
 		persist_shipment_ltl_fields(
@@ -750,8 +816,7 @@ class OdflLTL(BaseLTL):
 
 		docs_saved = False
 		try:
-			images = bol_data.get("images") or {}
-			bol_b64 = images.get("bol") or bol_data.get("bolDocument") or ""
+			bol_b64 = images.get("bol") or ""
 			if bol_b64:
 				now_dt = now().split(".")[0]
 				save_file(
