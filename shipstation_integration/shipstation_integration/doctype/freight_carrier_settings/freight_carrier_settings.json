@@ -10,8 +10,6 @@
    "company",
    "supplier",
    "disabled",
-   "section_break_presets",
-   "provider_preset_buttons",
    "column_break_1",
    "base_url",
    "ltl_carrier_scac",
@@ -53,18 +51,6 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Disabled"
-  },
-  {
-   "collapsible": 1,
-   "fieldname": "section_break_presets",
-   "fieldtype": "Section Break",
-   "label": "Provider Template"
-  },
-  {
-   "fieldname": "provider_preset_buttons",
-   "fieldtype": "HTML",
-   "label": "Apply Template",
-   "options": "<div class=\"freight-carrier-preset-buttons\"></div>"
   },
   {
    "fieldname": "column_break_1",

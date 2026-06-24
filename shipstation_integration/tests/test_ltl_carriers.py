@@ -226,17 +226,23 @@ def get_banyan_settings_name():
 # --- ODFL ---
 SOAP_RATE_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-    xmlns:rate="http://www.odfl.com/ws/router/types/v4">
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
   <soapenv:Body>
-    <rate:rateResponse>
-      <rate:referenceNumber>REF-ODFL-001</rate:referenceNumber>
-      <rate:netFreightCharge>480.00</rate:netFreightCharge>
-      <rate:grossFreightCharge>600.00</rate:grossFreightCharge>
-      <rate:fuelSurchargeCharge>72.00</rate:fuelSurchargeCharge>
-      <rate:totalCharge>552.00</rate:totalCharge>
-      <rate:transitDays>2</rate:transitDays>
-    </rate:rateResponse>
+    <ns2:getLTLRateEstimateResponse xmlns:ns2="http://myRate.ws.odfl.com/">
+      <return>
+        <referenceNumber>REF-ODFL-001</referenceNumber>
+        <success>true</success>
+        <rateEstimate>
+          <netFreightCharge>480.00</netFreightCharge>
+          <grossFreightCharge>600.00</grossFreightCharge>
+          <fuelSurcharge>72.00</fuelSurcharge>
+        </rateEstimate>
+        <destinationCities>
+          <name>Los Angeles</name>
+          <serviceDays>2</serviceDays>
+        </destinationCities>
+      </return>
+    </ns2:getLTLRateEstimateResponse>
   </soapenv:Body>
 </soapenv:Envelope>"""
 

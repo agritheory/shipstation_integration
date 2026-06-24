@@ -14,44 +14,11 @@ function loadLtlProviderPresets() {
 	return ltlProviderPresetsPromise
 }
 
-function renderProviderPresetButtons(frm, presets) {
-	const $host = frm.fields_dict.provider_preset_buttons?.$wrapper
-	if (!$host) {
-		return
-	}
-
-	const keys = Object.keys(presets || {})
-	if (!keys.length) {
-		$host.html('')
-		return
-	}
-
-	const buttons = keys
-		.map(key => {
-			const preset = presets[key]
-			const label = frappe.utils.escape_html(preset.label || key)
-			return `<button type="button" class="btn btn-default btn-sm" data-preset-key="${frappe.utils.escape_html(
-				key
-			)}">${label}</button>`
-		})
-		.join('')
-
-	$host.html(`
-		<div class="freight-carrier-preset-toolbar" style="margin-bottom: 6px;">
-			<div class="btn-group" role="group" aria-label="${__('LTL provider templates')}">
-				${buttons}
-			</div>
-		</div>
-		<p class="help-box small text-muted" style="margin-top: 0;">
-			${__(
-				'Fills Base URL and provider-specific auth fields. Enter API keys, client credentials, and account number after applying a template.'
-			)}
-		</p>
-	`)
-
-	$host.find('button[data-preset-key]').on('click', event => {
-		const key = event.currentTarget.getAttribute('data-preset-key')
-		applyProviderPreset(frm, presets, key)
+function addProviderPresetButtons(frm, presets) {
+	const group = __('Provider Template')
+	Object.keys(presets || {}).forEach(key => {
+		const preset = presets[key]
+		frm.add_custom_button(preset.label || key, () => applyProviderPreset(frm, presets, key), group)
 	})
 }
 
@@ -83,6 +50,6 @@ function applyProviderPreset(frm, presets, presetKey) {
 
 frappe.ui.form.on('Freight Carrier Settings', {
 	refresh(frm) {
-		loadLtlProviderPresets().then(presets => renderProviderPresetButtons(frm, presets))
+		loadLtlProviderPresets().then(presets => addProviderPresetButtons(frm, presets))
 	},
 })

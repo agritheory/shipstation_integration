@@ -42,6 +42,7 @@ ODFL base URLs:
 from __future__ import annotations
 
 import base64
+import re
 import time
 import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING, Any
@@ -99,49 +100,44 @@ ODFL_ACCESSORIAL_CODES: dict[str, str] = {
 	"tradeshow_pickup": "EXO",
 }
 
-# SOAP rate service envelope template
+# SOAP rate service envelope (wsRate_v6 WSDL: getLTLRateEstimate)
 RATE_SOAP_ENVELOPE = """\
 <?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope
-    xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-    xmlns:rate="http://www.odfl.com/ws/router/types/v4">
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="http://myRate.ws.odfl.com/">
   <soapenv:Header/>
   <soapenv:Body>
-    <rate:rateRequest>
-      <rate:odfl4MeUser>{username}</rate:odfl4MeUser>
-      <rate:odfl4MePassword>{password}</rate:odfl4MePassword>
-      <rate:requestAction>RateEstimate</rate:requestAction>
-      <rate:pickupDate>{pickup_date}</rate:pickupDate>
-      <rate:tariffHeaderKeyString/>
-      <rate:originCity>{origin_city}</rate:originCity>
-      <rate:originState>{origin_state}</rate:originState>
-      <rate:originZip>{origin_zip}</rate:originZip>
-      <rate:originCountry>{origin_country}</rate:originCountry>
-      <rate:destinationCity>{dest_city}</rate:destinationCity>
-      <rate:destinationState>{dest_state}</rate:destinationState>
-      <rate:destinationZip>{dest_zip}</rate:destinationZip>
-      <rate:destinationCountry>{dest_country}</rate:destinationCountry>
-      <rate:requestReferenceNumber>true</rate:requestReferenceNumber>
-      <rate:billToAccountNbr>{bill_to_account}</rate:billToAccountNbr>
-      <rate:paymentTerms>{payment_terms}</rate:paymentTerms>
-      {commodity_xml}
-      {accessorial_xml}
-    </rate:rateRequest>
+    <tns:getLTLRateEstimate>
+      <arg0>
+        <odfl4MeUser>{username}</odfl4MeUser>
+        <odfl4MePassword>{password}</odfl4MePassword>
+        <odflCustomerAccount>{bill_to_account}</odflCustomerAccount>
+        <originPostalCode>{origin_zip}</originPostalCode>
+        <originCity>{origin_city}</originCity>
+        <originState>{origin_state}</originState>
+        <originCountry>{origin_country}</originCountry>
+        <destinationPostalCode>{dest_zip}</destinationPostalCode>
+        <destinationCity>{dest_city}</destinationCity>
+        <destinationState>{dest_state}</destinationState>
+        <destinationCountry>{dest_country}</destinationCountry>
+        <pickupDateTime>{pickup_datetime}</pickupDateTime>
+        <requestReferenceNumber>true</requestReferenceNumber>
+        {freight_items_xml}
+        {accessorial_xml}
+      </arg0>
+    </tns:getLTLRateEstimate>
   </soapenv:Body>
 </soapenv:Envelope>
 """
 
-COMMODITY_TEMPLATE = """\
-      <rate:commodityInfo>
-        <rate:freightClass>{freight_class}</rate:freightClass>
-        <rate:weight>{weight}</rate:weight>
-        <rate:pieces>{pieces}</rate:pieces>
-      </rate:commodityInfo>"""
+FREIGHT_ITEM_TEMPLATE = """\
+        <freightItems>
+          <ratedClass>{freight_class}</ratedClass>
+          <weight>{weight}</weight>
+          <numberOfUnits>{pieces}</numberOfUnits>
+        </freightItems>"""
 
 ACCESSORIAL_TEMPLATE = """\
-      <rate:accessorialList>
-        <rate:accessorialCode>{code}</rate:accessorialCode>
-      </rate:accessorialList>"""
+        <accessorials>{code}</accessorials>"""
 
 
 class OdflLTL(BaseLTL):
@@ -304,8 +300,38 @@ class OdflLTL(BaseLTL):
 			block["account"] = account
 		return block
 
+	@staticmethod
+	def xml_escape(text: str) -> str:
+		return (
+			(text or "")
+			.replace("&", "&amp;")
+			.replace("<", "&lt;")
+			.replace(">", "&gt;")
+			.replace('"', "&quot;")
+			.replace("'", "&apos;")
+		)
+
+	@staticmethod
+	def odfl_customer_account(account_number: str) -> str:
+		digits = re.sub(r"\D", "", account_number or "")
+		if not digits:
+			frappe.throw(
+				_("ODFL Account Number must be a numeric bill-to account code."),
+				title=_("ODFL LTL Error"),
+			)
+		return digits
+
+	@staticmethod
+	def pickup_datetime(pickup_date) -> str:
+		raw = str(pickup_date or "").strip()
+		if not raw:
+			return ""
+		if "T" in raw:
+			return raw
+		return f"{raw}T08:00:00"
+
 	def build_rate_soap(self, doc: Shipment, fc) -> str:
-		"""Build the ODFL SOAP rate request XML."""
+		"""Build the ODFL wsRate_v6 SOAP rate request XML."""
 		username, password = self.credentials(fc)
 		ltl = ShipstationLTL()
 		origin_info = ltl.get_address_and_contact_info(doc, ship_from=True)
@@ -315,9 +341,9 @@ class OdflLTL(BaseLTL):
 		d = dest_info["address"]
 
 		packages = ltl.build_packages_from_sdn(doc)
-		commodity_xml = "\n".join(
-			COMMODITY_TEMPLATE.format(
-				freight_class=str(p.get("freight_class", "50")),
+		freight_items_xml = "\n".join(
+			FREIGHT_ITEM_TEMPLATE.format(
+				freight_class=int(float(p.get("freight_class", 50))),
 				weight=int(p["weight"]["value"]),
 				pieces=int(p.get("quantity", 1)),
 			)
@@ -327,55 +353,93 @@ class OdflLTL(BaseLTL):
 		accessorial_codes = [code for field, code in ODFL_ACCESSORIAL_CODES.items() if doc.get(field)]
 		accessorial_xml = "\n".join(ACCESSORIAL_TEMPLATE.format(code=code) for code in accessorial_codes)
 
-		billing_type = doc.get("billing_type") or "Shipper"
-		payment_terms_map = {"Shipper": "PPD", "Consignee": "CC", "Third Party": "TP"}
-		payment_terms = payment_terms_map.get(billing_type, "PPD")
-
 		return RATE_SOAP_ENVELOPE.format(
-			username=username,
-			password=password,
-			pickup_date=str(doc.get("pickup_date") or ""),
-			origin_city=o["city_locality"],
-			origin_state=o["state_province"],
-			origin_zip=o["postal_code"],
+			username=self.xml_escape(username),
+			password=self.xml_escape(password),
+			pickup_datetime=self.pickup_datetime(doc.get("pickup_date")),
+			origin_city=self.xml_escape(o["city_locality"]),
+			origin_state=self.xml_escape(o["state_province"]),
+			origin_zip=self.xml_escape(o["postal_code"]),
 			origin_country=self.iso3_country(o["country_code"]),
-			dest_city=d["city_locality"],
-			dest_state=d["state_province"],
-			dest_zip=d["postal_code"],
+			dest_city=self.xml_escape(d["city_locality"]),
+			dest_state=self.xml_escape(d["state_province"]),
+			dest_zip=self.xml_escape(d["postal_code"]),
 			dest_country=self.iso3_country(d["country_code"]),
-			bill_to_account=fc.account_number or "",
-			payment_terms=payment_terms,
-			commodity_xml=commodity_xml,
+			bill_to_account=self.odfl_customer_account(fc.account_number or ""),
+			freight_items_xml=freight_items_xml,
 			accessorial_xml=accessorial_xml,
 		)
 
 	@staticmethod
 	def parse_rate_response(xml_text: str) -> dict:
-		"""Parse the SOAP rate response XML into a normalised dict."""
+		"""Parse the wsRate_v6 getLTLRateEstimate SOAP response into a normalised dict."""
 		try:
 			root = ET.fromstring(xml_text)
 		except ET.ParseError:
 			return {}
 
-		ns = {
-			"soap": "http://schemas.xmlsoap.org/soap/envelope/",
-			"rate": "http://www.odfl.com/ws/router/types/v4",
-		}
+		def local_tag(el) -> str:
+			return el.tag.split("}")[-1] if "}" in el.tag else el.tag
 
-		def find_text(el, tag):
-			node = el.find(tag, ns)
-			return node.text if node is not None else ""
+		def find_first(parent, name: str):
+			for el in parent.iter():
+				if local_tag(el) == name:
+					return el
+			return None
 
-		body = root.find(".//rate:rateResponse", ns) or root
+		def find_all(parent, name: str) -> list:
+			return [el for el in parent.iter() if local_tag(el) == name]
+
+		def text_of(parent, name: str) -> str:
+			node = find_first(parent, name)
+			return (node.text or "").strip() if node is not None else ""
+
+		return_node = find_first(root, "return") or root
+		success_text = text_of(return_node, "success").lower()
+		if success_text == "false":
+			errors = [el.text.strip() for el in find_all(return_node, "errorMessages") if el.text]
+			if errors:
+				frappe.throw(
+					_("ODFL rate API error: {0}").format("; ".join(errors)),
+					title=_("ODFL LTL Error"),
+				)
+
+		estimate = find_first(return_node, "rateEstimate") or return_node
+		net = text_of(estimate, "netFreightCharge")
+		gross = text_of(estimate, "grossFreightCharge")
+		fuel = text_of(estimate, "fuelSurcharge")
+		accessorial_total = text_of(estimate, "totalAccessorialCharge")
+		discounted = text_of(estimate, "discountedFreightCharge")
+
+		total = ""
+		for candidate in (
+			text_of(estimate, "totalCharge"),
+			discounted,
+		):
+			if candidate:
+				total = candidate
+				break
+		if not total:
+			try:
+				total = str(float(net or 0) + float(fuel or 0) + float(accessorial_total or 0))
+			except (TypeError, ValueError):
+				total = net or gross or ""
+
+		transit_days = ""
+		for city in find_all(return_node, "destinationCities"):
+			days = text_of(city, "serviceDays")
+			if days:
+				transit_days = days
+				break
 
 		return {
-			"referenceNumber": find_text(body, "rate:referenceNumber"),
-			"netFreightCharge": find_text(body, "rate:netFreightCharge"),
-			"grossFreightCharge": find_text(body, "rate:grossFreightCharge"),
-			"fuelSurcharge": find_text(body, "rate:fuelSurchargeCharge"),
-			"totalCharge": find_text(body, "rate:totalCharge"),
-			"transitDays": find_text(body, "rate:transitDays"),
-			"deliveryDate": find_text(body, "rate:deliveryDate"),
+			"referenceNumber": text_of(return_node, "referenceNumber"),
+			"netFreightCharge": net,
+			"grossFreightCharge": gross,
+			"fuelSurcharge": fuel,
+			"totalCharge": total,
+			"transitDays": transit_days,
+			"deliveryDate": text_of(estimate, "deliveryDate"),
 		}
 
 	@staticmethod
@@ -411,7 +475,7 @@ class OdflLTL(BaseLTL):
 				content=soap_xml.encode("utf-8"),
 				headers={
 					"Content-Type": "text/xml; charset=utf-8",
-					"SOAPAction": "RateEstimate",
+					"SOAPAction": "",
 				},
 				timeout=60,
 			)

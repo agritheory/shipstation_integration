@@ -23,7 +23,7 @@ class FreightCarrierSettings(Document):
 
 
 def build_ltl_provider_presets() -> dict[str, dict]:
-	"""Known LTL provider defaults for the Freight Carrier Settings form template buttons.
+	"""Known LTL provider defaults for the Freight Carrier Settings toolbar template buttons.
 
 	Secrets (LTL API Key, Client ID, Client Secret, Account Number) are never preset.
 	"""
