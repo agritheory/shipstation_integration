@@ -58,7 +58,7 @@ from shipstation_integration.base_ltl import (
 	persist_shipment_ltl_fields,
 	require_submitted_shipment_for_ltl,
 )
-from shipstation_integration.ltl import ShipstationLTL
+from shipstation_integration.ltl import LTL_SUPPORTED_DIMENSION_UOMS, ShipstationLTL
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
 )
@@ -695,8 +695,8 @@ class OdflLTL(BaseLTL):
 
 		handling_units = []
 		for pkg in packages:
-			dims = pkg.get("dimensions") or {}
-			weight_lb = self.package_weight_to_pounds(pkg["weight"])
+			length, width, height = ShipstationLTL.package_dimensions_inches(pkg)
+			weight_lb = ShipstationLTL.package_weight_pounds(pkg)
 			line_item: dict[str, Any] = {
 				"weight": weight_lb,
 				"classification": str(pkg.get("freight_class", "50")),
@@ -717,9 +717,9 @@ class OdflLTL(BaseLTL):
 					"type": "PAT",
 					"weight": weight_lb,
 					"weightUnit": "Pounds",
-					"length": self.package_dimension_to_inches(dims.get("length"), dims.get("unit")),
-					"width": self.package_dimension_to_inches(dims.get("width"), dims.get("unit")),
-					"height": self.package_dimension_to_inches(dims.get("height"), dims.get("unit")),
+					"length": length,
+					"width": width,
+					"height": height,
 					"dimensionsUnit": "inches",
 					"stackable": False,
 					"lineItems": [line_item],
@@ -1018,7 +1018,7 @@ class OdflLTL(BaseLTL):
 
 	def get_shipment_dimension_uoms(self) -> dict:
 		return {
-			"length_uom": ["Inch", "Centimeter", "Foot"],
+			"length_uom": list(LTL_SUPPORTED_DIMENSION_UOMS),
 			"weight_uom": ["Pound", "Kilogram"],
 			"density_uom": [],
 		}

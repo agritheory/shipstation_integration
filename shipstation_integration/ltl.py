@@ -28,10 +28,15 @@ from shipstation_integration.base_ltl import (
 )
 from shipstation_integration.api.carriers import get_or_create_transporter
 from shipstation_integration.api.rates import DIMENSION_UOM_MAP, WEIGHT_UOM_MAP
+from shipstation_integration.parcel_uom_conversion import (
+	normalize_weight_uom_name,
+	parcel_uom_factor,
+)
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
 )
 from shipstation_integration.utils import (
+	DIMENSION_TO_CM,
 	get_error_message,
 	get_shipment_company_for_ltl,
 	get_shipstation_settings_optional,
@@ -48,6 +53,136 @@ CANONICAL_TO_LB: dict[str, float] = {
 	"gram": 0.00220462,
 }
 CANONICAL_TO_CUFT: dict[str, float] = {"inch": 1.0 / 1728.0, "centimeter": 1.0 / 28316.85}
+
+# Typical LTL carrier limits (inches). Used to catch UOM mistakes before rating/booking.
+LTL_MAX_DIMENSION_INCHES = {"length": 636, "width": 102, "height": 110}
+
+# ERPNext dimension UOMs allowed on Shipment Delivery Note rows for LTL.
+LTL_SUPPORTED_DIMENSION_UOMS = ["Inch", "Centimeter", "Millimeter", "Meter", "Foot"]
+
+# ShipEngine-style plural units → ERPNext UOM names (for package dict fallbacks).
+SHIPENGINE_DIM_UNIT_TO_ERPNEXT: dict[str, str] = {
+	"inch": "Inch",
+	"inches": "Inch",
+	"centimeter": "Centimeter",
+	"centimeters": "Centimeter",
+	"millimeter": "Millimeter",
+	"millimeters": "Millimeter",
+	"meter": "Meter",
+	"meters": "Meter",
+	"foot": "Foot",
+	"feet": "Foot",
+}
+
+
+def normalize_dimension_uom_name(unit: str | None) -> str:
+	"""Map ShipEngine-style or ERPNext dimension UOM labels to a canonical ERPNext name."""
+	raw = (unit or "Centimeter").strip()
+	return SHIPENGINE_DIM_UNIT_TO_ERPNEXT.get(raw.lower(), raw)
+
+
+def dimension_uom_to_centimeters_factor(dimension_uom: str) -> float:
+	uom = (dimension_uom or "Centimeter").strip()
+	try:
+		return parcel_uom_factor(uom, "Centimeter")
+	except Exception:
+		factor = DIMENSION_TO_CM.get(uom)
+		if factor is None:
+			frappe.throw(
+				_(
+					"Unsupported parcel dimension UOM '{0}'. Use Inch, Centimeter, Millimeter, Meter, or Foot."
+				).format(uom),
+				title=_("Invalid Dimension UOM"),
+			)
+		return factor
+
+
+def sdn_dimensions_to_inches(
+	length: float, width: float, height: float, dimension_uom: str
+) -> tuple[float, float, float]:
+	"""Convert SDN parcel dimensions to inches using the row's dimension UOM."""
+	cm_factor = dimension_uom_to_centimeters_factor(dimension_uom)
+	length_cm = flt(length) * cm_factor
+	width_cm = flt(width) * cm_factor
+	height_cm = flt(height) * cm_factor
+	inch_factor = parcel_uom_factor("Centimeter", "Inch")
+	return (
+		length_cm * inch_factor,
+		width_cm * inch_factor,
+		height_cm * inch_factor,
+	)
+
+
+def sdn_weight_to_pounds(weight: float, weight_uom: str) -> float:
+	uom = normalize_weight_uom_name((weight_uom or "Pound").strip()) or "Pound"
+	try:
+		return flt(weight) * parcel_uom_factor(uom, "Pound")
+	except Exception:
+		canonical = WEIGHT_UOM_MAP.get(uom, "pound")
+		mult = CANONICAL_TO_LB.get(canonical, 1.0)
+		return flt(weight) * mult
+
+
+def millimeter_mislabeled_as_centimeter_hint(
+	raw_length: float,
+	raw_width: float,
+	raw_height: float,
+	dimension_uom: str,
+) -> str:
+	if (dimension_uom or "").strip() != "Centimeter":
+		return ""
+	if max(flt(raw_length), flt(raw_width), flt(raw_height)) <= 500:
+		return ""
+	length_in, width_in, height_in = sdn_dimensions_to_inches(
+		raw_length, raw_width, raw_height, "Millimeter"
+	)
+	if max(length_in, width_in, height_in) <= LTL_MAX_DIMENSION_INCHES["height"]:
+		return _(
+			" Dimensions look like millimeters stored with Dimension UOM set to Centimeter "
+			"(for example 1016 mm ≈ 40 in). Set Dimension UOM to Millimeter on the Shipment "
+			"Delivery Note rows, or correct the Shipment Parcel Template to store true centimeters."
+		)
+	return ""
+
+
+def validate_ltl_parcel_dimensions_inches(
+	parcel_num: int,
+	length_in: float,
+	width_in: float,
+	height_in: float,
+	*,
+	raw_length: float,
+	raw_width: float,
+	raw_height: float,
+	dimension_uom: str,
+) -> None:
+	problems: list[str] = []
+	for label, value, max_in in (
+		("Length", length_in, LTL_MAX_DIMENSION_INCHES["length"]),
+		("Width", width_in, LTL_MAX_DIMENSION_INCHES["width"]),
+		("Height", height_in, LTL_MAX_DIMENSION_INCHES["height"]),
+	):
+		if flt(value) <= 0:
+			problems.append(_("{0} must be greater than zero.").format(label))
+		elif flt(value) > max_in:
+			problems.append(
+				_("{0} {1:.0f} in exceeds the LTL maximum of {2} in.").format(label, flt(value), max_in)
+			)
+	if not problems:
+		return
+	hint = millimeter_mislabeled_as_centimeter_hint(raw_length, raw_width, raw_height, dimension_uom)
+	frappe.throw(
+		_("Parcel {0} has invalid dimensions for LTL ({1}×{2}×{3} {4}): {5}{6}").format(
+			parcel_num,
+			raw_length,
+			raw_width,
+			raw_height,
+			dimension_uom or "Centimeter",
+			" ".join(problems),
+			hint,
+		),
+		title=_("Invalid Parcel Dimensions"),
+	)
 
 
 class ShipstationLTL(BaseLTL):
@@ -1734,6 +1869,7 @@ class ShipstationLTL(BaseLTL):
 		  - Weight is summed per SDN line from Delivery Note Items (proportionally by shipped qty),
 		    then Item master weight. When no inventory weight exists on the parcel, ``parcel_weight``
 		    from any one SDN row is used once (packing copies the parcel total onto every line).
+		  - Dimensions and weight are normalized to inches and pounds for all LTL carriers.
 		  - Density is calculated automatically from dimensions and weight.
 		  - Freight class is derived from density unless explicitly set on the Shipment.
 
@@ -1773,17 +1909,23 @@ class ShipstationLTL(BaseLTL):
 					title=_("Missing Parcel Dimensions"),
 				)
 			assert dim_row is not None
-			length = flt(dim_row.parcel_length)
-			width = flt(dim_row.parcel_width)
-			height = flt(dim_row.parcel_height)
-			dim_uom_key = dim_row.dimension_uom or "Inch"
-			len_uom = self.uom_map["length"].get(dim_uom_key)
-			if not len_uom:
-				frappe.throw(
-					_(
-						f"Unsupported dimension UOM '{dim_uom_key}' on parcel {parcel_num}. Use {comma_or(list(self.uom_map['length'].keys()))}."
-					)
-				)
+			raw_length = flt(dim_row.parcel_length)
+			raw_width = flt(dim_row.parcel_width)
+			raw_height = flt(dim_row.parcel_height)
+			dim_uom_key = dim_row.dimension_uom or "Centimeter"
+			length_in, width_in, height_in = sdn_dimensions_to_inches(
+				raw_length, raw_width, raw_height, dim_uom_key
+			)
+			validate_ltl_parcel_dimensions_inches(
+				parcel_num,
+				length_in,
+				width_in,
+				height_in,
+				raw_length=raw_length,
+				raw_width=raw_width,
+				raw_height=raw_height,
+				dimension_uom=dim_uom_key,
+			)
 
 			# Weight: sum inventory weight per SDN line. parcel_weight is stamped on every line
 			# for the same parcel (parcel total from packing), not per-line — use it once when
@@ -1804,7 +1946,9 @@ class ShipstationLTL(BaseLTL):
 						weight_uom_key = (row.parcel_weight_uom or "").strip() or "Pound"
 						break
 
-			if not total_weight:
+			total_weight_lb = sdn_weight_to_pounds(total_weight, weight_uom_key)
+
+			if total_weight_lb <= 0:
 				frappe.throw(
 					_(
 						"Parcel {0} has no weight. Ensure the Delivery Note items or Items have "
@@ -1814,23 +1958,15 @@ class ShipstationLTL(BaseLTL):
 					title=_("Missing Parcel Weight"),
 				)
 
-			weight_uom = self.uom_map["weight"].get(weight_uom_key)
-			if not weight_uom:
-				frappe.throw(
-					_(
-						f"Unsupported weight UOM '{weight_uom_key}' on parcel {parcel_num}. Use {comma_or(list(self.uom_map['weight'].keys()))}."
-					)
-				)
-
-			# Density and freight class (auto-calculated)
+			# Density and freight class (auto-calculated) — always use inches and pounds for LTL.
 			density_parcel = frappe._dict(
 				{
-					"length": length,
-					"width": width,
-					"height": height,
-					"length_uom": dim_uom_key,
-					"weight": total_weight,
-					"weight_uom": weight_uom_key,
+					"length": length_in,
+					"width": width_in,
+					"height": height_in,
+					"length_uom": "Inch",
+					"weight": total_weight_lb,
+					"weight_uom": "Pound",
 					"count": 1,
 				}
 			)
@@ -1842,8 +1978,13 @@ class ShipstationLTL(BaseLTL):
 				"freight_class": freight_class,
 				"density": {"value": round(density_lb_ft3, 4), "unit": "lb/ft3"},
 				"description": doc.get("description_of_content", ""),
-				"dimensions": {"width": width, "height": height, "length": length, "unit": len_uom},
-				"weight": {"value": total_weight, "unit": weight_uom},
+				"dimensions": {
+					"width": round(width_in, 4),
+					"height": round(height_in, 4),
+					"length": round(length_in, 4),
+					"unit": "inches",
+				},
+				"weight": {"value": round(total_weight_lb, 4), "unit": "pounds"},
 				"quantity": 1,
 				"stackable": False,
 				"hazardous_materials": bool(doc.get("hazardous_material")),
@@ -1853,6 +1994,25 @@ class ShipstationLTL(BaseLTL):
 			packages.append(pkg)
 
 		return packages
+
+	@staticmethod
+	def package_dimensions_inches(pkg: dict) -> tuple[int, int, int]:
+		"""Return package length, width, height as integer inches."""
+		dims = pkg.get("dimensions") or {}
+		unit = normalize_dimension_uom_name(dims.get("unit") or "Inch")
+		length = flt(dims.get("length"))
+		width = flt(dims.get("width"))
+		height = flt(dims.get("height"))
+		if unit == "Inch":
+			return int(round(length)), int(round(width)), int(round(height))
+		length_in, width_in, height_in = sdn_dimensions_to_inches(length, width, height, unit)
+		return int(round(length_in)), int(round(width_in)), int(round(height_in))
+
+	@staticmethod
+	def package_weight_pounds(pkg: dict) -> int:
+		"""Return package weight as integer pounds."""
+		weight = pkg.get("weight") or {}
+		return int(round(sdn_weight_to_pounds(flt(weight.get("value")), weight.get("unit") or "pounds")))
 
 	def calculate_density_lb_ft3(self, row: ShipmentParcel | dict) -> float:
 		"""

@@ -37,7 +37,7 @@ import httpx
 from frappe import _
 from frappe.utils import flt, getdate
 from shipstation_integration.base_ltl import BaseLTL, require_submitted_shipment_for_ltl
-from shipstation_integration.ltl import ShipstationLTL
+from shipstation_integration.ltl import LTL_SUPPORTED_DIMENSION_UOMS, ShipstationLTL
 from shipstation_integration.api.rates import get_state_code
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
@@ -275,15 +275,8 @@ class TrafficTechLTL(BaseLTL):
 				title=_("TrafficTech LTL"),
 			)
 		for pkg in packages:
-			wu = (pkg.get("weight") or {}).get("unit") or "pounds"
-			du = (pkg.get("dimensions") or {}).get("unit") or "inches"
-			w_fac = WEIGHT_UNIT_TO_LB.get(str(wu).lower(), 1.0)
-			d_fac = DIM_UNIT_TO_INCH.get(str(du).lower(), 1.0)
-			weight_lb = int(round(flt((pkg.get("weight") or {}).get("value")) * w_fac)) or 1
-			dims = pkg.get("dimensions") or {}
-			length = int(round(flt(dims.get("length")) * d_fac)) or 1
-			width = int(round(flt(dims.get("width")) * d_fac)) or 1
-			height = int(round(flt(dims.get("height")) * d_fac)) or 1
+			length, width, height = ShipstationLTL.package_dimensions_inches(pkg)
+			weight_lb = ShipstationLTL.package_weight_pounds(pkg) or 1
 			freight_class = pkg.get("freight_class")
 			cls = str(freight_class) if freight_class is not None else "50"
 			desc = (pkg.get("description") or doc.get("description_of_content") or "Freight")[:200]
@@ -580,7 +573,7 @@ class TrafficTechLTL(BaseLTL):
 
 	def get_shipment_dimension_uoms(self) -> dict:
 		return {
-			"length_uom": ["Inch", "Centimeter", "Foot"],
+			"length_uom": list(LTL_SUPPORTED_DIMENSION_UOMS),
 			"weight_uom": ["Pound", "Kilogram", "Ounce", "Gram"],
 			"density_uom": [],
 		}

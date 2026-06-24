@@ -56,7 +56,7 @@ from shipstation_integration.base_ltl import (
 	persist_shipment_ltl_fields,
 	require_submitted_shipment_for_ltl,
 )
-from shipstation_integration.ltl import ShipstationLTL
+from shipstation_integration.ltl import LTL_SUPPORTED_DIMENSION_UOMS, ShipstationLTL
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
 )
@@ -1074,7 +1074,7 @@ class BanyanLTL(BaseLTL):
 
 	def get_shipment_dimension_uoms(self) -> dict:
 		return {
-			"length_uom": ["Inch", "Centimeter", "Foot"],
+			"length_uom": list(LTL_SUPPORTED_DIMENSION_UOMS),
 			"weight_uom": ["Pound", "Kilogram"],
 			"density_uom": [],
 		}

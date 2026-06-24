@@ -5,7 +5,13 @@ import pytest
 import frappe
 from frappe.utils import flt
 
-from shipstation_integration.ltl import ShipstationLTL, get_ltl_provider
+from shipstation_integration.ltl import (
+	LTL_SUPPORTED_DIMENSION_UOMS,
+	ShipstationLTL,
+	get_ltl_provider,
+	millimeter_mislabeled_as_centimeter_hint,
+	sdn_dimensions_to_inches,
+)
 from shipstation_integration.shipstation_integration.freight_providers.banyan_ltl import BanyanLTL
 from shipstation_integration.shipstation_integration.freight_providers.odfl_ltl import OdflLTL
 from shipstation_integration.shipstation_integration.freight_providers.traffictech_ltl import (
@@ -339,3 +345,70 @@ def test_shipstation_schedule_ltl_pickup_via_api(monkeypatch):
 	assert any("bill_of_lading" in (a.file_name or "").lower() for a in attachments)
 	assert pickup_fixture["pickup_id"] in msg
 	assert pickup_fixture["pro_number"] in msg
+
+
+@pytest.mark.order(51)
+def test_sdn_dimensions_to_inches_centimeter():
+	length, width, height = sdn_dimensions_to_inches(101.6, 121.9, 152.4, "Centimeter")
+	assert abs(length - 40) < 0.5
+	assert abs(width - 48) < 0.5
+	assert abs(height - 60) < 0.5
+
+
+@pytest.mark.order(51)
+def test_sdn_dimensions_to_inches_millimeter():
+	length, width, height = sdn_dimensions_to_inches(1016, 1219.2, 1524, "Millimeter")
+	assert abs(length - 40) < 0.5
+	assert abs(width - 48) < 0.5
+	assert abs(height - 60) < 0.5
+
+
+@pytest.mark.order(51)
+def test_millimeter_mislabeled_as_centimeter_hint():
+	hint = millimeter_mislabeled_as_centimeter_hint(1016, 1219.2, 1524, "Centimeter")
+	assert "Millimeter" in hint
+
+
+@pytest.mark.order(51)
+def test_ltl_carriers_expose_millimeter_dimension_uom():
+	for cls in (OdflLTL, WwexLTL, BanyanLTL, TrafficTechLTL):
+		uoms = cls().get_shipment_dimension_uoms()["length_uom"]
+		assert "Millimeter" in uoms
+		assert uoms == LTL_SUPPORTED_DIMENSION_UOMS
+
+
+@pytest.mark.order(52)
+def test_build_packages_rejects_mislabeled_mm_as_centimeter():
+	shipment = get_draft_ltl_shipment_for_tests()
+	original = configure_ltl_shipment_for_parcel_tests(shipment)
+	try:
+		for row in shipment.shipment_delivery_note:
+			row.parcel_length = 1016
+			row.parcel_width = 1219.2
+			row.parcel_height = 1524
+			row.dimension_uom = "Centimeter"
+		with pytest.raises(frappe.ValidationError) as exc:
+			ShipstationLTL().build_packages_from_sdn(shipment)
+		assert "Millimeter" in str(exc.value)
+	finally:
+		restore_ltl_shipment(shipment, original)
+
+
+@pytest.mark.order(52)
+def test_build_packages_normalizes_millimeter_uom():
+	shipment = get_draft_ltl_shipment_for_tests()
+	original = configure_ltl_shipment_for_parcel_tests(shipment)
+	try:
+		for row in shipment.shipment_delivery_note:
+			row.parcel_length = 1016
+			row.parcel_width = 1219.2
+			row.parcel_height = 1524
+			row.dimension_uom = "Millimeter"
+		packages = ShipstationLTL().build_packages_from_sdn(shipment)
+		dims = packages[0]["dimensions"]
+		assert dims["unit"] == "inches"
+		assert abs(dims["length"] - 40) < 1
+		assert abs(dims["width"] - 48) < 1
+		assert abs(dims["height"] - 60) < 1
+	finally:
+		restore_ltl_shipment(shipment, original)
