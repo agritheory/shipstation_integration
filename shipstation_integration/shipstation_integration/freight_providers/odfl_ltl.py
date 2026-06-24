@@ -5,7 +5,7 @@
 
 Workflow
 --------
-1. ``get_ltl_quotes``
+1. ``fetch_ltl_offers`` / ``get_ltl_quotes``
    SOAP POST https://www.odfl.com/wsRate_v6/RateService
    Auth: inline in SOAP body (``odfl4MeUser`` / ``odfl4MePassword``).
    Saves one Shipment Quotation.
@@ -43,7 +43,8 @@ from __future__ import annotations
 
 import base64
 import time
-from typing import TYPE_CHECKING
+import xml.etree.ElementTree as ET
+from typing import TYPE_CHECKING, Any
 
 import frappe
 import httpx
@@ -66,6 +67,7 @@ if TYPE_CHECKING:
 	from erpnext.stock.doctype.shipment.shipment import Shipment
 
 TOKEN_REFRESH_BUFFER = 120  # ODFL tokens are 1 hour; refresh 2 min early
+SOAP_RATE_URL = "https://www.odfl.com/wsRate_v6/RateService"
 
 # ISO 3166-1 alpha-2 → alpha-3 mapping (ODFL-relevant subset)
 ISO2_TO_ISO3: dict[str, str] = {
@@ -188,7 +190,7 @@ class OdflLTL(BaseLTL):
 				auth=(username, password),
 				timeout=30,
 			)
-		resp.raise_for_status()
+		self.raise_for_odfl_rest(resp, "token")
 		payload = resp.json()
 		token = payload.get("access_token") or payload.get("token") or ""
 		expires_in = int(payload.get("expires_in", 3600))
@@ -212,11 +214,68 @@ class OdflLTL(BaseLTL):
 		return f"{base}/{path.lstrip('/')}"
 
 	@staticmethod
+	def is_qa_environment(fc) -> bool:
+		return "apiq.odfl.com" in (fc.base_url or "")
+
+	@staticmethod
+	def parse_soap_fault(xml_text: str) -> str | None:
+		"""Return SOAP faultstring text when the body is a fault envelope."""
+		try:
+			root = ET.fromstring(xml_text)
+		except ET.ParseError:
+			return None
+		for el in root.iter():
+			tag = el.tag.split("}")[-1] if "}" in el.tag else el.tag
+			if tag == "faultstring" and el.text:
+				return el.text.strip()
+		return None
+
+	def raise_for_odfl_soap(self, resp: httpx.Response, context: str = "") -> None:
+		"""Raise when the SOAP body contains a fault or HTTP status is an error."""
+		fault = self.parse_soap_fault(resp.text)
+		if fault:
+			label = f" ({context})" if context else ""
+			frappe.log_error(title=f"ODFL SOAP fault{label}", message=fault)
+			frappe.throw(
+				_("ODFL rate API error{0}: {1}").format(label, fault),
+				title=_("ODFL LTL Error"),
+			)
+		if resp.is_error:
+			detail = resp.text
+			label = f" ({context})" if context else ""
+			frappe.log_error(
+				title=f"ODFL SOAP HTTP {resp.status_code}{label}",
+				message=detail,
+			)
+			frappe.throw(
+				_("ODFL rate API HTTP error {0}{1}:\n{2}").format(resp.status_code, label, detail),
+				title=_("ODFL LTL Error"),
+			)
+
+	def raise_for_odfl_rest(self, resp: httpx.Response, context: str = "") -> None:
+		"""Raise with ODFL REST error body surfaced in the UI and error log."""
+		if resp.is_error:
+			try:
+				body = resp.json()
+			except Exception:
+				body = resp.text
+			detail = body if isinstance(body, str) else frappe.as_json(body, indent=2)
+			label = f" ({context})" if context else ""
+			frappe.log_error(
+				title=f"ODFL REST {resp.status_code}{label}",
+				message=detail,
+			)
+			frappe.throw(
+				_("ODFL API error {0}{1}:\n{2}").format(resp.status_code, label, detail),
+				title=_("ODFL LTL Error"),
+			)
+
+	@staticmethod
 	def iso3_country(two_letter: str) -> str:
 		return ISO2_TO_ISO3.get((two_letter or "").upper(), "USA")
 
 	@staticmethod
-	def odfl_address(info: dict) -> dict:
+	def odfl_address(info: dict, account: str = "") -> dict:
 		"""Convert ShipstationLTL.get_address_and_contact_info output → ODFL address block."""
 		addr = info["address"]
 		contact = info["contact"]
@@ -227,7 +286,7 @@ class OdflLTL(BaseLTL):
 			.replace("(", "")
 			.replace(")", "")[:10]
 		)
-		return {
+		block = {
 			"address1": addr["address_line1"] or "",
 			"address2": addr.get("address_line2") or "",
 			"city": addr["city_locality"],
@@ -241,6 +300,9 @@ class OdflLTL(BaseLTL):
 				"email": contact["email"] or "",
 			},
 		}
+		if account:
+			block["account"] = account
+		return block
 
 	def build_rate_soap(self, doc: Shipment, fc) -> str:
 		"""Build the ODFL SOAP rate request XML."""
@@ -290,8 +352,6 @@ class OdflLTL(BaseLTL):
 	@staticmethod
 	def parse_rate_response(xml_text: str) -> dict:
 		"""Parse the SOAP rate response XML into a normalised dict."""
-		import xml.etree.ElementTree as ET
-
 		try:
 			root = ET.fromstring(xml_text)
 		except ET.ParseError:
@@ -306,7 +366,6 @@ class OdflLTL(BaseLTL):
 			node = el.find(tag, ns)
 			return node.text if node is not None else ""
 
-		# Walk to the rateResponse body
 		body = root.find(".//rate:rateResponse", ns) or root
 
 		return {
@@ -319,6 +378,114 @@ class OdflLTL(BaseLTL):
 			"deliveryDate": find_text(body, "rate:deliveryDate"),
 		}
 
+	@staticmethod
+	def odfl_charges_normalized(rate: dict) -> list[dict]:
+		"""Charge rows in ShipEngine shape for save_selected_ltl_quotes / Shipment Quotation."""
+		out: list[dict] = []
+		for label, key in (
+			("Net freight", "netFreightCharge"),
+			("Gross freight", "grossFreightCharge"),
+			("Fuel surcharge", "fuelSurcharge"),
+		):
+			raw = rate.get(key)
+			try:
+				amount = float(raw or 0)
+			except (TypeError, ValueError):
+				continue
+			if amount:
+				out.append(
+					{
+						"type": label,
+						"amount": {"value": amount, "currency": "USD"},
+						"description": "",
+					}
+				)
+		return out
+
+	def fetch_odfl_rate(self, doc: Shipment, fc) -> dict:
+		"""POST SOAP rate service and return parsed rate dict."""
+		soap_xml = self.build_rate_soap(doc, fc)
+		with httpx.Client() as client:
+			resp = client.post(
+				SOAP_RATE_URL,
+				content=soap_xml.encode("utf-8"),
+				headers={
+					"Content-Type": "text/xml; charset=utf-8",
+					"SOAPAction": "RateEstimate",
+				},
+				timeout=60,
+			)
+		self.raise_for_odfl_soap(resp, "RateEstimate")
+		return self.parse_rate_response(resp.text)
+
+	def normalize_odfl_rate(self, doc: Shipment, rate: dict) -> dict:
+		"""Map parsed SOAP rate to the standard offer dict for the quote dialog."""
+		if not rate.get("totalCharge"):
+			frappe.throw(
+				_("ODFL returned no rate estimate for this shipment."),
+				title=_("No ODFL quotes"),
+			)
+
+		try:
+			grand_total = float(rate.get("totalCharge") or rate.get("netFreightCharge") or 0)
+			transit_days = float(rate.get("transitDays") or 0) or None
+		except (TypeError, ValueError):
+			grand_total = 0.0
+			transit_days = None
+
+		ref = rate.get("referenceNumber") or ""
+		return {
+			"carrier_name": doc.preferred_carrier or "Old Dominion",
+			"carrier_scac": "ODFL",
+			"offer_id": ref,
+			"transaction_id": ref,
+			"service_level": "LTL",
+			"total_price": grand_total,
+			"currency": "USD",
+			"transit_days": transit_days,
+			"estimated_delivery_date": rate.get("deliveryDate") or None,
+			"expiration_date": None,
+			"is_spot_quote": False,
+			"charges": self.odfl_charges_normalized(rate),
+		}
+
+	def save_odfl_quotation(self, doc: Shipment, rate: dict) -> float:
+		"""Insert one Shipment Quotation from a parsed SOAP rate response."""
+		offer = self.normalize_odfl_rate(doc, rate)
+		sq = frappe.new_doc("Shipment Quotation")
+		sq.shipment = doc.name
+		sq.carrier = offer["carrier_name"]
+		sq.carrier_scac = offer["carrier_scac"]
+		sq.quote_or_offer_id = offer["offer_id"]
+		sq.quote_or_offer_transaction_id = offer["transaction_id"]
+		sq.service_level = offer["service_level"]
+		sq.grand_total = offer["total_price"]
+		sq.pickup_date = doc.get("pickup_date")
+		if offer.get("transit_days") is not None:
+			sq.estimated_delivery_days = float(offer["transit_days"])
+		if offer.get("estimated_delivery_date"):
+			sq.estimated_delivery_date = offer["estimated_delivery_date"]
+		for charge in offer.get("charges") or []:
+			amount_obj = charge.get("amount") or {}
+			sq.append(
+				"charges",
+				{
+					"type": charge.get("type") or "",
+					"amount": float(amount_obj.get("value") or 0),
+					"currency": amount_obj.get("currency") or "USD",
+					"description": charge.get("description") or "",
+				},
+			)
+		sq.insert(ignore_permissions=True)
+		return float(offer["total_price"])
+
+	def fetch_ltl_offers(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
+		"""Return ODFL SOAP rate as a normalized offer dict without saving anything."""
+		require_submitted_shipment_for_ltl(doc)
+		fc = self.get_fcs(doc, settings_name)
+		rate = self.fetch_odfl_rate(doc, fc)
+		return [self.normalize_odfl_rate(doc, rate)]
+
 	def build_ebol_payload(self, doc: Shipment, fc, reference_number: str = "") -> dict:
 		"""Build the REST eBOL creation payload."""
 		ltl = ShipstationLTL()
@@ -328,6 +495,7 @@ class OdflLTL(BaseLTL):
 
 		billing_type = doc.get("billing_type") or "Shipper"
 		payment_map = {"Shipper": "PPD", "Consignee": "CC", "Third Party": "TP"}
+		account = fc.account_number or ""
 
 		accessorial_codes = [code for field, code in ODFL_ACCESSORIAL_CODES.items() if doc.get(field)]
 
@@ -350,12 +518,15 @@ class OdflLTL(BaseLTL):
 				item["nmfc"] = pkg["nmfc_code"]
 			line_items.append(item)
 
-		payload: dict = {
-			"shipper": self.odfl_address(origin_info),
-			"consignee": self.odfl_address(dest_info),
+		shipper = self.odfl_address(origin_info, account=account)
+		consignee = self.odfl_address(dest_info)
+
+		payload: dict[str, Any] = {
+			"shipper": shipper,
+			"consignee": consignee,
 			"payment": {
 				"terms": payment_map.get(billing_type, "PPD"),
-				"account": fc.account_number or "",
+				"account": account,
 			},
 			"commodities": {
 				"handlingUnits": [
@@ -371,12 +542,19 @@ class OdflLTL(BaseLTL):
 			"referenceNumbers": {
 				"shipperRefNumber": doc.name,
 			},
-			"requestImages": True,
+			"images": {
+				"includeBol": True,
+				"includeShippingLabels": True,
+			},
 		}
+		if billing_type in ("Shipper", "Third Party"):
+			payload["billTo"] = self.odfl_address(origin_info, account=account)
+		if self.is_qa_environment(fc):
+			payload["isTest"] = True
 		if reference_number:
 			payload["referenceNumbers"]["quoteId"] = reference_number
 		if accessorial_codes:
-			payload["accessorials"] = [{"code": c} for c in accessorial_codes]
+			payload["accessorials"] = {"codes": accessorial_codes}
 
 		return payload
 
@@ -384,46 +562,8 @@ class OdflLTL(BaseLTL):
 		"""Call ODFL SOAP rate service and save one Shipment Quotation."""
 		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
-		soap_xml = self.build_rate_soap(doc, fc)
-		soap_url = "https://www.odfl.com/wsRate_v6/RateService"
-
-		with httpx.Client() as client:
-			resp = client.post(
-				soap_url,
-				content=soap_xml.encode("utf-8"),
-				headers={
-					"Content-Type": "text/xml; charset=utf-8",
-					"SOAPAction": "RateEstimate",
-				},
-				timeout=60,
-			)
-		resp.raise_for_status()
-		rate = self.parse_rate_response(resp.text)
-
-		if not rate.get("totalCharge"):
-			frappe.msgprint(_("ODFL returned no rate estimate for this shipment."))
-			return None
-
-		try:
-			grand_total = float(rate.get("totalCharge") or rate.get("netFreightCharge") or 0)
-			transit_days = float(rate.get("transitDays") or 0) or None
-		except (TypeError, ValueError):
-			grand_total = 0.0
-			transit_days = None
-
-		sq = frappe.new_doc("Shipment Quotation")
-		sq.shipment = doc.name
-		sq.carrier = doc.preferred_carrier or "Old Dominion"
-		sq.carrier_scac = "ODFL"
-		sq.quote_or_offer_id = rate.get("referenceNumber") or ""
-		sq.quote_or_offer_transaction_id = rate.get("referenceNumber") or ""
-		sq.service_level = "LTL"
-		sq.grand_total = grand_total
-		sq.pickup_date = doc.get("pickup_date")
-		if transit_days:
-			sq.estimated_delivery_days = transit_days
-		sq.insert(ignore_permissions=True)
-
+		rate = self.fetch_odfl_rate(doc, fc)
+		grand_total = self.save_odfl_quotation(doc, rate)
 		return _("ODFL rate estimate saved as Shipment Quotation. Total: {0}").format(grand_total)
 
 	def schedule_ltl_pickup(self, doc: Shipment, settings_name: str | None = None) -> str | None:
@@ -440,7 +580,6 @@ class OdflLTL(BaseLTL):
 				frappe.db.get_value("Shipment Quotation", accepted_sq_name, "quote_or_offer_id") or ""
 			)
 
-		# Step 1: Create eBOL
 		bol_payload = self.build_ebol_payload(doc, fc, reference_number=reference_number)
 		with httpx.Client() as client:
 			bol_resp = client.post(
@@ -449,7 +588,7 @@ class OdflLTL(BaseLTL):
 				headers=self.rest_headers(fc),
 				timeout=60,
 			)
-		bol_resp.raise_for_status()
+		self.raise_for_odfl_rest(bol_resp, "eBOL create")
 		bol_data = bol_resp.json()
 
 		pro_number = bol_data.get("proNumber") or bol_data.get("PRO") or ""
@@ -467,7 +606,6 @@ class OdflLTL(BaseLTL):
 			},
 		)
 
-		# Attach BOL if returned inline
 		docs_saved = False
 		try:
 			images = bol_data.get("images") or {}
@@ -489,40 +627,30 @@ class OdflLTL(BaseLTL):
 				reference_name=doc.name,
 			)
 
-		# Step 2: Schedule pickup
-		pickup_confirmation = ""
-		try:
-			ltl = ShipstationLTL()
-			origin_info = ltl.get_address_and_contact_info(doc, ship_from=True)
-			pickup_payload = {
-				"pickupDate": str(doc.get("pickup_date") or ""),
-				"readyTime": "08:00",
-				"closeTime": "17:00",
-				"pickupAddress": self.odfl_address(origin_info),
-				"shipments": [{"proNumber": pro_number, "bolNumber": bol_number}],
-				"specialInstructions": doc.get("description_of_content") or "",
-			}
-			with httpx.Client() as client:
-				pickup_resp = client.post(
-					self.url(fc, "/pickup/v3.0/create"),
-					json=pickup_payload,
-					headers=self.rest_headers(fc),
-					timeout=30,
-				)
-			pickup_resp.raise_for_status()
-			pickup_data = pickup_resp.json()
-			pickup_confirmation = (
-				pickup_data.get("pickupConfirmationNumber") or pickup_data.get("confirmationNumber") or ""
+		ltl = ShipstationLTL()
+		origin_info = ltl.get_address_and_contact_info(doc, ship_from=True)
+		pickup_payload = {
+			"pickupDate": str(doc.get("pickup_date") or ""),
+			"readyTime": "08:00",
+			"closeTime": "17:00",
+			"pickupAddress": self.odfl_address(origin_info),
+			"shipments": [{"proNumber": pro_number, "bolNumber": bol_number}],
+			"specialInstructions": doc.get("description_of_content") or "",
+		}
+		with httpx.Client() as client:
+			pickup_resp = client.post(
+				self.url(fc, "/pickup/v3.0/create"),
+				json=pickup_payload,
+				headers=self.rest_headers(fc),
+				timeout=30,
 			)
-			if pickup_confirmation:
-				persist_shipment_ltl_fields(dt, dn, {"pickup_id": pickup_confirmation})
-		except Exception:
-			frappe.log_error(
-				title="ODFL: Pickup scheduling failed",
-				message=frappe.get_traceback(),
-				reference_doctype="Shipment",
-				reference_name=doc.name,
-			)
+		self.raise_for_odfl_rest(pickup_resp, "pickup create")
+		pickup_data = pickup_resp.json()
+		pickup_confirmation = (
+			pickup_data.get("pickupConfirmationNumber") or pickup_data.get("confirmationNumber") or ""
+		)
+		if pickup_confirmation:
+			persist_shipment_ltl_fields(dt, dn, {"pickup_id": pickup_confirmation})
 
 		msg = _("ODFL eBOL created. PRO: {0}").format(pro_number)
 		if pickup_confirmation:
@@ -539,7 +667,6 @@ class OdflLTL(BaseLTL):
 
 		cancelled = []
 
-		# Cancel pickup first
 		if pickup_id:
 			try:
 				with httpx.Client() as client:
@@ -548,7 +675,7 @@ class OdflLTL(BaseLTL):
 						headers=self.rest_headers(fc),
 						timeout=30,
 					)
-				resp.raise_for_status()
+				self.raise_for_odfl_rest(resp, "pickup cancel")
 				cancelled.append(f"pickup {pickup_id}")
 			except Exception:
 				frappe.log_error(
@@ -558,7 +685,6 @@ class OdflLTL(BaseLTL):
 					reference_name=doc.name,
 				)
 
-		# Delete eBOL
 		if pro_number:
 			try:
 				with httpx.Client() as client:
@@ -567,7 +693,7 @@ class OdflLTL(BaseLTL):
 						headers=self.rest_headers(fc),
 						timeout=30,
 					)
-				resp.raise_for_status()
+				self.raise_for_odfl_rest(resp, "eBOL delete")
 				cancelled.append(f"eBOL {pro_number}")
 			except Exception:
 				frappe.log_error(
@@ -593,7 +719,7 @@ class OdflLTL(BaseLTL):
 				headers=self.rest_headers(fc),
 				timeout=30,
 			)
-		resp.raise_for_status()
+		self.raise_for_odfl_rest(resp, "tracking")
 		return resp.json()
 
 	def get_documents(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
@@ -610,7 +736,7 @@ class OdflLTL(BaseLTL):
 				headers=self.rest_headers(fc),
 				timeout=30,
 			)
-		resp.raise_for_status()
+		self.raise_for_odfl_rest(resp, "documents")
 		data = resp.json()
 		raw_docs = data if isinstance(data, list) else data.get("documents") or [data]
 
@@ -636,7 +762,6 @@ class OdflLTL(BaseLTL):
 		supplier: str | None = None,
 		doc: Shipment | None = None,
 	) -> list[dict]:
-		# ODFL is a single direct carrier
 		return [
 			{
 				"name": "Old Dominion Freight Line",
@@ -703,6 +828,12 @@ class OdflLTL(BaseLTL):
 			missing.append("Pickup Date")
 		if not doc.get("shipment_delivery_note"):
 			missing.append("Shipment Delivery Note items")
+		try:
+			fc = self.get_fcs(doc, settings_name)
+			if not (fc.account_number or "").strip():
+				missing.append("Account Number (Freight Carrier Settings)")
+		except Exception:
+			pass
 		if missing:
 			return _("The following fields are required for ODFL quoting: {0}").format(", ".join(missing))
 		return None

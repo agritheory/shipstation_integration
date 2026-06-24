@@ -779,6 +779,7 @@ def create_freight_carrier_settings_for_tests(settings):
 		if carrier["name"] == "ODFL LTL":
 			fc.client_id = "test_odfl_client_id"
 			fc.set("client_secret", "test_odfl_client_secret")
+			fc.account_number = "123456789"
 		if carrier["name"] == "TrafficTech LTL":
 			fc.account_number = "33361"
 			fc.client_id = "test_traffictech_portal@example.com"

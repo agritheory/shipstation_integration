@@ -4,7 +4,7 @@ For license information, please see license.txt-->
 # Less Than Truckload (LTL)
 
 <div class="byline">
-  Heather Kusmierz and Tyler Matteson 2026-05-26
+  Heather Kusmierz and Tyler Matteson 2026-06-24
 </div>
 
 
@@ -157,6 +157,7 @@ Not all carriers support every action through the API. The interface only shows 
 - **Base URL** — ODFL API endpoint
 - **Client ID** — ODFL username (`odfl4MeUser`)
 - **Client Secret** — ODFL password (`odfl4MePassword`)
+- **Account Number** — ODFL bill-to account code (used in SOAP rate and eBOL)
 
 Country codes must be ISO 3166-1 alpha-3 (USA, CAN, MEX). The provider converts two-letter country codes from ERPNext addresses automatically.
 
