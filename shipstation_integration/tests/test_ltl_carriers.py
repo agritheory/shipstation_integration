@@ -617,6 +617,12 @@ def test_wwex_shop_flow_diagnostic_messages():
 
 
 @pytest.mark.order(59)
+def test_odfl_package_weight_to_pounds():
+	assert OdflLTL.package_weight_to_pounds({"value": 400, "unit": "kilograms"}) == 882
+	assert OdflLTL.package_weight_to_pounds({"value": 125, "unit": "pounds"}) == 125
+
+
+@pytest.mark.order(59)
 def test_odfl_fetch_ltl_offers(monkeypatch):
 	settings_name = get_odfl_settings_name()
 	assert settings_name, "Missing ODFL Freight Carrier Settings"

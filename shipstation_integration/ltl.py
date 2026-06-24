@@ -1732,7 +1732,8 @@ class ShipstationLTL(BaseLTL):
 		Groups SDN rows by parcel_number.  For each parcel:
 		  - Dimensions come from the first SDN row that has non-zero parcel dimensions.
 		  - Weight is summed per SDN line from Delivery Note Items (proportionally by shipped qty),
-		    then Item master weight, then ``parcel_weight`` only when inventory has no weight.
+		    then Item master weight. When no inventory weight exists on the parcel, ``parcel_weight``
+		    from any one SDN row is used once (packing copies the parcel total onto every line).
 		  - Density is calculated automatically from dimensions and weight.
 		  - Freight class is derived from density unless explicitly set on the Shipment.
 
@@ -1784,14 +1785,24 @@ class ShipstationLTL(BaseLTL):
 					)
 				)
 
-			# Weight: DN / Item masters first; parcel_weight only fills gaps without inventory weight.
+			# Weight: sum inventory weight per SDN line. parcel_weight is stamped on every line
+			# for the same parcel (parcel total from packing), not per-line — use it once when
+			# inventory has no weight for any line on this parcel.
 			total_weight = 0.0
 			weight_uom_key = "Pound"
 			for row in rows:
-				w, wu = self.sdn_row_effective_shipment_weight(row)
-				total_weight += flt(w)
-				if flt(w) > 0:
-					weight_uom_key = wu or weight_uom_key
+				items_w, items_uom = self.sdn_row_weight_from_items(row)
+				if items_w > 0:
+					total_weight += flt(items_w)
+					weight_uom_key = items_uom or weight_uom_key
+
+			if not total_weight:
+				for row in rows:
+					parcel_w = flt(row.parcel_weight)
+					if parcel_w > 0:
+						total_weight = parcel_w
+						weight_uom_key = (row.parcel_weight_uom or "").strip() or "Pound"
+						break
 
 			if not total_weight:
 				frappe.throw(

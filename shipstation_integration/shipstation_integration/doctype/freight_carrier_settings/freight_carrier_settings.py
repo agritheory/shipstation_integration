@@ -78,7 +78,9 @@ def build_ltl_provider_presets() -> dict[str, dict]:
 				"audience": "",
 				"use_ez_rate": 0,
 			},
-			"hint": _("Set Client ID (username), Client Secret (password), and Account Number."),
+			"hint": _(
+				"Enter odfl4Me username in Client ID, password in Client Secret, and bill-to Account Number. LTL API Key is not used."
+			),
 		},
 		"odfl_production": {
 			"label": "ODFL Production",
@@ -88,7 +90,9 @@ def build_ltl_provider_presets() -> dict[str, dict]:
 				"audience": "",
 				"use_ez_rate": 0,
 			},
-			"hint": _("Set Client ID (username), Client Secret (password), and Account Number."),
+			"hint": _(
+				"Enter odfl4Me username in Client ID, password in Client Secret, and bill-to Account Number. LTL API Key is not used."
+			),
 		},
 		"traffictech_uat": {
 			"label": "TrafficTech UAT",

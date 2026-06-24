@@ -110,19 +110,19 @@
    "label": "Credentials"
   },
   {
-   "description": "ShipEngine: Api-Key. Banyan: optional static Bearer only if the carrier issues a token; when set, overrides Client ID/Secret OAuth for Banyan. TrafficTech: request header subscription-key.",
+   "description": "ShipEngine: Api-Key header. Banyan: optional static Bearer token (overrides Client ID/Secret when set). TrafficTech: subscription-key header. Not used for ODFL or WWEX.",
    "fieldname": "ltl_api_key",
    "fieldtype": "Password",
    "label": "LTL API Key"
   },
   {
-   "description": "Banyan or WWEX: OAuth client_id (client_credentials). For WWEX set Auth / Token URL and OAuth Audience. ODFL: API username. TrafficTech: TT Interactive portal login email (JSON customerContactEmail).",
+   "description": "ODFL: odfl4Me portal username (same as myODFL.com login — not an API key). Banyan/WWEX: OAuth client_id. TrafficTech: TT Interactive portal email.",
     "fieldname": "client_id",
     "fieldtype": "Password",
     "label": "Client ID"
    },
    {
-    "description": "Banyan or WWEX: OAuth client_secret. ODFL: API password. TrafficTech: TT Interactive portal password (JSON customerContactEmailPassword).",
+    "description": "ODFL: odfl4Me portal password (not an API secret). Banyan/WWEX: OAuth client_secret. TrafficTech: TT Interactive portal password.",
     "fieldname": "client_secret",
     "fieldtype": "Password",
     "label": "Client Secret"

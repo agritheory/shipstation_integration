@@ -50,7 +50,7 @@ from typing import TYPE_CHECKING, Any
 import frappe
 import httpx
 from frappe import _
-from frappe.utils import now
+from frappe.utils import flt, now
 from frappe.utils.file_manager import save_file
 
 from shipstation_integration.base_ltl import (
@@ -69,6 +69,19 @@ if TYPE_CHECKING:
 
 TOKEN_REFRESH_BUFFER = 120  # ODFL tokens are 1 hour; refresh 2 min early
 SOAP_RATE_URL = "https://www.odfl.com/wsRate_v6/RateService"
+
+# ShipEngine-style plural units from ``build_packages_from_sdn``
+SHIPENGINE_WEIGHT_UNIT_TO_LB = {
+	"pounds": 1.0,
+	"kilograms": 2.20462,
+	"ounces": 1 / 16,
+	"grams": 0.00220462,
+}
+SHIPENGINE_LENGTH_UNIT_TO_IN = {
+	"inches": 1.0,
+	"centimeters": 1 / 2.54,
+	"feet": 12.0,
+}
 
 # ISO 3166-1 alpha-2 → alpha-3 mapping (ODFL-relevant subset)
 ISO2_TO_ISO3: dict[str, str] = {
@@ -330,6 +343,20 @@ class OdflLTL(BaseLTL):
 			return raw
 		return f"{raw}T08:00:00"
 
+	@staticmethod
+	def package_weight_to_pounds(pkg_weight: dict) -> int:
+		"""Convert a ShipEngine-style package weight block to integer pounds for ODFL."""
+		raw = flt(pkg_weight.get("value"))
+		ukey = ((pkg_weight.get("unit")) or "pounds").strip().lower()
+		mult = SHIPENGINE_WEIGHT_UNIT_TO_LB.get(ukey, 1.0)
+		return int(round(raw * mult))
+
+	@staticmethod
+	def package_dimension_to_inches(value: float, unit: str) -> int:
+		ukey = (unit or "inches").strip().lower()
+		mult = SHIPENGINE_LENGTH_UNIT_TO_IN.get(ukey, 1.0)
+		return int(round(flt(value) * mult))
+
 	def build_rate_soap(self, doc: Shipment, fc) -> str:
 		"""Build the ODFL wsRate_v6 SOAP rate request XML."""
 		username, password = self.credentials(fc)
@@ -344,7 +371,7 @@ class OdflLTL(BaseLTL):
 		freight_items_xml = "\n".join(
 			FREIGHT_ITEM_TEMPLATE.format(
 				freight_class=int(float(p.get("freight_class", 50))),
-				weight=int(p["weight"]["value"]),
+				weight=self.package_weight_to_pounds(p["weight"]),
 				pieces=int(p.get("quantity", 1)),
 			)
 			for p in packages
@@ -565,15 +592,16 @@ class OdflLTL(BaseLTL):
 
 		line_items = []
 		for pkg in packages:
+			dims = pkg.get("dimensions") or {}
 			item = {
-				"weight": int(pkg["weight"]["value"]),
+				"weight": self.package_weight_to_pounds(pkg["weight"]),
 				"weightUnit": "LBS",
 				"classification": str(pkg.get("freight_class", "50")),
 				"description": pkg.get("description") or "",
 				"count": int(pkg.get("quantity", 1)),
-				"length": int(pkg.get("dimensions", {}).get("length", 0)),
-				"width": int(pkg.get("dimensions", {}).get("width", 0)),
-				"height": int(pkg.get("dimensions", {}).get("height", 0)),
+				"length": self.package_dimension_to_inches(dims.get("length"), dims.get("unit")),
+				"width": self.package_dimension_to_inches(dims.get("width"), dims.get("unit")),
+				"height": self.package_dimension_to_inches(dims.get("height"), dims.get("unit")),
 				"dimensionsUnit": "IN",
 				"stackable": False,
 				"hazardous": bool(doc.get("hazardous_material")),
