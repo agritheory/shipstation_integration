@@ -6,10 +6,12 @@
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
-  "field_order": [
+	"field_order": [
    "company",
    "supplier",
    "disabled",
+   "section_break_presets",
+   "provider_preset_buttons",
    "column_break_1",
    "base_url",
    "ltl_carrier_scac",
@@ -51,6 +53,18 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Disabled"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_presets",
+   "fieldtype": "Section Break",
+   "label": "Provider Template"
+  },
+  {
+   "fieldname": "provider_preset_buttons",
+   "fieldtype": "HTML",
+   "label": "Apply Template",
+   "options": "<div class=\"freight-carrier-preset-buttons\"></div>"
   },
   {
    "fieldname": "column_break_1",
@@ -164,7 +178,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
-  "modified": "2026-03-29 14:52:00.000000",
+  "modified": "2026-06-24 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Shipstation Integration",
  "name": "Freight Carrier Settings",

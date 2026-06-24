@@ -582,6 +582,34 @@ def run_carrier_story(
 		raise AssertionError(f"unknown carrier {carrier}")
 
 
+@pytest.mark.order(58)
+def test_wwex_shop_flow_diagnostic_messages():
+	payload = {
+		"correlationId": "WWEX-ERP-bf2af04b-ff4b-4a84-a6a9-11982ffe8717",
+		"clientStatus": {"success": True, "message": ""},
+		"response": {
+			"message": "No Offers created.",
+			"offerList": [],
+			"requestQuoteWarning": (
+				"Please reach out to your support team and request a spot quote for additional carrier options."
+			),
+			"shopRS": {
+				"ineligible": True,
+				"ineligibleReason": (
+					"There are no carriers available to/from that combination of zip codes. "
+					"Please contact your representative."
+				),
+			},
+		},
+	}
+	messages = WwexLTL().shop_flow_diagnostic_messages(payload)
+	joined = " ".join(messages)
+	assert "WWEX-ERP-bf2af04b" in joined
+	assert "zip codes" in joined
+	assert "No Offers created" in joined
+	assert "spot quote" in joined
+
+
 @pytest.mark.order(59)
 def test_odfl_fetch_ltl_offers(monkeypatch):
 	settings_name = get_odfl_settings_name()

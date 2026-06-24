@@ -524,12 +524,39 @@ class WwexLTL(BaseLTL):
 
 		return []
 
-	def shop_flow_raise_no_offers(self, payload: dict[str, Any]) -> None:
-		"""Carrier returned HTTP 200 with no rate rows — expose WWEX diagnostics or fail loudly."""
+	def shop_flow_response_root(self, payload: dict[str, Any]) -> dict[str, Any]:
+		"""Return the inner shopFlow ``response`` object from any known envelope shape."""
+		if not isinstance(payload, dict):
+			return {}
+		inner = payload.get("response")
+		if isinstance(inner, dict):
+			nested = inner.get("response")
+			if isinstance(nested, dict):
+				return nested
+			return inner
+		return payload
 
+	def shop_flow_diagnostic_messages(self, payload: dict[str, Any]) -> list[str]:
+		"""Collect human-readable WWEX shopFlow failure reasons from a response envelope."""
 		messages: list[str] = []
 
-		def harvest_status(obj: Any, depth: int = 0) -> None:
+		correlation_id = payload.get("correlationId") if isinstance(payload, dict) else None
+		if correlation_id:
+			messages.append(_("Reference: {0}").format(correlation_id))
+
+		response = self.shop_flow_response_root(payload)
+		if response:
+			shop_rs = response.get("shopRS")
+			if isinstance(shop_rs, dict):
+				ineligible = shop_rs.get("ineligibleReason")
+				if ineligible:
+					messages.append(str(ineligible))
+			for key in ("message", "requestQuoteWarning"):
+				val = response.get(key)
+				if val:
+					messages.append(str(val))
+
+		def harvest_client_status(obj: Any, depth: int = 0) -> None:
 			if depth > 24 or isinstance(obj, (str, int, float, bool)) or obj is None:
 				return
 			if isinstance(obj, dict):
@@ -541,12 +568,18 @@ class WwexLTL(BaseLTL):
 					for k, errs in (cs.get("fieldMap") or {}).items():
 						messages.append(f"{k}: {errs}")
 				for v in obj.values():
-					harvest_status(v, depth + 1)
+					harvest_client_status(v, depth + 1)
 			elif isinstance(obj, list):
 				for item in obj:
-					harvest_status(item, depth + 1)
+					harvest_client_status(item, depth + 1)
 
-		harvest_status(payload)
+		harvest_client_status(payload)
+		return list(dict.fromkeys(m for m in messages if m))
+
+	def shop_flow_raise_no_offers(self, payload: dict[str, Any]) -> None:
+		"""Carrier returned HTTP 200 with no rate rows — expose WWEX diagnostics or fail loudly."""
+
+		messages = self.shop_flow_diagnostic_messages(payload)
 		try:
 			dump = frappe.as_json(payload, indent=2)
 		except Exception:
@@ -555,15 +588,15 @@ class WwexLTL(BaseLTL):
 			title="WWEX shopFlow returned zero offers",
 			message=(dump[:48000] if dump else "(empty)"),
 		)
-		body = "\n".join(dict.fromkeys(m for m in messages if m)).strip()
+		body = "<br>".join(messages).strip()
 		if body:
 			frappe.throw(
-				_("WWEX returned no freight offers. Carrier message:\n{0}").format(body),
+				_("WWEX returned no freight offers.<br><br>{0}").format(body),
 				title=_("No WWEX quotes"),
 			)
-		preview = self.truncate_for_ui(dump)
+		preview = frappe.utils.escape_html(self.truncate_for_ui(dump))
 		frappe.throw(
-			_("WWEX returned no freight offers. Response preview:\n\n{0}").format(preview),
+			_("WWEX returned no freight offers. Response preview:<br><br><pre>{0}</pre>").format(preview),
 			title=_("No WWEX quotes"),
 		)
 

@@ -122,8 +122,8 @@ def before_validate_shipment(doc, method=None) -> None:
 		frappe.throw(
 			_(
 				"Shipment Delivery Note row(s) {0} link to a Delivery Note but have no "
-				"<b>DN Item</b> set. Either pick **DN Item** in the grid, or set **Item** and "
-				"**Qty** so the line matches a unique Delivery Note line."
+				"<b>DN Item</b> set. Either pick <b>DN Item</b> in the grid, or set <b>Item</b> and "
+				"<b>Qty</b> so the line matches a unique Delivery Note line."
 			).format(idx_list),
 			title=_("DN Item required"),
 		)

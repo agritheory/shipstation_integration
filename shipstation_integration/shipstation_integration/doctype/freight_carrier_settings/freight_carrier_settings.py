@@ -22,6 +22,96 @@ class FreightCarrierSettings(Document):
 			)
 
 
+def build_ltl_provider_presets() -> dict[str, dict]:
+	"""Known LTL provider defaults for the Freight Carrier Settings form template buttons.
+
+	Secrets (LTL API Key, Client ID, Client Secret, Account Number) are never preset.
+	"""
+	return {
+		"shipengine": {
+			"label": "ShipEngine",
+			"fields": {
+				"base_url": "https://api.shipengine.com",
+				"auth_url": "",
+				"audience": "",
+				"use_ez_rate": 0,
+			},
+			"hint": _("Paste your ShipEngine LTL Api-Key into LTL API Key."),
+		},
+		"wwex_staging": {
+			"label": "WWEX Staging",
+			"fields": {
+				"base_url": "https://speedship.staging-wwex.com",
+				"auth_url": "https://auth.staging-wwex.com/oauth/token",
+				"audience": "staging-wwex-apig",
+				"use_ez_rate": 0,
+			},
+			"hint": _(
+				"Set Client ID, Client Secret, and WWEX account number. Do not use https://wwex.com."
+			),
+		},
+		"wwex_production": {
+			"label": "WWEX Production",
+			"fields": {
+				"base_url": "https://www.speedship.com",
+				"auth_url": "https://auth.wwex.com/oauth/token",
+				"audience": "wwex-apig",
+				"use_ez_rate": 0,
+			},
+			"hint": _("Set Client ID, Client Secret, and WWEX account number."),
+		},
+		"banyan_integration": {
+			"label": "Banyan Integration",
+			"fields": {
+				"base_url": "https://ws.integration.banyantechnology.com/api/v3",
+				"auth_url": "",
+				"audience": "",
+				"use_ez_rate": 0,
+			},
+			"hint": _("Set Client ID and Client Secret (or LTL API Key for a static Bearer token)."),
+		},
+		"odfl_qa": {
+			"label": "ODFL QA",
+			"fields": {
+				"base_url": "https://apiq.odfl.com",
+				"auth_url": "",
+				"audience": "",
+				"use_ez_rate": 0,
+			},
+			"hint": _("Set Client ID (username), Client Secret (password), and Account Number."),
+		},
+		"odfl_production": {
+			"label": "ODFL Production",
+			"fields": {
+				"base_url": "https://api.odfl.com",
+				"auth_url": "",
+				"audience": "",
+				"use_ez_rate": 0,
+			},
+			"hint": _("Set Client ID (username), Client Secret (password), and Account Number."),
+		},
+		"traffictech_uat": {
+			"label": "TrafficTech UAT",
+			"fields": {
+				"base_url": "https://apitest.traffictech.com/ltl-api-n8n/",
+				"auth_url": "",
+				"audience": "",
+				"use_ez_rate": 0,
+			},
+			"hint": _(
+				"Set LTL API Key (subscription key), Account Number (customerId), "
+				"Client ID (portal email), and Client Secret (portal password)."
+			),
+		},
+	}
+
+
+@frappe.whitelist()
+def get_ltl_provider_presets() -> dict[str, dict]:
+	"""Return provider template defaults for the Freight Carrier Settings UI."""
+	return build_ltl_provider_presets()
+
+
 def get_freight_carrier_settings(
 	company: str | None, supplier: str | None
 ) -> FreightCarrierSettings | None:
