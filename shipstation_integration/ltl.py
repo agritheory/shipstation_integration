@@ -123,26 +123,57 @@ def sdn_weight_to_pounds(weight: float, weight_uom: str) -> float:
 		return flt(weight) * mult
 
 
-def millimeter_mislabeled_as_centimeter_hint(
-	raw_length: float,
-	raw_width: float,
-	raw_height: float,
+def centimeter_values_are_millimeter_magnitudes(
+	length: float,
+	width: float,
+	height: float,
+	*,
+	tolerance: float = 0.75,
+) -> bool:
+	"""True when cm-labeled values match inch×25.4 pallet specs (e.g. 1016×1219×1524).
+
+	Shipment Parcel Template length/width/height are labeled cm, but GMA pallet
+	footprints are often entered as millimeter industry numbers (1016 mm ≈ 40 in)
+	without dividing by 10 to store true centimeters (101.6 cm).
+	"""
+	dims = [flt(length), flt(width), flt(height)]
+	if not all(d > 0 for d in dims):
+		return False
+	if max(dims) <= 300:
+		return False
+	for dim in dims:
+		inches = dim / 25.4
+		if inches < 1 or inches > LTL_MAX_DIMENSION_INCHES["length"]:
+			return False
+		nearest_inch = round(inches)
+		if abs(dim - nearest_inch * 25.4) > tolerance:
+			return False
+	return True
+
+
+def effective_sdn_dimension_uom(
+	length: float,
+	width: float,
+	height: float,
 	dimension_uom: str,
 ) -> str:
-	if (dimension_uom or "").strip() != "Centimeter":
-		return ""
-	if max(flt(raw_length), flt(raw_width), flt(raw_height)) <= 500:
-		return ""
-	length_in, width_in, height_in = sdn_dimensions_to_inches(
-		raw_length, raw_width, raw_height, "Millimeter"
-	)
-	if max(length_in, width_in, height_in) <= LTL_MAX_DIMENSION_INCHES["height"]:
-		return _(
-			" Dimensions look like millimeters stored with Dimension UOM set to Centimeter "
-			"(for example 1016 mm ≈ 40 in). Set Dimension UOM to Millimeter on the Shipment "
-			"Delivery Note rows, or correct the Shipment Parcel Template to store true centimeters."
-		)
-	return ""
+	"""UOM to use when converting SDN parcel dimensions for LTL carrier APIs."""
+	uom = normalize_dimension_uom_name(dimension_uom) or "Centimeter"
+	if uom != "Centimeter":
+		return uom
+
+	length_in, width_in, height_in = sdn_dimensions_to_inches(length, width, height, uom)
+	if (
+		length_in <= LTL_MAX_DIMENSION_INCHES["length"]
+		and width_in <= LTL_MAX_DIMENSION_INCHES["width"]
+		and height_in <= LTL_MAX_DIMENSION_INCHES["height"]
+	):
+		return uom
+
+	if centimeter_values_are_millimeter_magnitudes(length, width, height):
+		return "Millimeter"
+
+	return uom
 
 
 def validate_ltl_parcel_dimensions_inches(
@@ -170,16 +201,20 @@ def validate_ltl_parcel_dimensions_inches(
 			)
 	if not problems:
 		return
-	hint = millimeter_mislabeled_as_centimeter_hint(raw_length, raw_width, raw_height, dimension_uom)
 	frappe.throw(
-		_("Parcel {0} has invalid dimensions for LTL ({1}×{2}×{3} {4}): {5}{6}").format(
+		_(
+			"Parcel {0} dimensions ({1}×{2}×{3} {4}) convert to "
+			"{5:.0f}×{6:.0f}×{7:.0f} in, which exceeds LTL carrier limits: {8}"
+		).format(
 			parcel_num,
 			raw_length,
 			raw_width,
 			raw_height,
 			dimension_uom or "Centimeter",
+			length_in,
+			width_in,
+			height_in,
 			" ".join(problems),
-			hint,
 		),
 		title=_("Invalid Parcel Dimensions"),
 	)
@@ -1913,8 +1948,9 @@ class ShipstationLTL(BaseLTL):
 			raw_width = flt(dim_row.parcel_width)
 			raw_height = flt(dim_row.parcel_height)
 			dim_uom_key = dim_row.dimension_uom or "Centimeter"
+			effective_uom = effective_sdn_dimension_uom(raw_length, raw_width, raw_height, dim_uom_key)
 			length_in, width_in, height_in = sdn_dimensions_to_inches(
-				raw_length, raw_width, raw_height, dim_uom_key
+				raw_length, raw_width, raw_height, effective_uom
 			)
 			validate_ltl_parcel_dimensions_inches(
 				parcel_num,
