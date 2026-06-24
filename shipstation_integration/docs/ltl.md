@@ -4,11 +4,13 @@ For license information, please see license.txt-->
 # Less Than Truckload (LTL)
 
 <div class="byline">
-  Heather Kusmierz and Tyler Matteson 2026-05-04
+  Heather Kusmierz and Tyler Matteson 2026-05-26
 </div>
 
 
 Shipstation Integration app integrates less-than-truckload (LTL) functionality into ERPNext's Shipment document. Rates, booking, tracking, and document retrieval can be performed either through ShipStation's ShipEngine API or directly against a carrier's own API.
+
+For v2 API setup and automatic Freight Carrier Settings sync, see [Shipstation Settings](./shipstation_settings.md).
 
 ## Configuration
 

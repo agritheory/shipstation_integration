@@ -32,6 +32,7 @@ For license information, please see license.txt-->
   <summary>Table of Contents</summary>
   <ol>
     <li><a href="#about-the-project">About The Project</a></li>
+    <li><a href="#documentation">Documentation</a></li>
     <li><a href="#installation">Installation</a></li>
     <li><a href="#dependencies">Dependencies</a></li>
     <li><a href="#running-tests">Running tests</a></li>
@@ -83,6 +84,13 @@ ShipStation Integration connects your ERPNext instance with [ShipStation](https:
 **Webhooks**
 - v1 store-based webhooks for order and shipment events
 - v2 environment-based webhooks for batch completion and tracking updates
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- DOCUMENTATION -->
+## Documentation
+
+User-facing feature guides live in [`shipstation_integration/docs/`](shipstation_integration/docs/index.md). Start with the [documentation index](shipstation_integration/docs/index.md) for setup, order sync, labels, LTL, 17Track, and developer extension points.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

@@ -94,3 +94,12 @@ For **Parcel Dimensions** inside Packing Slip:
 
 ---
 
+## Configuration
+
+User preferences are set on the **User** document:
+
+- **Preferred Dimension UOM**
+- **Preferred Weight UOM**
+
+These fields are added by the app on install. If unset, the system defaults to centimeters and kilograms. See also [Shipstation Settings](./shipstation_settings.md) for parcel-related features such as [Cartonization](./cartonization.md).
+

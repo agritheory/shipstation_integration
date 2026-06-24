@@ -52,7 +52,7 @@ repos:
         pass_filenames: false
 
   - repo: https://github.com/agritheory/test_utils
-    rev: v1.25.1
+    rev: v1.28.0
     hooks:
       - id: update_pre_commit_config
       - id: validate_frappe_project

@@ -41,6 +41,10 @@ It enables automatic tracking, status sync, and comment logging for shipments ha
 
 ![Screenshot of the Seventeen Track doctype formview.](./assets/seventeentrack.png)
 
+### Permissions
+
+On install, the app creates a **17Track Integration** role (no Desk access). Webhook-driven updates on **Tracking Number** records run under this role so API callbacks do not require an interactive user session.
+
 ---
 
 ## Webhook Integration

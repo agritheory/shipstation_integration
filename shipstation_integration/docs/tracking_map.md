@@ -12,6 +12,8 @@ For license information, please see license.txt-->
 This feature displays a **live map on the Tracking Number form** that plots the physical journey of a shipment based on carrier events received via 17Track webhooks.
 Each event with a known location is shown as a pin on the map, with the most recent one highlighted in red.
 
+Configure 17Track webhooks and geocoding on the **Seventeen Track** settings document — see [17Track Integration](./17track.md).
+
 ---
 
 ## Where this applies
