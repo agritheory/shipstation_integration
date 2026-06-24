@@ -194,8 +194,13 @@
    "cancel": 1,
    "create": 1,
    "delete": 1,
+   "email": 0,
+   "export": 0,
+   "print": 0,
    "read": 1,
+   "report": 0,
    "role": "17Track Integration",
+   "share": 0,
    "submit": 1,
    "write": 1
   }

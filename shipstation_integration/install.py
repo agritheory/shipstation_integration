@@ -20,7 +20,6 @@ def ensure_17track_integration_role():
 	role.role_name = INTEGRATION_ROLE_17TRACK
 	role.desk_access = 0
 	role.insert(ignore_permissions=True)
-	frappe.db.commit()
 
 
 def get_user_confirmation():

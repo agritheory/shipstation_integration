@@ -1,0 +1,8 @@
+/* Keep computed parcel summary visible in child-table grid edit mode. */
+.grid-static-col[data-fieldname="parcel_details"] .static-area {
+	display: block !important;
+}
+
+.grid-static-col[data-fieldname="parcel_details"] .field-area {
+	display: none !important;
+}

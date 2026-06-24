@@ -8,6 +8,7 @@ from erpnext.stock.doctype.shipment_parcel_template.shipment_parcel_template imp
 )
 from frappe import _
 
+from shipstation_integration.parcel_uom_conversion import parcel_uom_factor
 from shipstation_integration.utils import get_shipstation_settings
 
 
@@ -64,16 +65,16 @@ class ShipstationShipmentParcelTemplate(ShipmentParcelTemplate):
 
 	def get_user_uoms(self):
 		user = frappe.get_cached_doc("User", frappe.session.user)
-		return (user.dimension_uom or "Centimeter", user.weight_uom or "Kilogram")
+		return (user.dimension_uom or "Centimeter", user.weight_uom or "Kg")
 
 	def convert_to_dimension_uom(self, value_cm):
-		dimension_uom, _ = self.get_user_uoms()
-		factor = get_conversion_factor("Centimeter", dimension_uom)
+		dimension_uom = self.get_user_uoms()[0]
+		factor = parcel_uom_factor("Centimeter", dimension_uom)
 		return value_cm * factor if value_cm else 0
 
 	def convert_to_weight_uom(self, value_kg):
-		_, weight_uom = self.get_user_uoms()
-		factor = get_conversion_factor("Kilogram", weight_uom)
+		weight_uom = self.get_user_uoms()[1]
+		factor = parcel_uom_factor("Kg", weight_uom)
 		return value_kg * factor if value_kg else 0
 
 	@property
@@ -91,25 +92,6 @@ class ShipstationShipmentParcelTemplate(ShipmentParcelTemplate):
 	@property
 	def weight_display(self):
 		return self.convert_to_weight_uom(self.weight)
-
-
-def get_conversion_factor(from_uom, to_uom):
-	if from_uom == to_uom:
-		return 1
-
-	conv = frappe.db.get_value(
-		"UOM Conversion Factor", {"to_uom": to_uom, "from_uom": from_uom}, "value"
-	)
-	if conv:
-		return conv
-
-	conv = frappe.db.get_value(
-		"UOM Conversion Factor", {"to_uom": from_uom, "from_uom": to_uom}, "value"
-	)
-	if conv:
-		return 1 / conv
-
-	frappe.throw(f"No conversion from {from_uom} to {to_uom}")
 
 
 @frappe.whitelist()

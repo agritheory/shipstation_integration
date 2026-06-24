@@ -39,6 +39,32 @@ def get_shipstation_settings(settings_name: str | None = None) -> "ShipstationSe
 	return frappe.get_doc("Shipstation Settings", settings_list[0].name)
 
 
+def get_shipstation_settings_optional(settings_name: str | None = None):
+	"""Return Shipstation Settings when v2 is enabled, or a specific named doc if it exists; otherwise None."""
+	if settings_name:
+		if not frappe.db.exists("Shipstation Settings", settings_name):
+			return None
+		return frappe.get_doc("Shipstation Settings", settings_name)
+
+	settings_list = frappe.get_all(
+		"Shipstation Settings",
+		filters={"enabled": 1, "enable_shipstation_api": 1},
+		limit=1,
+	)
+	if not settings_list:
+		return None
+	return frappe.get_doc("Shipstation Settings", settings_list[0].name)
+
+
+def get_shipment_company_for_ltl(doc) -> str | None:
+	"""Resolve ERPNext company for Freight Carrier Settings from Shipment addressing fields."""
+	if doc.get("pickup_from_type") == "Company" and doc.get("pickup_company"):
+		return doc.pickup_company
+	if doc.get("delivery_to_type") == "Company" and doc.get("delivery_company"):
+		return doc.delivery_company
+	return frappe.defaults.get_user_default("Company")
+
+
 @frappe.whitelist()
 def find_matching_parcel_template(
 	length: float,

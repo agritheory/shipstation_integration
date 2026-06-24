@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import urljoin
 
 import frappe
-import requests
+import requests  # type: ignore[import-untyped]
 from frappe import _
 from frappe.model.document import Document
 
@@ -78,6 +78,7 @@ def resolve_company_from_tracking_number(tn: Document) -> str:
 			"Cannot determine Company for this Tracking Number. Link a document that has a Company, or set a default company."
 		)
 	)
+	raise RuntimeError("unreachable")  # frappe.throw always raises; satisfies mypy exhaustiveness
 
 
 def get_seventeen_track_settings_for_company(company: str) -> "SeventeenTrack":
@@ -273,14 +274,14 @@ def verify_webhook_signature(raw_body: bytes, api_key: str, signature: str) -> b
 	return hashlib.sha256(content.encode("utf-8")).hexdigest() == signature
 
 
-def _parse_event_time(time_utc: str | None) -> str | None:
+def parse_event_time(time_utc: str | None) -> str | None:
 	"""Convert ISO UTC string to Frappe Datetime format: '2022-04-04T23:35:22Z' -> '2022-04-04 23:35:22'."""
 	if not time_utc:
 		return None
 	return time_utc.replace("T", " ").rstrip("Z").split("+")[0].strip()
 
 
-def _resolve_coordinates(
+def resolve_coordinates(
 	address: dict, enable_geocoding: bool = True
 ) -> tuple[float | None, float | None, str]:
 	"""
@@ -305,7 +306,7 @@ def _resolve_coordinates(
 	return None, None, ""
 
 
-def _sync_tracking_events(
+def sync_tracking_events(
 	tn_doc: Document, track_info: dict, enable_geocoding: bool = True
 ) -> None:
 	"""
@@ -320,7 +321,7 @@ def _sync_tracking_events(
 	for provider_entry in providers:
 		provider_name = (provider_entry.get("provider") or {}).get("name") or ""
 		for event in provider_entry.get("events") or []:
-			event_time = _parse_event_time(event.get("time_utc"))
+			event_time = parse_event_time(event.get("time_utc"))
 			if not event_time or event_time[:19] in existing_times:
 				continue
 			existing_times.add(event_time[:19])
@@ -329,7 +330,7 @@ def _sync_tracking_events(
 			location = event.get("location") or ""
 
 			address = event.get("address") or {}
-			lat, lon, source = _resolve_coordinates(address, enable_geocoding)
+			lat, lon, source = resolve_coordinates(address, enable_geocoding)
 
 			tn_doc.append(
 				"tracking_number_event",
@@ -414,7 +415,7 @@ def seventeentrack_webhook():
 
 		tn_doc.seventeen_track_latest_status_time = latest_event.get("time_utc")
 
-		_sync_tracking_events(tn_doc, track_info, enable_geocoding=bool(settings.enable_geocoding))
+		sync_tracking_events(tn_doc, track_info, enable_geocoding=bool(settings.enable_geocoding))
 
 		if settings.add_updates_as_comments:
 			tn_doc.add_comment(

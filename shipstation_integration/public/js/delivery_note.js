@@ -9,7 +9,7 @@ frappe.ui.form.on('Delivery Note', {
 			frm
 				.add_custom_button(__('Fetch Shipment'), () => {
 					frappe.call({
-						method: 'shipstation_integration.shipping.fetch_shipment',
+						method: 'shipstation_integration.api.shipping.fetch_shipment',
 						args: {
 							delivery_note: frm.doc.name,
 						},
@@ -41,7 +41,7 @@ function add_rate_shopping_button(frm) {
 		__('Get Shipping Rates'),
 		() => {
 			frappe.call({
-				method: 'shipstation_integration.rates.get_rates_for_delivery_note',
+				method: 'shipstation_integration.api.rates.get_rates_for_delivery_note',
 				args: {
 					delivery_note: frm.doc.name,
 				},
@@ -149,7 +149,7 @@ function show_rate_selection_dialog(frm, rates) {
 
 function create_label_from_rate(frm, rate) {
 	frappe.call({
-		method: 'shipstation_integration.labels.create_label_for_delivery_note',
+		method: 'shipstation_integration.api.labels.create_label_for_delivery_note',
 		args: {
 			delivery_note: frm.doc.name,
 			rate_id: rate.rate_id,

@@ -45,26 +45,51 @@ frappe.ui.form.on('Shipstation Settings', {
 		}
 
 		// Show API v2 carrier count and render carrier HTML if available
-		if (frm.doc.enable_shipstation_api && frm.doc.shipstation_api_carrier_data) {
-			try {
-				const api_carriers = JSON.parse(frm.doc.shipstation_api_carrier_data)
-				if (api_carriers.length > 0) {
-					frm.dashboard.add_indicator(__('API v2 Carriers: {0}', [api_carriers.length]), 'blue')
+		if (frm.doc.enable_shipstation_api) {
+			if (frm.doc.shipstation_api_carrier_data) {
+				try {
+					const api_carriers = JSON.parse(frm.doc.shipstation_api_carrier_data)
+					if (api_carriers.length > 0) {
+						frm.dashboard.add_indicator(__('API v2 Carriers: {0}', [api_carriers.length]), 'blue')
 
-					// Count total packages
-					let total_packages = 0
-					api_carriers.forEach(c => {
-						total_packages += (c.packages || []).length
-					})
-					if (total_packages > 0) {
-						frm.dashboard.add_indicator(__('Package Types: {0}', [total_packages]), 'green')
+						// Count total packages
+						let total_packages = 0
+						api_carriers.forEach(c => {
+							total_packages += (c.packages || []).length
+						})
+						if (total_packages > 0) {
+							frm.dashboard.add_indicator(__('Package Types: {0}', [total_packages]), 'green')
+						}
+
+						// Render API carriers HTML
+						frm.trigger('render_api_carriers_html')
 					}
-
-					// Render API carriers HTML
-					frm.trigger('render_api_carriers_html')
+				} catch (e) {
+					// Ignore parse errors
 				}
-			} catch (e) {
-				// Ignore parse errors
+			}
+
+			if (frm.doc.shipstation_api_ltl_carrier_data) {
+				try {
+					const api_ltl_carriers = JSON.parse(frm.doc.shipstation_api_ltl_carrier_data)
+					if (api_ltl_carriers.length > 0) {
+						frm.dashboard.add_indicator(__('API v2 LTL Carriers: {0}', [api_ltl_carriers.length]), 'blue')
+
+						// Count total packages
+						let total_ltl_packages = 0
+						api_ltl_carriers.forEach(c => {
+							total_ltl_packages += (c.packages || []).length
+						})
+						if (total_ltl_packages > 0) {
+							frm.dashboard.add_indicator(__('LTL Package Types: {0}', [total_ltl_packages]), 'green')
+						}
+
+						// Render API LTL carriers HTML
+						frm.trigger('render_api_ltl_carriers_html')
+					}
+				} catch (e) {
+					// Ignore parse errors
+				}
 			}
 		}
 	},
@@ -118,6 +143,63 @@ frappe.ui.form.on('Shipstation Settings', {
 			wrapper.html(html)
 		} catch (e) {
 			console.error('Error rendering API carriers:', e)
+		}
+	},
+
+	render_api_ltl_carriers_html: frm => {
+		if (!frm.doc.shipstation_api_ltl_carrier_data) return
+
+		try {
+			const carriers = JSON.parse(frm.doc.shipstation_api_ltl_carrier_data)
+			const wrapper = $(frm.fields_dict.api_ltl_carriers_html.wrapper)
+
+			let html = '<div class="api-ltl-carriers-container">'
+			html += '<h5 class="text-muted">' + __('API v2 LTL Carriers & Package Types') + '</h5>'
+
+			carriers.forEach(carrier => {
+				html += `<div class="carrier-card" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 12px;">`
+				html += `<div style="display: flex; justify-content: space-between; align-items: center;">`
+				html += `<strong>${carrier.name || carrier.carrier_code} (SCAC: ${carrier.carrier_code})</strong>`
+				html += `<span class="text-muted">${carrier.carrier_id}</span>`
+				html += `</div>`
+
+				// Options (Accessorial Services)
+				if (carrier.options && carrier.options.length > 0) {
+					html += `<div style="margin-top: 8px;">`
+					html += `<small class="text-muted">${__('Accessorial Services')}: ${carrier.options.length}</small>`
+					html += `</div>`
+				}
+
+				// Services
+				if (carrier.services && carrier.services.length > 0) {
+					html += `<div style="margin-top: 8px;">`
+					html += `<small class="text-muted">${__('Services')}: ${carrier.services.length}</small>`
+					html += `</div>`
+				}
+
+				// Packages
+				if (carrier.packages && carrier.packages.length > 0) {
+					html += `<div style="margin-top: 8px;">`
+					html += `<small class="text-muted">${__('Package (Container) Types')}:</small>`
+					html += `<ul style="margin: 4px 0 0 16px; padding: 0;">`
+					carrier.packages.forEach(pkg => {
+						let pkgfeats = ''
+						if (pkg.package_features) {
+							pkgfeats = ` (${pkg.package_features})`
+						}
+						html += `<li style="font-size: 12px;"><code>${pkg.code}</code> - ${pkg.name || ''}${pkgfeats}</li>`
+					})
+					html += `</ul>`
+					html += `</div>`
+				}
+
+				html += `</div>`
+			})
+
+			html += '</div>'
+			wrapper.html(html)
+		} catch (e) {
+			console.error('Error rendering API LTL carriers:', e)
 		}
 	},
 
@@ -242,6 +324,23 @@ frappe.ui.form.on('Shipstation Settings', {
 			})
 	},
 
+	fetch_api_ltl_carriers: frm => {
+		if (!frm.doc.enable_shipstation_api) {
+			frappe.msgprint(__('Please enable ShipStation API v2 first.'))
+			return
+		}
+		frappe.show_alert(__('Fetching API LTL carriers...'))
+		frm
+			.call({
+				doc: frm.doc,
+				method: 'fetch_ltl_carriers',
+				freeze: true,
+			})
+			.done(() => {
+				frm.reload_doc()
+			})
+	},
+
 	sync_carrier_packages: frm => {
 		if (!frm.doc.enable_shipstation_api) {
 			frappe.msgprint(__('Please enable ShipStation API v2 first.'))
@@ -262,13 +361,22 @@ frappe.ui.form.on('Shipstation Settings', {
 
 	toggle_cartonization_field: frm => {
 		const installed = !!frappe.boot.inventory_tools_installed
-		frm.set_df_property('create_physical_dimension_per_parcel_template', 'read_only', !installed)
+		const read_only = !installed
+		;[
+			'create_physical_dimension_per_parcel_template',
+			'enable_cartonization',
+			'auto_cartonize_packing_slip',
+			'auto_cartonize_shipment',
+			'cartonization_mode',
+			'cartonization_allow_rotation',
+			'cartonization_solver_timeout_seconds',
+			'default_container_doctypes_json',
+		].forEach(fieldname => {
+			frm.set_df_property(fieldname, 'read_only', read_only)
+		})
+		const missing_msg = __('Inventory Tools is not installed. Install it to enable this feature.')
 		if (!installed) {
-			frm.set_df_property(
-				'create_physical_dimension_per_parcel_template',
-				'description',
-				__('Inventory Tools is not installed. Install it to enable this feature.')
-			)
+			frm.set_df_property('create_physical_dimension_per_parcel_template', 'description', missing_msg)
 		}
 	},
 

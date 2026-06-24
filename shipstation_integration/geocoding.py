@@ -18,7 +18,7 @@ def nominatim_geocode(address: dict) -> tuple[float, float] | None:
 	For high-volume use, register a seventeen_track_geocode_address hook in your app
 	that calls a commercial geocoding service instead.
 	"""
-	query = _build_query(address)
+	query = build_geocode_query(address)
 	if not query:
 		return None
 
@@ -43,7 +43,7 @@ def nominatim_geocode(address: dict) -> tuple[float, float] | None:
 		return None
 
 
-def _build_query(address: dict) -> str:
+def build_geocode_query(address: dict) -> str:
 	"""Build a search query string from address parts, falling back to raw location."""
 	parts = [
 		address.get("street") or "",

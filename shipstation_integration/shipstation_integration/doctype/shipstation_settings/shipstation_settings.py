@@ -2,24 +2,26 @@
 # For license information, please see license.txt
 
 import json
-
 import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils.nestedset import get_root_of
-from httpx import HTTPError
+import httpx
 from shipengine import ShipEngine
 from shipstation import ShipStation
 from shipstation.models import ShipStationWebhook
 
-from shipstation_integration.items import create_item
-from shipstation_integration.orders import list_orders
-from shipstation_integration.shipments import list_shipments
-from shipstation_integration.tags import list_tags
+from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
+	sync_ltl_api_credentials_from_shipstation_settings,
+)
+from shipstation_integration.api.orders import list_orders
+from shipstation_integration.api.shipments import list_shipments
+from shipstation_integration.api.tags import list_tags
+from shipstation_integration.shipstation_integration.overrides.items import create_item
 from shipstation_integration.utils import get_marketplace
 
 
-class ShipstationSettings(Document):
+class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comitting-other-method
 	@property
 	def store_ids(self):
 		stores = json.loads(self.store_data)
@@ -39,14 +41,17 @@ class ShipstationSettings(Document):
 		return warehouse_ids
 
 	def onload(self):
-		if self.carrier_data:
-			self.set_onload("carriers", self.carrier_data())
-		if self.shipstation_api_carrier_data:
+		if self.get("carrier_data"):
+			self.set_onload("carriers", self.get_carrier_data())
+		if self.get("shipstation_api_carrier_data"):
 			self.set_onload("api_carriers", self.api_carrier_data())
+		if self.get("shipstation_api_ltl_carrier_data"):
+			self.set_onload("api_ltl_carriers", self.api_ltl_carrier_data())
 
 	def validate(self):
 		self.validate_label_generation()
 		self.validate_enabled_stores()
+		self.validate_cartonization_defaults()
 
 	def before_insert(self):
 		self.validate_api_connection()
@@ -57,6 +62,7 @@ class ShipstationSettings(Document):
 			self.update_warehouses()
 		if self.enabled:
 			self.add_webhooks()
+		sync_ltl_api_credentials_from_shipstation_settings(self)
 
 	def on_update(self):
 		if self.enabled:
@@ -102,6 +108,24 @@ class ShipstationSettings(Document):
 		# Use longer timeout for rate requests (default is 5s which is too short)
 		return ShipEngine({"api_key": api_key, "timeout": 30})
 
+	def get_ltl_class(self, doc=None):
+		"""Return the correct BaseLTL subclass for the given Shipment doc (or default ShipstationLTL)."""
+		from shipstation_integration.ltl import get_ltl_provider
+
+		return get_ltl_provider(doc)
+
+	def get_base_url_and_headers(self):  # TODO: delete (moved to LTL classes)
+		"""
+		For requests not available through ShipEngine (e.g. LTL), returns base url and headers for
+		traditional GET/POST/PUT/DELETE requests.
+		"""
+		api_key = self.get_password("shipstation_api_key")
+		if not api_key:
+			frappe.throw(_("ShipStation API key not configured"))
+		base_url = "https://api.shipengine.com"
+		headers = {"Content-Type": "application/json", "Accept": "application/json", "Api-Key": api_key}
+		return base_url, headers
+
 	@frappe.whitelist()
 	def test_shipstation_api_connection(self):
 		"""Test the ShipStation API v2 connection."""
@@ -122,6 +146,20 @@ class ShipstationSettings(Document):
 			client = self.shipstation_api_client()
 			# ShipEngine returns a dict with 'carriers' key
 			response = client.list_carriers()
+			# Surface API errors instead of silently treating them as 0 carriers
+			if isinstance(response, dict) and response.get("errors"):
+				errors = response["errors"]
+				first_error = errors[0] if errors else {}
+				error_msg = first_error.get("message", "Unknown error")
+				error_code = first_error.get("error_code", "")
+				if error_code == "unauthorized":
+					frappe.throw(
+						_(
+							"ShipEngine API authentication failed: {0}. Please check the API key in Shipstation Settings."
+						).format(error_msg)
+					)
+				frappe.throw(_("ShipEngine API error: {0}").format(error_msg))
+
 			carriers = response.get("carriers", []) if isinstance(response, dict) else response
 
 			carrier_list = []
@@ -207,35 +245,67 @@ class ShipstationSettings(Document):
 			return []
 		return json.loads(self.shipstation_api_carrier_data)
 
+	def api_ltl_carrier_data(self):
+		"""Return parsed API LTL carrier data."""
+		if not self.shipstation_api_ltl_carrier_data:
+			return []
+		return json.loads(self.shipstation_api_ltl_carrier_data)
+
+	@frappe.whitelist()
+	def fetch_ltl_carriers(self):
+		"""Restructures LTL carrier list returned from API for Settings fields."""
+		if not self.ltl_fetch_freight_carrier_settings:
+			frappe.throw(_("Select Freight Carrier Settings for LTL fetch before fetching LTL carriers."))
+		fc = frappe.get_doc("Freight Carrier Settings", self.ltl_fetch_freight_carrier_settings)
+		if fc.disabled:
+			frappe.throw(_("Selected Freight Carrier Settings is disabled."))
+		ltl_doc = frappe._dict(
+			pickup_from_type="Company", pickup_company=fc.company, preferred_carrier=fc.supplier
+		)
+		ltl_class = self.get_ltl_class(ltl_doc)
+		carriers = ltl_class.list_ltl_carriers(
+			create_transporters=False,
+			company=fc.company,
+			supplier=fc.supplier,
+		)
+		self.shipstation_api_ltl_carrier_data = json.dumps(carriers)
+		self.save()
+		frappe.msgprint(
+			_("Successfully fetched {0} LTL carriers from {1} API.").format(
+				len(carriers), ltl_class.provider
+			)
+		)
+		return carriers
+
 	@frappe.whitelist()
 	def sync_carrier_packages(self):
 		"""Sync carrier package types with detailed dimensions from ShipEngine API."""
-		from shipstation_integration.carriers import sync_carrier_package_types
+		from shipstation_integration.api.carriers import sync_carrier_package_types
 
 		return sync_carrier_package_types(self.name)
 
 	def get_api_carrier_codes(self, carrier_name, service_name, package_name=None):
 		"""Get carrier, service, and package codes from API carrier data."""
-		_carrier_id, _service_code, _package_code = None, None, None
+		carrier_id, service_code, package_code = None, None, None
 
 		for carrier in self.api_carrier_data():
 			if carrier_name in [carrier.get("name"), carrier.get("carrier_code")]:
-				_carrier_id = carrier.get("carrier_id")
+				carrier_id = carrier.get("carrier_id")
 
 				for service in carrier.get("services", []):
 					if service.get("name") == service_name:
-						_service_code = service.get("service_code")
+						service_code = service.get("service_code")
 						break
 
 				if package_name:
 					for package in carrier.get("packages", []):
 						if package.get("name") == package_name:
-							_package_code = package.get("package_code")
+							package_code = package.get("package_code")
 							break
 
 				break
 
-		return _carrier_id, _service_code, _package_code
+		return carrier_id, service_code, package_code
 
 	def validate_label_generation(self):
 		if not self.enabled and self.enable_label_generation:
@@ -270,6 +340,27 @@ class ShipstationSettings(Document):
 				store.create_delivery_note = False
 				store.create_shipment = False
 
+	def validate_cartonization_defaults(self):
+		if not self.get("enable_cartonization"):
+			return
+
+		raw = self.get("default_container_doctypes_json")
+		if not raw:
+			self.default_container_doctypes_json = '["Shipment Parcel Template"]'
+			return
+
+		try:
+			decoded = json.loads(raw)
+		except json.JSONDecodeError as exc:
+			frappe.throw(_("Invalid JSON in Default Container DocTypes: {0}").format(str(exc)))
+
+		if decoded is not None and not isinstance(decoded, list):
+			frappe.throw(_("Default Container DocTypes must be a JSON array of DocType names."))
+
+		for entry in decoded:
+			if not frappe.db.exists("DocType", str(entry)):
+				frappe.throw(_("Unknown DocType {0} in Default Container DocTypes.").format(entry))
+
 	def validate_api_connection(self):
 		if not self.enabled:
 			return
@@ -279,7 +370,7 @@ class ShipstationSettings(Document):
 			try:
 				client = self.client()
 				client.list_carriers()
-			except HTTPError as e:
+			except httpx.HTTPError as e:
 				if e.response.status_code == 401:
 					frappe.throw(_("Invalid Legacy API key or secret"))
 				else:
@@ -421,13 +512,13 @@ class ShipstationSettings(Document):
 
 		return f"{len(products.results)} product(s) imported successfully"
 
-	def carrier_data(self):
+	def get_carrier_data(self):
 		if not self.carrier_data:
 			return []
 		return json.loads(self.carrier_data)
 
 	def get_carrier_services(self, carrier):
-		carrier_data = self.carrier_data()
+		carrier_data = self.get_carrier_data()
 		if not carrier_data:
 			return ""
 		for ss_carrier in carrier_data:
@@ -436,23 +527,23 @@ class ShipstationSettings(Document):
 		return ""
 
 	def get_codes(self, carrier, service, package):
-		_carrier, _service, _package = None, None, "Package"
-		carrier_data = self.carrier_data()
+		carrier_code, service_code, package_code = None, None, "Package"
+		carrier_data = self.get_carrier_data()
 		if not carrier_data:
-			return _carrier, _service, _package
+			return carrier_code, service_code, package_code
 		for ss_carrier in carrier_data:
 			if carrier in [ss_carrier.get("name"), ss_carrier.get("nickname")]:
-				_carrier = ss_carrier.get("code")
+				carrier_code = ss_carrier.get("code")
 
 				for serv in ss_carrier.get("services", []):
 					if serv.get("name") == service:
-						_service = serv.get("code")
+						service_code = serv.get("code")
 
 				for pack in ss_carrier.get("packages", []):
 					if pack.get("name") == package:
-						_package = pack.get("code")
+						package_code = pack.get("code")
 
-		return _carrier, _service, _package
+		return carrier_code, service_code, package_code
 
 	def add_webhooks(self):
 		if not self.enabled:
@@ -460,7 +551,7 @@ class ShipstationSettings(Document):
 
 		# Only register v1 webhooks if legacy API is enabled
 		if self.enable_legacy_api:
-			WEBHOOK_RECEIVER_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.webhook_receiver.shipstation_webhook"
+			WEBHOOK_RECEIVER_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.api.webhook_receiver.shipstation_webhook"
 			WEBHOOK_TYPES = [
 				"ORDER_NOTIFY",
 				"SHIP_NOTIFY",
@@ -472,14 +563,13 @@ class ShipstationSettings(Document):
 
 			for store in self.shipstation_stores:
 				for webhook_type in WEBHOOK_TYPES:
-					filtered_webhook = list(
-						filter(
-							lambda webhook: webhook.store_id == store.store_id
-							and webhook.hook_type == webhook_type
-							and webhook.url == WEBHOOK_RECEIVER_URL,
-							existing_webhooks,
-						)
-					)
+					filtered_webhook = [
+						webhook
+						for webhook in existing_webhooks
+						if webhook.store_id == store.store_id
+						and webhook.hook_type == webhook_type
+						and webhook.url == WEBHOOK_RECEIVER_URL
+					]
 					if not filtered_webhook:
 						webhook = ShipStationWebhook(
 							active=True,
@@ -507,9 +597,7 @@ class ShipstationSettings(Document):
 			if not api_key:
 				return
 
-			import httpx
-
-			WEBHOOK_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.webhook_receiver.shipstation_api_webhook"
+			WEBHOOK_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.api.webhook_receiver.shipstation_api_webhook"
 			V2_WEBHOOK_EVENTS = ["batch", "track"]
 
 			headers = {
@@ -545,3 +633,18 @@ class ShipstationSettings(Document):
 				title="Failed to register ShipStation API v2 webhooks",
 				message=str(e),
 			)
+
+	def get_api_response_error_info(self, response_json):  # TODO: move to LTL class
+		"""
+		Extracts error type and message from Shipstation API response JSON.
+
+		Args:
+		response_json: JSON object returned from API (response.json())
+		"""
+		err_type = "error type not provided"
+		err_msg = "error message not provided"
+		if isinstance(response_json, dict):
+			errors = response_json.get("errors", [{}])[0]
+			err_type = errors.get("error_type", err_type)
+			err_msg = errors.get("message", err_msg)
+		return err_type, err_msg

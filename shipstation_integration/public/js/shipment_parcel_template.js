@@ -28,7 +28,7 @@ function set_labels(frm) {
 	const uom = frappe.boot.parcel_uom || {}
 
 	const dimension_uom = uom.dimension_uom || 'Centimeter'
-	const weight_uom = uom.weight_uom || 'Kilogram'
+	const weight_uom = uom.weight_uom || 'Kg'
 
 	frm.set_df_property('length_display', 'label', `Length (${dimension_uom})`)
 	frm.set_df_property('width_display', 'label', `Width (${dimension_uom})`)

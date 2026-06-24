@@ -1,0 +1,228 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-03-05 12:57:49.494962",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "shipment",
+  "carrier",
+  "carrier_id",
+  "carrier_scac",
+  "column_break_tmop",
+  "is_spot_quote",
+  "includes_insurance",
+  "quote_or_offer_id",
+  "quote_or_offer_transaction_id",
+  "expiration_date",
+  "dates_and_service_level_detail_section",
+  "pickup_date",
+  "service_level",
+  "column_break_qhuf",
+  "estimated_delivery_days",
+  "estimated_delivery_date",
+  "charges_detail_section",
+  "charges",
+  "grand_total",
+  "purchase_invoice",
+  "journal_entry",
+  "sales_invoice",
+  "insurance_section",
+  "certificate_number",
+  "quote_valid_to",
+  "terms_and_conditions",
+  "column_break_gqeq",
+  "deductible_amount",
+  "insured_amount"
+ ],
+ "is_submittable": 1,
+ "fields": [
+  {
+   "fieldname": "shipment",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Shipment",
+   "options": "Shipment",
+   "reqd": 1
+  },
+  {
+   "fieldname": "carrier",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Carrier"
+  },
+  {
+   "fieldname": "carrier_id",
+   "fieldtype": "Data",
+   "label": "Carrier ID"
+  },
+  {
+   "fieldname": "carrier_scac",
+   "fieldtype": "Data",
+   "label": "Carrier SCAC"
+  },
+  {
+   "fieldname": "column_break_tmop",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "quote_or_offer_id",
+   "fieldtype": "Data",
+   "label": "Quote or Offer ID"
+  },
+  {
+   "fieldname": "quote_or_offer_transaction_id",
+   "fieldtype": "Data",
+   "label": "Quote or Offer Transaction ID"
+  },
+  {
+   "fieldname": "expiration_date",
+   "fieldtype": "Date",
+   "label": "Expiration Date"
+  },
+  {
+   "fieldname": "dates_and_service_level_detail_section",
+   "fieldtype": "Section Break",
+   "label": "Dates and Service Level Detail"
+  },
+  {
+   "fieldname": "pickup_date",
+   "fieldtype": "Date",
+   "label": "Pickup Date"
+  },
+  {
+   "fieldname": "service_level",
+   "fieldtype": "Data",
+   "label": "Service Level"
+  },
+  {
+   "fieldname": "column_break_qhuf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "estimated_delivery_days",
+   "fieldtype": "Float",
+   "label": "Estimated Delivery Days"
+  },
+  {
+   "fieldname": "estimated_delivery_date",
+   "fieldtype": "Date",
+   "label": "Estimated Delivery Date"
+  },
+  {
+   "fieldname": "charges_detail_section",
+   "fieldtype": "Section Break",
+   "label": "Charges Detail"
+  },
+  {
+   "fieldname": "charges",
+   "fieldtype": "Table",
+   "options": "Shipment Quotation Charge"
+  },
+  {
+   "fieldname": "grand_total",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Grand Total"
+  },
+  {
+   "fieldname": "purchase_invoice",
+   "fieldtype": "Link",
+   "label": "Purchase Invoice",
+   "options": "Purchase Invoice",
+   "read_only": 1
+  },
+  {
+   "fieldname": "journal_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "description": "Sales Invoice that includes the freight charge for this shipment. Set after the SI is created to link the freight accounting entry to the customer billing document.",
+   "fieldname": "sales_invoice",
+   "fieldtype": "Link",
+   "label": "Sales Invoice",
+   "options": "Sales Invoice"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_spot_quote",
+   "fieldtype": "Check",
+   "label": "Is Spot Quote"
+  },
+  {
+   "depends_on": "includes_insurance",
+   "fieldname": "insurance_section",
+   "fieldtype": "Section Break",
+   "label": "Insurance"
+  },
+  {
+   "default": "0",
+   "fieldname": "includes_insurance",
+   "fieldtype": "Check",
+   "label": "Includes Insurance"
+  },
+  {
+   "fieldname": "certificate_number",
+   "fieldtype": "Data",
+   "label": "Certificate Number"
+  },
+  {
+   "fieldname": "quote_valid_to",
+   "fieldtype": "Date",
+   "label": "Quote Valid To"
+  },
+  {
+   "fieldname": "terms_and_conditions",
+   "fieldtype": "Text",
+   "label": "Terms and Conditions"
+  },
+  {
+   "fieldname": "column_break_gqeq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "deductible_amount",
+   "fieldtype": "Currency",
+   "label": "Deductible Amount"
+  },
+  {
+   "fieldname": "insured_amount",
+   "fieldtype": "Currency",
+   "label": "Insured Amount"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-03-11 10:49:02.693410",
+ "modified_by": "Administrator",
+ "module": "Shipstation Integration",
+ "name": "Shipment Quotation",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

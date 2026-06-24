@@ -1,0 +1,192 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:{company}-{supplier}",
+ "creation": "2026-03-23 12:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+	"field_order": [
+   "company",
+   "supplier",
+   "disabled",
+   "column_break_1",
+   "base_url",
+   "ltl_carrier_scac",
+   "section_break_credentials",
+   "ltl_api_key",
+   "client_id",
+   "column_break_lrov",
+   "client_secret",
+   "account_number",
+   "section_break_accounts",
+   "auto_create_accounting_entry",
+   "freight_item",
+   "column_break_lagr",
+   "freight_clearing_account",
+   "freight_expense_account"
+  ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Supplier",
+   "options": "Supplier",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Disabled"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "API base URL for LTL requests. Defaults to ShipEngine if empty.",
+   "fieldname": "base_url",
+   "fieldtype": "Data",
+   "label": "Base URL"
+  },
+  {
+   "description": "Standard Carrier Alpha Code (SCAC) for this LTL carrier. Used in BOL generation and tracking.",
+   "fieldname": "ltl_carrier_scac",
+   "fieldtype": "Data",
+   "label": "LTL Carrier SCAC"
+  },
+  {
+   "fieldname": "section_break_accounts",
+   "fieldtype": "Section Break",
+   "label": "Accounts"
+  },
+  {
+   "default": "1",
+   "description": "When enabled, submitting an accepted Shipment Quotation automatically creates a Purchase Invoice or Journal Entry for freight expense recognition. Disable to perform manual reconciliation.",
+   "fieldname": "auto_create_accounting_entry",
+   "fieldtype": "Check",
+   "label": "Auto-Create Accounting Entry"
+  },
+  {
+   "depends_on": "auto_create_accounting_entry",
+   "description": "Item used on Purchase Invoices and Journal Entries created when a Shipment Quotation is accepted.",
+   "fieldname": "freight_item",
+   "fieldtype": "Link",
+   "label": "Freight Item",
+   "options": "Item"
+  },
+  {
+   "depends_on": "auto_create_accounting_entry",
+   "description": "Debit account for freight cost when the company absorbs the expense (prepaid, no customer chargeback). Falls back to the Freight Item's default expense account.",
+   "fieldname": "freight_expense_account",
+   "fieldtype": "Link",
+   "label": "Freight Expense Account",
+   "options": "Account"
+   },
+   {
+    "depends_on": "auto_create_accounting_entry",
+    "description": "Clearing account used for both Collect Purchase Invoices and prepaid chargeback Journal Entries. Must be an Asset account with blank account_type to allow GL posting without party requirement.",
+    "fieldname": "freight_clearing_account",
+    "fieldtype": "Link",
+    "label": "Freight Clearing Account",
+    "options": "Account"
+   },
+  {
+   "fieldname": "section_break_credentials",
+   "fieldtype": "Section Break",
+   "label": "Credentials"
+  },
+  {
+   "description": "ShipEngine: Api-Key header. Banyan: optional static Bearer token (overrides Client ID/Secret when set). TrafficTech: subscription-key header. Not used for ODFL or WWEX.",
+   "fieldname": "ltl_api_key",
+   "fieldtype": "Password",
+   "label": "LTL API Key"
+  },
+  {
+   "description": "ODFL: odfl4Me portal username (same as myODFL.com login — not an API key). Banyan/WWEX: OAuth client_id. TrafficTech: TT Interactive portal email.",
+    "fieldname": "client_id",
+    "fieldtype": "Password",
+    "label": "Client ID"
+   },
+   {
+    "description": "ODFL: odfl4Me portal password (not an API secret). Banyan/WWEX: OAuth client_secret. TrafficTech: TT Interactive portal password.",
+    "fieldname": "client_secret",
+    "fieldtype": "Password",
+    "label": "Client Secret"
+   },
+  {
+   "description": "Shipper account number with the provider (WWEX account#, ODFL bill-to account code, Banyan clientRefNumber, TrafficTech numeric customerId). Not used for ShipEngine.",
+   "fieldname": "account_number",
+   "fieldtype": "Data",
+   "label": "Account Number"
+  },
+  {
+   "description": "OAuth 2.0 token endpoint when different from base_url (e.g. WWEX: https://auth.wwex.com/oauth/token). Leave blank if the provider uses the same host for auth and API.",
+   "fieldname": "auth_url",
+   "fieldtype": "Data",
+   "label": "Auth / Token URL"
+  },
+  {
+   "description": "OAuth audience parameter (WWEX: wwex-apig for prod, staging-wwex-apig for staging). Leave blank if not required by the provider.",
+   "fieldname": "audience",
+   "fieldtype": "Data",
+   "label": "OAuth Audience"
+  },
+  {
+   "description": "Banyan only: send isEzRate on POST /shipments (minimal zip-to-zip style payload) instead of a full shipment. Same API path; relaxes required-field validators.",
+   "fieldname": "use_ez_rate",
+   "fieldtype": "Check",
+   "label": "Use EZ Rate (Banyan)",
+   "depends_on": "eval: doc.base_url && doc.base_url.includes('banyan')"
+  },
+  {
+   "fieldname": "column_break_lrov",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_lagr",
+   "fieldtype": "Column Break"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+  "modified": "2026-06-24 14:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Shipstation Integration",
+ "name": "Freight Carrier Settings",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

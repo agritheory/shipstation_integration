@@ -3,20 +3,6 @@
 
 from . import __version__ as app_version
 
-# Each path is a callable () -> dict[tuple[str, str], str]. Results are merged in install order; later keys win.
-# Custom apps: append dotted paths to `seventeen_track_status_description_providers`, or use legacy
-# `extend_seventeen_track_status_descriptions` (merged after the providers list).
-seventeen_track_status_description_providers = [
-	"shipstation_integration.shipstation_integration.doctype.seventeen_track.status_description_defaults.base_status_description_map",
-]
-
-# Geocoding hook: called when a tracking event has an address but no coordinates
-# and "Enable Geocoding" is checked on the Seventeen Track settings doc.
-# Default: Nominatim (OpenStreetMap). Suitable for dev and low-volume production.
-seventeen_track_geocode_address = [
-	"shipstation_integration.geocoding.nominatim_geocode",
-]
-
 app_name = "shipstation_integration"
 app_title = "Shipstation Integration"
 app_publisher = "AgriTheory"
@@ -25,6 +11,8 @@ app_icon = "octicon octicon-file-directory"
 app_color = "grey"
 app_email = "support@agritheory.dev"
 app_license = "MIT"
+
+required_apps = ["frappe/erpnext", "agritheory/beam", "agritheory/inventory_tools"]
 
 # Setup Wizard
 # ------------
@@ -35,8 +23,14 @@ app_license = "MIT"
 extend_bootinfo = "shipstation_integration.shipstation_integration.boot.boot_session"
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/shipstation_integration/css/shipstation_integration.css"
+app_include_css = "/assets/shipstation_integration/css/shipstation_integration.css"
 app_include_js = ["shipstation_integration.bundle.js"]
+
+jinja = {
+	"methods": [
+		"shipstation_integration.parcel_uom_conversion.format_parcel_details",
+	]
+}
 
 # include js, css files in header of web template
 # web_include_css = "/assets/shipstation_integration/css/shipstation_integration.css"
@@ -51,7 +45,12 @@ doctype_js = {
 	"Tracking Number": "public/js/tracking_number.js",
 	"Seventeen Track": "public/js/seventeen_track.js",
 	"Delivery Note": "public/js/delivery_note.js",
-	"Packing Slip": "public/js/packing_slip.js",
+	"Packing Slip": ["public/js/parcel_details.js", "public/js/packing_slip.js"],
+	"Shipment": [
+		"public/js/parcel_details.js",
+		"public/js/shipment_custom.js",
+		"public/js/shipment_pack.js",
+	],
 	"Sales Order": "public/js/sales_order.js",
 	"Supplier": "public/js/supplier.js",
 	"Customer": "public/js/customer.js",
@@ -60,6 +59,7 @@ doctype_js = {
 
 doctype_list_js = {
 	"Sales Order": "public/js/sales_order_list.js",
+	"Delivery Note": "public/js/delivery_note_list.js",
 	"Tracking Number": "public/js/tracking_number_list.js",
 }
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -115,22 +115,22 @@ after_install = "shipstation_integration.install.after_install"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Shipment": {
+		"before_validate": (
+			"shipstation_integration.shipstation_integration.overrides.delivery_note.before_validate_shipment"
+		),
+	},
+}
 
 # Scheduled Tasks
 # ---------------
 
 scheduler_events = {
 	"all": [
-		"shipstation_integration.tags.queue_tags",
-		"shipstation_integration.orders.queue_orders",
-		"shipstation_integration.shipments.queue_shipments",
+		"shipstation_integration.api.tags.queue_tags",
+		"shipstation_integration.api.orders.queue_orders",
+		"shipstation_integration.api.shipments.queue_shipments",
 	]
 }
 
@@ -151,7 +151,43 @@ scheduler_events = {
 # 	"Task": "shipstation_integration.task.get_dashboard_data"
 # }
 
+override_whitelisted_methods = {
+	"erpnext.stock.doctype.delivery_note.delivery_note.make_packing_slip": "shipstation_integration.cartonization.make_packing_slip_with_optional_cartonization",
+	"erpnext.stock.doctype.delivery_note.delivery_note.make_shipment": "shipstation_integration.cartonization.make_shipment_with_optional_cartonization",
+}
+
 override_doctype_class = {
 	"Sales Order": "shipstation_integration.shipstation_integration.overrides.sales_order.ShipStationSalesOrder",
+	"Shipment": "shipstation_integration.shipstation_integration.overrides.shipment.ShipStationShipment",
 	"Shipment Parcel Template": "shipstation_integration.shipstation_integration.overrides.shipment_parcel_template.ShipstationShipmentParcelTemplate",
+	"Packing Slip": "shipstation_integration.shipstation_integration.overrides.packing_slip.ShipstationPackingSlip",
 }
+
+# Maps a substring of Freight Carrier Settings.base_url to the dotted import path of
+# the BaseLTL subclass that handles that provider.  Entries are checked in definition
+# order; first match wins.  No imports belong here — plain strings only.
+ltl_providers = {
+	"shipengine.com": "shipstation_integration.ltl.ShipstationLTL",
+	"shipstation.com": "shipstation_integration.ltl.ShipstationLTL",
+	# WWEX: staging uses speedship.staging-wwex.com (matches wwex.com),
+	# production uses www.speedship.com (matches speedship.com)
+	"wwex.com": "shipstation_integration.shipstation_integration.freight_providers.wwex_ltl.WwexLTL",
+	"speedship.com": "shipstation_integration.shipstation_integration.freight_providers.wwex_ltl.WwexLTL",
+	"banyantechnology.com": "shipstation_integration.shipstation_integration.freight_providers.banyan_ltl.BanyanLTL",
+	"traffictech.com": "shipstation_integration.shipstation_integration.freight_providers.traffictech_ltl.TrafficTechLTL",
+	"odfl.com": "shipstation_integration.shipstation_integration.freight_providers.odfl_ltl.OdflLTL",
+}
+
+# Each path is a callable () -> dict[tuple[str, str], str]. Results are merged in install order; later keys win.
+# Custom apps: append dotted paths to `seventeen_track_status_description_providers`, or use legacy
+# `extend_seventeen_track_status_descriptions` (merged after the providers list).
+seventeen_track_status_description_providers = [
+	"shipstation_integration.shipstation_integration.doctype.seventeen_track.status_description_defaults.base_status_description_map",
+]
+
+# Geocoding hook: called when a tracking event has an address but no coordinates
+# and "Enable Geocoding" is checked on the Seventeen Track settings doc.
+# Default: Nominatim (OpenStreetMap). Suitable for dev and low-volume production.
+seventeen_track_geocode_address = [
+	"shipstation_integration.geocoding.nominatim_geocode",
+]

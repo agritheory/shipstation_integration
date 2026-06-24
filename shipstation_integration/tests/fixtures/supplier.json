@@ -1,0 +1,34 @@
+[
+  {
+    "name": "ShipStation LTL",
+    "supplier_name": "ShipStation LTL",
+    "supplier_group": "All Supplier Groups",
+    "is_transporter": 1,
+    "ltl_carrier_id": "se-shipstation-ltl",
+    "ltl_carrier_scac": "SHIP"
+  },
+  {
+    "name": "WWEX LTL",
+    "supplier_name": "WWEX LTL",
+    "supplier_group": "All Supplier Groups",
+    "is_transporter": 1,
+    "ltl_carrier_id": "wwex-carrier",
+    "ltl_carrier_scac": "WWEX"
+  },
+  {
+    "name": "Banyan LTL",
+    "supplier_name": "Banyan LTL",
+    "supplier_group": "All Supplier Groups",
+    "is_transporter": 1,
+    "ltl_carrier_id": "banyan-carrier",
+    "ltl_carrier_scac": "BYAN"
+  },
+  {
+    "name": "ODFL LTL",
+    "supplier_name": "ODFL LTL",
+    "supplier_group": "All Supplier Groups",
+    "is_transporter": 1,
+    "ltl_carrier_id": "odfl-carrier",
+    "ltl_carrier_scac": "ODFL"
+  }
+]

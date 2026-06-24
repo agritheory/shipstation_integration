@@ -76,12 +76,13 @@ def test_build_webhook_callback_uri_includes_api_method_suffix():
 
 
 def test_webhook_callback_uri_stored_after_create_seventeen_track_settings():
-	create_seventeen_track_settings()
+	create_seventeen_track_settings(TEST_17TRACK_COMPANY)
 	stored = frappe.db.get_value("Seventeen Track", TEST_17TRACK_COMPANY, "webhook_callback_uri")
 	assert stored
 	assert stored == build_seventeen_track_webhook_callback_uri()
 
 
+@pytest.mark.order(20)
 def test_webhook_valid_signature():
 	body_bytes = WEBHOOK_MOCK_PATH.read_bytes()
 	sig = make_signature(body_bytes, MOCK_API_KEY)
@@ -103,6 +104,7 @@ def test_webhook_valid_signature():
 	assert doc.seventeen_track_latest_status_time == "2022-04-04T23:35:22Z"
 
 
+@pytest.mark.order(21)
 def test_webhook_missing_signature():
 	body_bytes = WEBHOOK_MOCK_PATH.read_bytes()
 
@@ -115,6 +117,7 @@ def test_webhook_missing_signature():
 	assert "Missing Signature" in mock_log.call_args.kwargs.get("title", "")
 
 
+@pytest.mark.order(21)
 def test_webhook_invalid_signature():
 	body_bytes = WEBHOOK_MOCK_PATH.read_bytes()
 
@@ -199,6 +202,7 @@ def test_webhook_skips_stopped_tracking_number():
 	assert doc.seventeen_track_latest_status_time == "2022-04-04T23:35:22Z"
 
 
+@pytest.mark.order(22)
 def test_submit_calls_register_tracks():
 	tn = new_tn("TEST-SUBMIT-001")
 	with patch.object(
@@ -224,6 +228,7 @@ def test_submit_rejected_raises_error():
 			tn.submit()
 
 
+@pytest.mark.order(22)
 def test_cancel_calls_stop_tracking():
 	tn = new_tn("TEST-CANCEL-001")
 	with patch.object(
@@ -259,6 +264,7 @@ def test_trash_calls_delete_tracking():
 		mock_del.assert_called_once_with([{"number": "TEST-TRASH-001"}])
 
 
+@pytest.mark.order(23)
 def test_amend_same_number_calls_retrack():
 	tn = new_tn("TEST-RETRACK-001")
 	with patch.object(
@@ -284,6 +290,7 @@ def test_amend_same_number_calls_retrack():
 		mock_reg.assert_not_called()
 
 
+@pytest.mark.order(23)
 def test_amend_different_number_calls_register():
 	tn = new_tn("TEST-AMEND-ORIG-001")
 	with patch.object(
@@ -314,15 +321,15 @@ def test_no_api_key_raises_error():
 	from frappe.utils.password import remove_encrypted_password
 
 	remove_encrypted_password("Seventeen Track", TEST_17TRACK_COMPANY, "api_key")
-	frappe.db.commit()
 	try:
 		tn = new_tn("TEST-NOKEY-001")
 		with pytest.raises(frappe.exceptions.ValidationError, match="not configured"):
 			tn.submit()
 	finally:
-		create_seventeen_track_settings()
+		create_seventeen_track_settings(TEST_17TRACK_COMPANY)
 
 
+@pytest.mark.order(24)
 def test_duplicate_active_number_raises_error():
 	tn = frappe.get_doc({"doctype": "Tracking Number", "tracking_number": SEED_TN_ONE_REF})
 	with pytest.raises(frappe.exceptions.ValidationError, match="already active"):
@@ -347,11 +354,6 @@ def test_multiple_references_persisted():
 	assert len(doc.references) == 2
 	ref_names = {r.document_name for r in doc.references}
 	assert ref_names == {"Ambrosia Pie", "Double Plum Pie"}
-
-
-# ---------------------------------------------------------------------------
-# Group 8 — get_tracking_number_map_data
-# ---------------------------------------------------------------------------
 
 
 def test_map_data_returns_feature_collection():
@@ -386,10 +388,8 @@ def test_map_data_excludes_draft_tracking_number():
 	tn = frappe.get_doc({"doctype": "Tracking Number", "tracking_number": "TEST-DRAFT-MAP-001"})
 	tn.flags.ignore_validate = True
 	tn.insert(ignore_permissions=True)
-	# docstatus stays 0 (draft); give it coords so the only exclusion reason is docstatus
 	frappe.db.set_value("Tracking Number", tn.name, "last_latitude", "34.05")
 	frappe.db.set_value("Tracking Number", tn.name, "last_longitude", "-118.25")
-	frappe.db.commit()
 
 	try:
 		result = get_tracking_number_map_data()
@@ -397,7 +397,6 @@ def test_map_data_excludes_draft_tracking_number():
 		assert tn.name not in names
 	finally:
 		frappe.delete_doc("Tracking Number", tn.name, ignore_permissions=True)
-		frappe.db.commit()
 
 
 def test_map_data_excludes_tn_without_coords():
@@ -406,7 +405,6 @@ def test_map_data_excludes_tn_without_coords():
 	tn.insert(ignore_permissions=True)
 	frappe.db.set_value("Tracking Number", tn.name, "docstatus", 1)
 	frappe.db.set_value("Tracking Number", tn.name, "last_latitude", "")
-	frappe.db.commit()
 
 	try:
 		result = get_tracking_number_map_data()
@@ -414,4 +412,3 @@ def test_map_data_excludes_tn_without_coords():
 		assert tn.name not in names
 	finally:
 		frappe.db.delete("Tracking Number", {"name": tn.name})
-		frappe.db.commit()
