@@ -150,8 +150,8 @@ Not all carriers support every action through the API. The interface only shows 
 **Base URL:** `https://api.odfl.com` (production) or `https://apiq.odfl.com` (QA).
 
 **Authentication:** Two mechanisms are used depending on the API:
-- **SOAP Rate API** — credentials sent inline in the SOAP body as `odfl4MeUser` / `odfl4MePassword` (mapped from **Client ID** / **Client Secret** on the FCS record).
-- **REST APIs** (eBOL, pickup, tracking, documents) — a session Bearer token is obtained from `GET /auth/v1.0/token` using HTTP Basic auth with the same **Client ID** / **Client Secret**. Tokens have a 1-hour TTL and are cached per FCS record.
+- **SOAP Rate API** — credentials sent inline in the SOAP body as `odfl4MeUser` / `odfl4MePassword` (mapped from **Client ID** / **Client Secret** on the FCS record). Always calls the **production** SOAP endpoint (`https://www.odfl.com/wsRate_v6/RateService`); there is no QA SOAP host.
+- **REST APIs** (eBOL, pickup, tracking, documents) — a session Bearer token is obtained from `GET {base_url}/auth/v1.0/token` using HTTP Basic auth with the same **Client ID** / **Client Secret**. Tokens have a 1-hour TTL and are cached per FCS record. **Base URL must match your credentials:** production credentials require `https://api.odfl.com`; QA credentials require `https://apiq.odfl.com`. You can receive a SOAP quote on production while REST booking fails if Base URL points at QA or REST APIs are not yet enabled on your account (contact API@odfl.com).
 
 **Freight Carrier Settings fields required:**
 - **Base URL** — ODFL API endpoint

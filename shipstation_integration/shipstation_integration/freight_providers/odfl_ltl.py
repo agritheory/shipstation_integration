@@ -175,8 +175,8 @@ class OdflLTL(BaseLTL):
 
 	def credentials(self, fc) -> tuple[str, str]:
 		"""Return (username, password) from FCS client_id / client_secret."""
-		username = fc.get_password("client_id", raise_exception=False) or ""
-		password = fc.get_password("client_secret", raise_exception=False) or ""
+		username = (fc.get_password("client_id", raise_exception=False) or "").strip()
+		password = (fc.get_password("client_secret", raise_exception=False) or "").strip()
 		if not username or not password:
 			frappe.throw(
 				_(
@@ -184,6 +184,28 @@ class OdflLTL(BaseLTL):
 				).format(fc.name)
 			)
 		return username, password
+
+	def token_auth_hint(self, fc) -> str:
+		token_url = self.url(fc, "/auth/v1.0/token")
+		lines = [_("REST token URL: {0}").format(token_url)]
+		if self.is_qa_environment(fc):
+			lines.append(
+				_(
+					"Freight Carrier Settings uses ODFL QA (apiq.odfl.com). QA REST requires "
+					"credentials issued for the QA environment. SOAP rating always calls the "
+					"production rate service, so quotes can succeed while QA REST auth fails. "
+					"For live booking, set Base URL to https://api.odfl.com and use production odfl4Me credentials."
+				)
+			)
+		else:
+			lines.append(
+				_(
+					"If myODFL.com login works, contact API@odfl.com to confirm REST access "
+					"(eBOL, pickup, tracking) is enabled on your account. SOAP rate quoting can "
+					"be provisioned separately from REST booking APIs."
+				)
+			)
+		return "\n".join(lines)
 
 	def get_bearer_token(self, fc) -> str:
 		"""Obtain a REST session token from /auth/v1.0/token (Basic auth)."""
@@ -197,12 +219,33 @@ class OdflLTL(BaseLTL):
 			resp = client.get(
 				self.url(fc, "/auth/v1.0/token"),
 				auth=(username, password),
+				headers={"Accept": "application/json"},
 				timeout=30,
 			)
-		self.raise_for_odfl_rest(resp, "token")
+		self.raise_for_odfl_rest(resp, "token", fc=fc)
 		payload = resp.json()
-		token = payload.get("access_token") or payload.get("token") or ""
-		expires_in = int(payload.get("expires_in", 3600))
+		token = (
+			payload.get("access_token")
+			or payload.get("accessToken")
+			or payload.get("token")
+			or payload.get("sessionToken")
+			or ""
+		)
+		if not token and payload.get("ok") is True:
+			response = payload.get("response") or {}
+			if isinstance(response, dict):
+				token = (
+					response.get("access_token") or response.get("accessToken") or response.get("token") or ""
+				)
+		if not token:
+			frappe.log_error(
+				title="ODFL token response missing token", message=frappe.as_json(payload, indent=2)
+			)
+			frappe.throw(
+				_("ODFL token response did not include a session token."),
+				title=_("ODFL LTL Error"),
+			)
+		expires_in = int(payload.get("expires_in") or payload.get("expiresIn") or 3600)
 
 		frappe.cache.set_value(
 			cache_key,
@@ -261,7 +304,7 @@ class OdflLTL(BaseLTL):
 				title=_("ODFL LTL Error"),
 			)
 
-	def raise_for_odfl_rest(self, resp: httpx.Response, context: str = "") -> None:
+	def raise_for_odfl_rest(self, resp: httpx.Response, context: str = "", fc=None) -> None:
 		"""Raise with ODFL REST error body surfaced in the UI and error log."""
 		if resp.is_error:
 			try:
@@ -274,10 +317,17 @@ class OdflLTL(BaseLTL):
 				title=f"ODFL REST {resp.status_code}{label}",
 				message=detail,
 			)
-			frappe.throw(
-				_("ODFL API error {0}{1}:\n{2}").format(resp.status_code, label, detail),
-				title=_("ODFL LTL Error"),
-			)
+			message = _("ODFL API error {0}{1}:\n{2}").format(resp.status_code, label, detail)
+			if context == "token" and fc is not None:
+				errors = body.get("errors") if isinstance(body, dict) else None
+				invalid_creds = (
+					resp.status_code == 400
+					and isinstance(errors, list)
+					and any("invalid credentials" in str(e).lower() for e in errors)
+				)
+				if invalid_creds:
+					message = f"{message}\n\n{self.token_auth_hint(fc)}"
+			frappe.throw(message, title=_("ODFL LTL Error"))
 
 	@staticmethod
 	def iso3_country(two_letter: str) -> str:

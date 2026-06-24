@@ -79,7 +79,8 @@ def build_ltl_provider_presets() -> dict[str, dict]:
 				"use_ez_rate": 0,
 			},
 			"hint": _(
-				"Enter odfl4Me username in Client ID, password in Client Secret, and bill-to Account Number. LTL API Key is not used."
+				"QA REST only — requires separate QA credentials from ODFL. SOAP rating always uses "
+				"production. For live quotes and booking together, use ODFL Production instead."
 			),
 		},
 		"odfl_production": {
