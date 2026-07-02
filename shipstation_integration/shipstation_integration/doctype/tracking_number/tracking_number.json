@@ -1,0 +1,208 @@
+{
+ "actions": [],
+ "autoname": "TRK-.YYYY.-.#####",
+ "creation": "2026-03-27 08:40:07.480338",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_xil6",
+  "amended_from",
+  "tracking_number",
+  "carrier",
+  "subscription_status",
+  "17track_status_section",
+  "seventeen_track_status",
+  "seventeen_track_sub_status",
+  "seventeen_track_description",
+  "seventeen_track_latest_status_time",
+  "section_references",
+  "references",
+  "section_tracking_number_event",
+  "tracking_number_event",
+  "section_map",
+  "tracking_map",
+  "last_latitude",
+  "last_longitude",
+  "last_event_location"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_xil6",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Tracking Number",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "tracking_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Tracking Number",
+   "reqd": 1
+  },
+  {
+   "fieldname": "carrier",
+   "fieldtype": "Link",
+   "label": "Carrier",
+   "options": "Supplier"
+  },
+  {
+   "default": "Not Registered",
+   "fieldname": "subscription_status",
+   "fieldtype": "Select",
+   "label": "Subscription Status",
+   "options": "Not Registered\nActive\nStopped"
+  },
+  {
+   "fieldname": "17track_status_section",
+   "fieldtype": "Section Break",
+   "label": "17Track Status"
+  },
+  {
+   "fieldname": "seventeen_track_status",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "\nNotFound\nInfoReceived\nInTransit\nExpired\nAvailableForPickup\nOutForDelivery\nDeliveryFailure\nDelivered\nException",
+   "read_only": 1
+  },
+  {
+   "fieldname": "seventeen_track_sub_status",
+   "fieldtype": "Data",
+   "label": "Sub Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "seventeen_track_description",
+   "fieldtype": "Data",
+   "label": "Description",
+   "read_only": 1
+  },
+  {
+   "fieldname": "seventeen_track_latest_status_time",
+   "fieldtype": "Data",
+   "label": "Latest Status Time (UTC)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_references",
+   "fieldtype": "Section Break",
+   "label": "Source Document"
+  },
+  {
+   "fieldname": "references",
+   "fieldtype": "Table",
+   "label": "References",
+   "options": "Tracking Number Reference"
+  },
+  {
+   "fieldname": "tracking_number_event",
+   "fieldtype": "Table",
+   "label": "Tracking Number Event",
+   "options": "Tracking Number Event"
+  },
+  {
+   "fieldname": "section_map",
+   "fieldtype": "Section Break",
+   "label": "Tracking Map"
+  },
+  {
+   "fieldname": "tracking_map",
+   "fieldtype": "HTML",
+   "label": "Map"
+  },
+  {
+   "fieldname": "section_tracking_number_event",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "last_latitude",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Last Latitude",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_longitude",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Last Longitude",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_event_location",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Last Event Location",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-05-21 11:17:01.375071",
+ "modified_by": "Administrator",
+ "module": "Shipstation Integration",
+ "name": "Tracking Number",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "All",
+   "share": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "17Track Integration",
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

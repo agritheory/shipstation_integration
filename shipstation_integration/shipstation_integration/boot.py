@@ -12,3 +12,5 @@ def boot_session(bootinfo):
 		"dimension_uom": user.get("dimension_uom") or "Centimeter",
 		"weight_uom": user.get("weight_uom") or "Kilogram",
 	}
+
+	bootinfo.inventory_tools_installed = "inventory_tools" in frappe.get_installed_apps()
