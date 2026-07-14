@@ -4,6 +4,10 @@ on:
   pull_request:
     branches:
       - version-15
+      - version-16
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   track_overrides:
@@ -11,7 +15,7 @@ jobs:
     name: Track Overrides
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
