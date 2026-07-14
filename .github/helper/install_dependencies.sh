@@ -10,3 +10,6 @@ fi
 sudo apt update -y
 sudo apt remove mysql-server mysql-client
 sudo apt install libcups2-dev redis-server mariadb-client -y
+if [ "${DB:-mariadb}" = "postgres" ]; then
+  sudo apt install -y postgresql-client libpq-dev
+fi
