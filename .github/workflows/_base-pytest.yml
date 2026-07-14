@@ -119,6 +119,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-yarn-
 
+      - name: Install App Dependencies
+        run: bash ${GITHUB_WORKSPACE}/.github/helper/install_dependencies.sh
+
       - name: Install
         run: bash ${GITHUB_WORKSPACE}/.github/helper/install.sh
 
