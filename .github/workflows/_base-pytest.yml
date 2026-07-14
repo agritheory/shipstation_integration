@@ -131,7 +131,7 @@ jobs:
           set -o pipefail
           source env/bin/activate
           cd apps/shipstation_integration
-          mkdir -p ../logs
+          mkdir -p ../logs test_site/logs
           pytest --cov=shipstation_integration --cov-report=xml --disable-warnings -s | tee pytest-coverage.txt
         env:
           TYPE: server
