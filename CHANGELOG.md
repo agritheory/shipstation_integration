@@ -5,6 +5,75 @@ For license information, please see license.txt-->
 
 <!-- version list -->
 
+## v16.0.0 (2026-07-16)
+
+### Chores
+
+- Migrate to version-16
+  ([`5046626`](https://github.com/agritheory/shipstation_integration/commit/5046626f9cdb47a2cbfd505c6222fb12bf35ef45))
+
+- Migrate to version-16
+  ([`a90b1e9`](https://github.com/agritheory/shipstation_integration/commit/a90b1e9a96ad97b5b4128c0797f0a9330484aa1a))
+
+- Migrate to version-16
+  ([`ede2cb9`](https://github.com/agritheory/shipstation_integration/commit/ede2cb90b6084e6776f644605dd0c4495620c397))
+
+- Migrate to version-16
+  ([`a217dad`](https://github.com/agritheory/shipstation_integration/commit/a217dad4973bfd41d7b268491df5aec58ed2e155))
+
+- Migrate to version-16
+  ([`6134f16`](https://github.com/agritheory/shipstation_integration/commit/6134f16d342d2ddf761d390d480e3432fd4342cf))
+
+- Migrate to version-16
+  ([`554570e`](https://github.com/agritheory/shipstation_integration/commit/554570e76302c73bc0ae971a0411cf5d31386b0d))
+
+- Migrate to version-16
+  ([`1b3013c`](https://github.com/agritheory/shipstation_integration/commit/1b3013c7a6f481280981713ce6f5840d54a371c1))
+
+- Migrate to version-16
+  ([`ebe8256`](https://github.com/agritheory/shipstation_integration/commit/ebe8256096ccaa2840acaff29611e9ece68a8567))
+
+- Migrate to version-16
+  ([`4f7313b`](https://github.com/agritheory/shipstation_integration/commit/4f7313b0de393dc4343e2cbe664bc329909c85e2))
+
+- Migrate to version-16
+  ([`5415539`](https://github.com/agritheory/shipstation_integration/commit/54155397b7ce2f1f8be9efd207c1f6f4ec8b6408))
+
+- Migrate to version-16
+  ([`3e697f2`](https://github.com/agritheory/shipstation_integration/commit/3e697f29fce5c5ed289288cf163f43fa8f74977e))
+
+- Migrate to version-16
+  ([`2ea97c2`](https://github.com/agritheory/shipstation_integration/commit/2ea97c23260129cafe6168bfb7b927e7c81d35f0))
+
+- Migrate to version-16
+  ([`2507561`](https://github.com/agritheory/shipstation_integration/commit/25075613b0a5197d53d62c95990b297fb6c0c148))
+
+- Migrate to version-16
+  ([`ba4e0e9`](https://github.com/agritheory/shipstation_integration/commit/ba4e0e9d815c430472201c88ec603f00a207d29b))
+
+- Migrate to version-16
+  ([`0cd43ea`](https://github.com/agritheory/shipstation_integration/commit/0cd43ea9ed0cc2ac869681d96f91942dcda3fdf8))
+
+- Migrate to version-16
+  ([`e362e19`](https://github.com/agritheory/shipstation_integration/commit/e362e1965017832ab89b161b29a10253ae70c01f))
+
+- Migrate to version-16
+  ([`46d908e`](https://github.com/agritheory/shipstation_integration/commit/46d908e912df3b9284b583050ea09bdd44baee44))
+
+- Migrate to version-16
+  ([`8417ec5`](https://github.com/agritheory/shipstation_integration/commit/8417ec51089c5adc1a98f5abac1f535a65f15a0b))
+
+- Migrate to version-16
+  ([`1d16b23`](https://github.com/agritheory/shipstation_integration/commit/1d16b237c0e4d30539644c06e789db0c0c3363a3))
+
+- Migrate to version-16
+  ([`3e4410f`](https://github.com/agritheory/shipstation_integration/commit/3e4410f1c5e990df660f9d69ed1e145b1164d793))
+
+- Release version 16 BREAKING CHANGE: app now targets Frappe/Erpnext v16; release line moves from
+  v15.x to 16.0.0.
+  ([`2302caa`](https://github.com/agritheory/shipstation_integration/commit/2302caa08890f5adb224ebb77228f6fe9c64e52e))
+
+
 ## v1.14.0 (2026-05-21)
 
 ### Bug Fixes
