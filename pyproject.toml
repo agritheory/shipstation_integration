@@ -1,6 +1,6 @@
 [project]
 name = "shipstation_integration"
-version = "1.14.0"
+version = "16.0.0"
 description = "Shipstation integration for ERPNext"
 requires-python = ">=3.14,<3.15"
 readme = "README.md"
@@ -19,7 +19,7 @@ ignore-words-list = "ND"
 
 [tool.semantic_release]
 version_toml = [ "pyproject.toml:project.version",]
-version_variables = [ "shipstation_integration/shipstation_integration/__init__.py:__version__",]
+version_variables = [ "shipstation_integration/__init__.py:__version__",]
 build_command = "echo 1"
 
 [tool.black]
