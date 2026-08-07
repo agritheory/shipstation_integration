@@ -10,6 +10,7 @@ from shipstation_integration.ltl import (
 	ShipstationLTL,
 	centimeter_values_are_millimeter_magnitudes,
 	effective_sdn_dimension_uom,
+	format_freight_class,
 	get_ltl_provider,
 	sdn_dimensions_to_inches,
 )
@@ -144,6 +145,48 @@ def restore_ltl_shipment(shipment, original):
 )
 def test_density_to_freight_class_boundaries(density, expected_class):
 	assert ShipstationLTL().density_to_freight_class(density) == expected_class
+
+
+@pytest.mark.order(50)
+@pytest.mark.parametrize(
+	("value", "expected"),
+	[
+		(77.5, "77.5"),
+		(92.5, "92.5"),
+		("77.5", "77.5"),
+		(70, "70"),
+		(70.0, "70"),
+		(None, "50"),
+		(0, "50"),
+	],
+)
+def test_format_freight_class(value, expected):
+	assert format_freight_class(value) == expected
+
+
+@pytest.mark.order(50)
+def test_banyan_handling_units_keep_half_freight_class(monkeypatch):
+	"""77.5 has to reach Banyan intact.
+
+	Truncating it to 77 does not fail the request: carriers that only answer whole classes drop
+	off the response instead, so the shipment comes back with a handful of offers at roughly
+	double the price of the correct class.
+	"""
+	packages = [
+		{
+			"code": "Pallets",
+			"freight_class": 77.5,
+			"description": "Test freight",
+			"dimensions": {"length": 48, "width": 40, "height": 60, "unit": "inches"},
+			"weight": {"value": 999, "unit": "pounds"},
+			"quantity": 1,
+		}
+	]
+	monkeypatch.setattr(ShipstationLTL, "build_packages_from_sdn", lambda self, doc: packages)
+
+	units = BanyanLTL().build_handling_units(frappe._dict())
+
+	assert units[0]["Products"][0]["Class"] == "77.5"
 
 
 @pytest.mark.order(51)

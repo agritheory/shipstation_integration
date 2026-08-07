@@ -64,7 +64,11 @@ from shipstation_integration.base_ltl import (
 	persist_shipment_ltl_fields,
 	require_submitted_shipment_for_ltl,
 )
-from shipstation_integration.ltl import LTL_SUPPORTED_DIMENSION_UOMS, ShipstationLTL
+from shipstation_integration.ltl import (
+	LTL_SUPPORTED_DIMENSION_UOMS,
+	ShipstationLTL,
+	format_freight_class,
+)
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
 )
@@ -392,7 +396,7 @@ class WwexLTL(BaseLTL):
 			items = []
 			for _i in range(int(pkg.get("quantity", 1))):
 				item: dict = {
-					"commodityClass": str(pkg.get("freight_class", "50")),
+					"commodityClass": format_freight_class(pkg.get("freight_class")),
 					"commodityDescription": pkg.get("description") or "",
 					"isHazMat": bool(doc.get("hazardous_material")),
 					"weight": w_wwex,

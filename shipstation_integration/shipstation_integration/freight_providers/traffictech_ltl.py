@@ -37,7 +37,11 @@ import httpx
 from frappe import _
 from frappe.utils import flt, getdate
 from shipstation_integration.base_ltl import BaseLTL, require_submitted_shipment_for_ltl
-from shipstation_integration.ltl import LTL_SUPPORTED_DIMENSION_UOMS, ShipstationLTL
+from shipstation_integration.ltl import (
+	LTL_SUPPORTED_DIMENSION_UOMS,
+	ShipstationLTL,
+	format_freight_class,
+)
 from shipstation_integration.api.rates import get_state_code
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
@@ -277,8 +281,7 @@ class TrafficTechLTL(BaseLTL):
 		for pkg in packages:
 			length, width, height = ShipstationLTL.package_dimensions_inches(pkg)
 			weight_lb = ShipstationLTL.package_weight_pounds(pkg) or 1
-			freight_class = pkg.get("freight_class")
-			cls = str(freight_class) if freight_class is not None else "50"
+			cls = format_freight_class(pkg.get("freight_class"))
 			desc = (pkg.get("description") or doc.get("description_of_content") or "Freight")[:200]
 			pkg_type, pkg_desc = self.package_type_for_tt(doc, pkg)
 			item: dict[str, Any] = {

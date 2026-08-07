@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Optional
 
 import frappe
 from frappe import _
+from frappe.utils import flt
 from shipengine.errors import ShipEngineError
 
 if TYPE_CHECKING:
@@ -94,9 +95,9 @@ def find_matching_parcel_template(
 
 	# Convert input dimensions to cm
 	conversion_factor = DIMENSION_TO_CM.get(dimension_uom, 1.0)
-	length_cm = float(length) * conversion_factor
-	width_cm = float(width) * conversion_factor
-	height_cm = float(height) * conversion_factor
+	length_cm = flt(length) * conversion_factor
+	width_cm = flt(width) * conversion_factor
+	height_cm = flt(height) * conversion_factor
 
 	# Get all parcel templates
 	templates = frappe.get_all(
@@ -105,11 +106,12 @@ def find_matching_parcel_template(
 	)
 
 	for template in templates:
-		# Check if dimensions match within tolerance
+		# flt() rather than the raw values: a template saved without one of its dimensions
+		# stores NULL, and subtracting that from a float raises rather than simply not matching.
 		if (
-			abs(template.length - length_cm) <= tolerance
-			and abs(template.width - width_cm) <= tolerance
-			and abs(template.height - height_cm) <= tolerance
+			abs(flt(template.length) - length_cm) <= tolerance
+			and abs(flt(template.width) - width_cm) <= tolerance
+			and abs(flt(template.height) - height_cm) <= tolerance
 		):
 			return template.name
 
