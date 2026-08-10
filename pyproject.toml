@@ -1,6 +1,6 @@
 [project]
 name = "shipstation_integration"
-version = "1.14.0"
+version = "15.14.1"
 authors = [
     { name = "AgriTheory", email = "support@agritheory.dev"}
 ]
