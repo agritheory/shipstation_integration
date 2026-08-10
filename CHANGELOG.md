@@ -1,6 +1,156 @@
+<!-- Copyright (c) 2026, AgriTheory and contributors
+For license information, please see license.txt-->
+
 # CHANGELOG
 
 <!-- version list -->
+
+## v1.14.0 (2026-05-21)
+
+### Bug Fixes
+
+- Avoid duplication
+  ([`053107f`](https://github.com/agritheory/shipstation_integration/commit/053107f6fead8b18b824083fbd228228da986cec))
+
+- Clean map for new trackings
+  ([`1a681db`](https://github.com/agritheory/shipstation_integration/commit/1a681dbb9fa322fe9aa5dfd296ae5889b7e7c4df))
+
+- Hide new rows and sections in new records
+  ([`020ebbd`](https://github.com/agritheory/shipstation_integration/commit/020ebbd2a1fbf07f8e01b7b2fedb86f9e3fc7eb8))
+
+- Hide sections when dt is submitted
+  ([`80c0854`](https://github.com/agritheory/shipstation_integration/commit/80c08540d0b603ac995e2e96980180ba316cfeb4))
+
+- If new don't render map
+  ([`7470221`](https://github.com/agritheory/shipstation_integration/commit/74702211d638113f19c88defeb92713dea75a15d))
+
+- Ignore node_modules
+  ([`d57db4a`](https://github.com/agritheory/shipstation_integration/commit/d57db4ac4d8d36543e2100fdf87d801fc72580bf))
+
+- Linters
+  ([`c3070b8`](https://github.com/agritheory/shipstation_integration/commit/c3070b8aed2f924d72410aadb7fa74d9b7782b73))
+
+- Linters
+  ([`c09ec28`](https://github.com/agritheory/shipstation_integration/commit/c09ec28e24402fe520dc91c9ab1f5edb4360ae1e))
+
+- Linters
+  ([`4015eef`](https://github.com/agritheory/shipstation_integration/commit/4015eef4454d8cbefdf31d24bccb10c65ac16f55))
+
+- Linters
+  ([`903a74b`](https://github.com/agritheory/shipstation_integration/commit/903a74bc7f52d65b649f280d291ab13fc8a6a154))
+
+- Seed data in new fields of tracking number
+  ([`2aeacc7`](https://github.com/agritheory/shipstation_integration/commit/2aeacc787c68ef9f98ee169e105a337c54d436ea))
+
+- Status in list filter
+  ([`5fa9053`](https://github.com/agritheory/shipstation_integration/commit/5fa9053d91b35e79e8e1058c84273d1fc0001495))
+
+### Chores
+
+- Bench init fix
+  ([`d6223ee`](https://github.com/agritheory/shipstation_integration/commit/d6223ee9ae19fd1e9d9f0769dd30145921d60e42))
+
+- Fix pytest command
+  ([`58cc703`](https://github.com/agritheory/shipstation_integration/commit/58cc703dc655a47e50265b30695606318db57d63))
+
+- Pytest enabled
+  ([`1947143`](https://github.com/agritheory/shipstation_integration/commit/1947143f1bead78f85eda6f001531bdb057a6d97))
+
+- Pytest enabled
+  ([`4237002`](https://github.com/agritheory/shipstation_integration/commit/4237002ae4b0aa21b68fa915fc73d280025e2644))
+
+### Documentation
+
+- 17 track settings
+  ([`864f0e7`](https://github.com/agritheory/shipstation_integration/commit/864f0e7a68a63e264276add8d4379a01aa179a82))
+
+### Features
+
+- Child table for number events
+  ([`ab5501a`](https://github.com/agritheory/shipstation_integration/commit/ab5501ac31d4b0f402fda3192f099d905c57540f))
+
+- Child table linked
+  ([`106fcda`](https://github.com/agritheory/shipstation_integration/commit/106fcdaf6a67aeb1605b1e0635b8e908c6ef133b))
+
+- Geocoding service - nominatim by default
+  ([`f3ba143`](https://github.com/agritheory/shipstation_integration/commit/f3ba143328cca8ba576fc189b837aa3611309131))
+
+- Last pin icon as red
+  ([`45d34f6`](https://github.com/agritheory/shipstation_integration/commit/45d34f6eb90609921cb0d041685859d4e5c3ca38))
+
+- Latest coords for map in list view
+  ([`b8036a8`](https://github.com/agritheory/shipstation_integration/commit/b8036a8d90d10216e9cabb911f61489c9f713962))
+
+- Map as list view
+  ([`7645de6`](https://github.com/agritheory/shipstation_integration/commit/7645de6f54d3a819b57f6b8a48af41b76938e444))
+
+- New fields for render map in list view
+  ([`6c36db6`](https://github.com/agritheory/shipstation_integration/commit/6c36db65f3d54ba0c73f4f3afcf7bdd1b60dcbbd))
+
+- Seed data for tracking number event
+  ([`4f5345f`](https://github.com/agritheory/shipstation_integration/commit/4f5345f6d448e136f145d3f04957f56349ee073a))
+
+- Tracking map
+  ([`c346d20`](https://github.com/agritheory/shipstation_integration/commit/c346d20faaf5e82668ac303538b787316b2d8d6a))
+
+- Tracking number event & resolve coordinates
+  ([`b1624fe`](https://github.com/agritheory/shipstation_integration/commit/b1624fead94c9c4f2ae6ddf480a94de9f2c44c91))
+
+- **test**: Coordinates demo for tracking events
+  ([`8938a61`](https://github.com/agritheory/shipstation_integration/commit/8938a616d79b9b39852b20f045d4e2eac401b889))
+
+- **test**: Ensure tracking number save latest coords
+  ([`327b3a7`](https://github.com/agritheory/shipstation_integration/commit/327b3a70bff546bc3b9b2f7770dce3cdecbb268b))
+
+- **test**: Map data testing
+  ([`61d27b7`](https://github.com/agritheory/shipstation_integration/commit/61d27b7c23ac0c007ae4cdddd2c7d01db52b2323))
+
+### Testing
+
+- 17track events
+  ([`30fde20`](https://github.com/agritheory/shipstation_integration/commit/30fde208ad736921e330aeecd96ea4cbfcbfe943))
+
+
+## v1.13.0 (2026-05-04)
+
+
+## v1.12.0 (2026-05-04)
+
+### Bug Fixes
+
+- Linters
+  ([`3093e91`](https://github.com/agritheory/shipstation_integration/commit/3093e91cb69fbcc86ed138c13008e4a5125655f9))
+
+### Chores
+
+- Code cleanup
+  ([`e99424e`](https://github.com/agritheory/shipstation_integration/commit/e99424ec7cd0c27c17a9d6684a0ec1f76d1d1d31))
+
+- Update mypy and precommit
+  ([`e87e712`](https://github.com/agritheory/shipstation_integration/commit/e87e712bf5a3e7a5813443f72d53c9c0a14b7233))
+
+### Features
+
+- 17track seed data
+  ([`60af264`](https://github.com/agritheory/shipstation_integration/commit/60af264f967a7a18df8ab42d7a117d08e7a1c24c))
+
+- Dt seventeen track
+  ([`5aecb60`](https://github.com/agritheory/shipstation_integration/commit/5aecb604121c902556f78eed0f174c8a5fee1158))
+
+- Dt tracking number
+  ([`239a67c`](https://github.com/agritheory/shipstation_integration/commit/239a67c036efbe65ba832beb33ab1d89a9fd305d))
+
+- Seed 17track webhook
+  ([`ea3051e`](https://github.com/agritheory/shipstation_integration/commit/ea3051e1851b7c61105cdad27a826aa34f6ab2ce))
+
+- Tracking number refactor
+  ([`8dd4f56`](https://github.com/agritheory/shipstation_integration/commit/8dd4f5658790baae12b7f3eb48d0daf86002a18c))
+
+### Testing
+
+- 17track init tests
+  ([`6b4fe4c`](https://github.com/agritheory/shipstation_integration/commit/6b4fe4cc4d6a60b52cc46abb44f2b7d66dcdff99))
+
 
 ## v1.11.0 (2026-02-24)
 

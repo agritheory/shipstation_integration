@@ -61,6 +61,7 @@ class ShipstationSettings(Document):
 	def on_update(self):
 		if self.enabled:
 			self.add_webhooks()
+		self.create_physical_dimensions_for_parcel_templates()
 
 	@frappe.whitelist()
 	def get_orders(self):
@@ -239,6 +240,27 @@ class ShipstationSettings(Document):
 	def validate_label_generation(self):
 		if not self.enabled and self.enable_label_generation:
 			self.enable_label_generation = False
+
+	def create_physical_dimensions_for_parcel_templates(self):
+		if (
+			"inventory_tools" not in frappe.get_installed_apps()
+			or not self.enabled
+			or not self.create_physical_dimension_per_parcel_template
+		):
+			return
+
+		created = 0
+		for shipment_parcel_template_name in frappe.get_all("Shipment Parcel Template", pluck="name"):
+			shipment_parcel_template = frappe.get_doc(
+				"Shipment Parcel Template", shipment_parcel_template_name
+			)
+			if shipment_parcel_template.sync_physical_dimension():
+				created += 1
+
+		if created:
+			frappe.msgprint(
+				_("{0} Physical Dimension record(s) created for Shipment Parcel Templates.").format(created)
+			)
 
 	def validate_enabled_stores(self):
 		for store in self.shipstation_stores:
