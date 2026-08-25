@@ -110,6 +110,9 @@ after_install = "shipstation_integration.install.after_install"
 # Hook on document methods and events
 
 doc_events = {
+	"Delivery Note": {
+		"validate": "shipstation_integration.freight_terms.set_delivery_note_shipping_terms",
+	},
 	"Packing Slip": {
 		"before_submit": "shipstation_integration.packing_slip.before_submit",
 		"on_submit": "shipstation_integration.packing_slip.on_submit",
@@ -118,6 +121,7 @@ doc_events = {
 		"before_validate": (
 			"shipstation_integration.shipstation_integration.overrides.delivery_note.before_validate_shipment"
 		),
+		"validate": "shipstation_integration.freight_terms.set_shipment_shipping_terms",
 		"before_submit": "shipstation_integration.shipment_pack.before_submit",
 		"on_submit": "shipstation_integration.shipment_pack.on_submit",
 	},

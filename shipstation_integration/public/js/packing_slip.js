@@ -5,6 +5,38 @@ const PARCEL_COLORS = ['#2AC48A', '#5E64FF', '#FF8A00', '#A553E0', '#3478F6', '#
 
 const PACKING_SLIP_PURPLE = '#6f42c1'
 
+// Parcel templates are stored in centimeters and kilograms. A US packing bench
+// works in inches and pounds, so convert on the way into the row.
+const METRIC_UNITS = { dimension_uom: 'Centimeter', weight_uom: 'Kg' }
+
+function get_packing_units(frm) {
+	if (frm.__packing_units) {
+		return Promise.resolve(frm.__packing_units)
+	}
+	return frappe
+		.call({
+			method: 'upro_erp.uat5_channel_defaults.get_packing_uom_defaults',
+			args: { dispatch_address_name: frm.doc.dispatch_address_name },
+		})
+		.then(r => {
+			frm.__packing_units = r.message || METRIC_UNITS
+			return frm.__packing_units
+		})
+}
+
+function template_dimensions(template, units) {
+	const metric = units.dimension_uom === 'Centimeter'
+	const to_length = value => (metric ? flt(value) : flt(flt(value) / 2.54, 2))
+	return {
+		parcel_length: to_length(template.length),
+		parcel_width: to_length(template.width),
+		parcel_height: to_length(template.height),
+		dimension_uom: units.dimension_uom,
+		parcel_weight: metric ? flt(template.weight) : flt(flt(template.weight) * 2.20462, 2),
+		parcel_weight_uom: units.weight_uom,
+	}
+}
+
 function get_parcel_color(parcel_number) {
 	if (!parcel_number) return null
 	return PARCEL_COLORS[(parcel_number - 1) % PARCEL_COLORS.length]
@@ -589,6 +621,18 @@ function split_selected_rows(frm) {
 }
 
 frappe.ui.form.on('Packing Slip', {
+	freight_type: function (frm) {
+		if (['LTL', 'Full Truckload'].includes(frm.doc.freight_type)) {
+			frappe.msgprint(
+				__(
+					'{0} shipments are quoted and booked on a Shipment document, not the Packing Slip. Submit the Delivery Note, then use Create > Shipment on it to get freight quotes.',
+					[frm.doc.freight_type]
+				),
+				__('Freight Shipment')
+			)
+		}
+	},
+
 	setup: function (frm) {
 		frm._ss_cartonization_enabled = false
 
@@ -693,6 +737,7 @@ frappe.ui.form.on('Packing Slip', {
 	},
 
 	dispatch_address_name: function (frm) {
+		frm.__packing_units = null
 		const addr = frm.doc.dispatch_address_name
 		if (addr) {
 			frappe.call({
@@ -723,27 +768,23 @@ frappe.ui.form.on('Packing Slip', {
 		frappe.db.get_doc('Shipment Parcel Template', template_name).then(template => {
 			if (!template || !frm.doc.items?.length) return
 
-			// Template stores length/width/height in cm and weight in kg (fixed by the field labels)
-			const updates = frm.doc.items.map(row =>
-				frappe.model.set_value(row.doctype, row.name, {
-					parcel_template: template_name,
-					carrier: template.carrier || row.carrier || '',
-					parcel_length: template.length,
-					parcel_width: template.width,
-					parcel_height: template.height,
-					dimension_uom: 'Centimeter',
-					parcel_weight: template.weight || 0,
-					parcel_weight_uom: 'Kg',
-				})
-			)
+			get_packing_units(frm).then(units => {
+				const updates = frm.doc.items.map(row =>
+					frappe.model.set_value(row.doctype, row.name, {
+						parcel_template: template_name,
+						carrier: template.carrier || row.carrier || '',
+						...template_dimensions(template, units),
+					})
+				)
 
-			Promise.all(updates).then(() => {
-				if (template.carrier && !frm.doc.carrier) {
-					frm.set_value('carrier', template.carrier)
-				}
-				frm.refresh_field('items')
-				refresh_parcel_details_display(frm, 'items')
-				frm.dirty()
+				Promise.all(updates).then(() => {
+					if (template.carrier && !frm.doc.carrier) {
+						frm.set_value('carrier', template.carrier)
+					}
+					frm.refresh_field('items')
+					refresh_parcel_details_display(frm, 'items')
+					frm.dirty()
+				})
 			})
 		})
 	},
@@ -763,7 +804,8 @@ frappe.ui.form.on('Packing Slip', {
 })
 
 frappe.ui.form.on('Packing Slip Item', {
-	parcel_number: function (frm) {
+	parcel_number: function (frm, cdt, cdn) {
+		inherit_parcel_dims(frm, cdt, cdn)
 		render_parcel_indicators(frm)
 	},
 
@@ -774,23 +816,20 @@ frappe.ui.form.on('Packing Slip Item', {
 		frappe.db.get_doc('Shipment Parcel Template', row.parcel_template).then(template => {
 			if (!template) return
 
-			// Template stores length/width/height in cm and weight in kg (fixed by the field labels)
-			frappe.model.set_value(cdt, cdn, {
-				carrier: template.carrier || '',
-				parcel_length: template.length,
-				parcel_width: template.width,
-				parcel_height: template.height,
-				dimension_uom: 'Centimeter',
-				parcel_weight: template.weight || 0,
-				parcel_weight_uom: 'Kg',
+			get_packing_units(frm).then(units => {
+				frappe.model.set_value(cdt, cdn, {
+					carrier: template.carrier || '',
+					...template_dimensions(template, units),
+				})
+				frm.refresh_field('items')
+
+				if (template.carrier && !frm.doc.carrier) {
+					frm.set_value('carrier', template.carrier)
+				}
+
+				copy_dims_to_parcel_rows(frm, locals[cdt][cdn])
+				refresh_parcel_details_display(frm, 'items', cdn)
 			})
-			frm.refresh_field('items')
-
-			if (template.carrier && !frm.doc.carrier) {
-				frm.set_value('carrier', template.carrier)
-			}
-
-			refresh_parcel_details_display(frm, 'items', cdn)
 		})
 	},
 
@@ -803,16 +842,19 @@ frappe.ui.form.on('Packing Slip Item', {
 
 	parcel_length: function (frm, cdt, cdn) {
 		check_template_match(frm, cdt, cdn)
+		copy_dims_to_parcel_rows(frm, locals[cdt][cdn])
 		refresh_parcel_details_display(frm, 'items', cdn)
 	},
 
 	parcel_width: function (frm, cdt, cdn) {
 		check_template_match(frm, cdt, cdn)
+		copy_dims_to_parcel_rows(frm, locals[cdt][cdn])
 		refresh_parcel_details_display(frm, 'items', cdn)
 	},
 
 	parcel_height: function (frm, cdt, cdn) {
 		check_template_match(frm, cdt, cdn)
+		copy_dims_to_parcel_rows(frm, locals[cdt][cdn])
 		refresh_parcel_details_display(frm, 'items', cdn)
 	},
 
@@ -821,10 +863,12 @@ frappe.ui.form.on('Packing Slip Item', {
 	},
 
 	parcel_weight: function (frm, cdt, cdn) {
+		copy_weight_to_parcel_rows(frm, locals[cdt][cdn])
 		refresh_parcel_details_display(frm, 'items', cdn)
 	},
 
 	parcel_weight_uom: function (frm, cdt, cdn) {
+		copy_weight_to_parcel_rows(frm, locals[cdt][cdn])
 		refresh_parcel_details_display(frm, 'items', cdn)
 	},
 })
@@ -916,6 +960,8 @@ function setup_shipping_actions(frm) {
 				}
 
 				frm.add_custom_button(__('Compare Rates'), () => get_shipping_rates(frm), __('Shipping'))
+			} else {
+				frm.add_custom_button(__('Void Label'), () => void_labels(frm), __('Shipping'))
 			}
 
 			frm.add_custom_button(
@@ -923,7 +969,30 @@ function setup_shipping_actions(frm) {
 				() => confirm_then_create_label(frm, () => get_shipping_rates(frm)),
 				__('Shipping')
 			)
+
+			if (frm.doc.docstatus === 0) {
+				frm.add_custom_button(
+					__('Apply Weight to All Containers'),
+					() => apply_weight_to_all_containers(frm),
+					__('Shipping')
+				)
+			}
 		},
+	})
+}
+
+function void_labels(frm) {
+	frappe.confirm(__('Void all purchased labels on this Packing Slip? The carrier will refund the postage.'), () => {
+		frappe.call({
+			method: 'shipstation_integration.labels.void_labels_for_packing_slip',
+			args: { packing_slip: frm.doc.name },
+			freeze: true,
+			freeze_message: __('Voiding labels...'),
+			callback: function () {
+				frappe.show_alert({ message: __('Label voided'), indicator: 'green' })
+				frm.reload_doc()
+			},
+		})
 	})
 }
 
@@ -1344,4 +1413,119 @@ function check_template_match(frm, cdt, cdn) {
 			}
 		},
 	})
+}
+
+const PARCEL_DIM_FIELDS = [
+	'parcel_template',
+	'parcel_length',
+	'parcel_width',
+	'parcel_height',
+	'dimension_uom',
+	'parcel_weight',
+	'parcel_weight_uom',
+]
+
+function copy_weight_to_parcel_rows(frm, source_row) {
+	// Weight is entered once for a container and applies to every line packed in it.
+	// Kept separate from copy_dims_to_parcel_rows because that helper skips rows that
+	// already carry dims, which is every row by the time the weight gets typed.
+	if (!source_row || !source_row.parcel_number || frm.__copying_parcel_dims) return
+	if (!source_row.parcel_weight) return
+
+	const updates = []
+	for (const row of frm.doc.items || []) {
+		if (row.name === source_row.name) continue
+		if (row.parcel_number !== source_row.parcel_number) continue
+		if (row.parcel_weight) continue
+		updates.push(
+			frappe.model.set_value(row.doctype, row.name, {
+				parcel_weight: source_row.parcel_weight,
+				parcel_weight_uom: source_row.parcel_weight_uom,
+			})
+		)
+	}
+	if (!updates.length) return
+
+	frm.__copying_parcel_dims = true
+	Promise.all(updates).finally(() => {
+		frm.__copying_parcel_dims = false
+		frm.refresh_field('items')
+	})
+}
+
+function apply_weight_to_all_containers(frm) {
+	// One weight across every container, for the common case of identical cases.
+	// A button rather than automatic, because containers of different sizes
+	// legitimately weigh different amounts.
+	const source = (frm.doc.items || []).find(row => row.parcel_weight)
+	if (!source) {
+		frappe.msgprint(__('Enter a weight on one line first.'))
+		return
+	}
+
+	const updates = []
+	for (const row of frm.doc.items || []) {
+		if (row.parcel_weight) continue
+		updates.push(
+			frappe.model.set_value(row.doctype, row.name, {
+				parcel_weight: source.parcel_weight,
+				parcel_weight_uom: source.parcel_weight_uom,
+			})
+		)
+	}
+	if (!updates.length) {
+		frappe.show_alert({ message: __('Every line already has a weight.'), indicator: 'blue' })
+		return
+	}
+
+	const filled = updates.length
+	frm.__copying_parcel_dims = true
+	Promise.all(updates).finally(() => {
+		frm.__copying_parcel_dims = false
+		frm.refresh_field('items')
+		frappe.show_alert({
+			message: __('Weight applied to {0} line(s).', [filled]),
+			indicator: 'green',
+		})
+	})
+}
+
+function copy_dims_to_parcel_rows(frm, source_row) {
+	// Rows packed in the same container share its dimensions: fill sibling rows
+	// that don't have their own dims yet.
+	if (!source_row || !source_row.parcel_number || frm.__copying_parcel_dims) return
+	if (!source_row.parcel_length || !source_row.parcel_width || !source_row.parcel_height) return
+
+	const updates = []
+	for (const row of frm.doc.items || []) {
+		if (row.name === source_row.name) continue
+		if (row.parcel_number !== source_row.parcel_number) continue
+		if (row.parcel_length || row.parcel_width || row.parcel_height) continue
+		for (const field of PARCEL_DIM_FIELDS) {
+			updates.push(frappe.model.set_value(row.doctype, row.name, field, source_row[field]))
+		}
+	}
+	if (!updates.length) return
+
+	frm.__copying_parcel_dims = true
+	Promise.all(updates).finally(() => {
+		frm.__copying_parcel_dims = false
+		frm.refresh_field('items')
+	})
+}
+
+function inherit_parcel_dims(frm, cdt, cdn) {
+	// A row newly assigned to a container inherits dims already entered on it.
+	const row = locals[cdt][cdn]
+	if (!row.parcel_number || row.parcel_length || frm.__copying_parcel_dims) return
+
+	const source = (frm.doc.items || []).find(
+		r =>
+			r.name !== row.name &&
+			r.parcel_number === row.parcel_number &&
+			r.parcel_length &&
+			r.parcel_width &&
+			r.parcel_height
+	)
+	if (source) copy_dims_to_parcel_rows(frm, source)
 }

@@ -56,7 +56,7 @@ from shipstation_integration.base_ltl import (
 	persist_shipment_ltl_fields,
 	require_submitted_shipment_for_ltl,
 )
-from shipstation_integration.ltl import ShipstationLTL
+from shipstation_integration.ltl import ShipstationLTL, normalize_freight_class
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
 )
@@ -333,7 +333,7 @@ class BanyanLTL(BaseLTL):
 			product = {
 				"PackageType": pkg.get("code") or "Pallets",
 				"Description": pkg.get("description") or "",
-				"Class": str(int(pkg.get("freight_class") or 50)),
+				"Class": normalize_freight_class(pkg.get("freight_class")),
 				"Weight": float(pkg["weight"]["value"]),
 				"WeightUnitOfMeasurement": wt_uom,
 				"Dimensions": {
@@ -716,7 +716,6 @@ class BanyanLTL(BaseLTL):
 
 	def fetch_ltl_offers(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
 		"""Return Banyan quotes as normalized dicts without saving anything."""
-		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
 		load_id, quotes = self.fetch_banyan_offers(doc, fc)
 		results: list[dict[str, Any]] = []

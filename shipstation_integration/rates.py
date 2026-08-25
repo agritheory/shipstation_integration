@@ -54,6 +54,39 @@ WEIGHT_UOM_MAP = {
 }
 
 
+def carrier_family(rate: dict) -> str:
+	"""The carrier behind a rate, ignoring which account quoted it.
+
+	ShipEngine gives an account flavour its own carrier code, so a second FedEx
+	account arrives as "fedex_walleted". It is still FedEx quoting FedEx Ground.
+	"""
+	code = (rate.get("carrier_code") or rate.get("carrier_name") or "").lower()
+	return code.removesuffix("_walleted")
+
+
+def dedupe_rates(rates: list[dict]) -> list[dict]:
+	"""
+	Collapse duplicate carrier/service rows.
+
+	Multiple connected accounts for the same carrier each return their own
+	quote for the same service. Keep only the cheapest per carrier/service
+	pair, sorted cheapest-first.
+
+	Keyed on the service name rather than the service code, because a carrier
+	does not always quote a service under one code: FedEx returns Express Saver
+	as both fedex_express_saver and fedex_economy, and two rows reading "FedEx
+	Express Saver" are a duplicate to whoever is picking one.
+	"""
+	best = {}
+	for rate in rates:
+		key = (carrier_family(rate), rate.get("service_type") or rate.get("service_code"))
+		amount = flt((rate.get("shipping_amount") or {}).get("amount"))
+		current = best.get(key)
+		if current is None or amount < flt((current.get("shipping_amount") or {}).get("amount")):
+			best[key] = rate
+	return sorted(best.values(), key=lambda r: flt((r.get("shipping_amount") or {}).get("amount")))
+
+
 def get_state_code(state: str, country_code: str = "US") -> str:
 	"""
 	Convert state name to 2-character state code for US addresses.
@@ -188,7 +221,7 @@ def get_rates(
 
 	try:
 		rates_response = client.get_rates_from_shipment(rate_request)
-		result = format_rates_response(rates_response)
+		result = dedupe_rates(filter_allowed_services(format_rates_response(rates_response), settings))
 		if not result:
 			# Log the full response for debugging if no rates found
 			frappe.logger("shipstation").info(
@@ -246,7 +279,7 @@ def estimate_rates(
 
 	try:
 		rates = client.estimate_rates(estimate_request)
-		return format_rates_response(rates)
+		return dedupe_rates(filter_allowed_services(format_rates_response(rates), settings))
 	except Exception as e:
 		error_msg = get_error_message(e)
 		frappe.log_error(title="Error estimating shipping rates", message=error_msg)
@@ -277,6 +310,18 @@ def get_rate_by_id(rate_id: str, settings_name: str | None = None) -> dict:
 		frappe.log_error(title="Error fetching rate", message=error_msg)
 		frappe.throw(_("Failed to fetch rate: {0}").format(error_msg))
 		return {}
+
+
+# EDI orders land on "EDI-TargetPlus"; orders keyed in by hand use "Target Plus".
+TARGET_PLUS_CHANNELS = ("EDI-TargetPlus", "Target Plus")
+
+
+def prefer_ups_for_targetplus(rates: list[dict], dn) -> list[dict]:
+	"""Target Plus orders ship UPS prepaid; hide other carriers when UPS quotes the lane."""
+	if dn.get("up_sales_channel") not in TARGET_PLUS_CHANNELS:
+		return rates
+	ups = [r for r in rates if (r.get("carrier_code") or "").lower().startswith("ups")]
+	return ups or rates
 
 
 @frappe.whitelist()
@@ -338,16 +383,38 @@ def get_rates_for_packing_slip(packing_slip: str) -> list[dict]:
 		"phone": ship_to_address.phone or "0000000000",
 	}
 
-	# Build package from this Packing Slip's item parcel dimensions
-	package = get_package_from_packing_slip(ps)
-	if not package:
+	# One package per shipping container. Rating only the first box under-quotes
+	# anything shipped in more than one carton, and the label buy then charges the
+	# real number, which reads as the quote being wrong.
+	packages = get_packages_from_packing_slip(ps)
+	if not packages:
 		frappe.throw(_("Packing Slip must have items with a Parcel # and parcel dimensions configured"))
 
-	return get_rates(
-		ship_from=ship_from,
-		ship_to=ship_to,
-		packages=[package],
+	return prefer_ups_for_targetplus(
+		get_rates(ship_from=ship_from, ship_to=ship_to, packages=packages),
+		dn,
 	)
+
+
+def get_packages_from_packing_slip(packing_slip) -> list[dict]:
+	"""Build one package dict per shipping container on a Packing Slip."""
+	numbers = []
+	for item in getattr(packing_slip, "items", []):
+		if item.parcel_number and item.parcel_number not in numbers:
+			numbers.append(item.parcel_number)
+
+	packages = []
+	for number in numbers:
+		package = get_package_from_packing_slip(packing_slip, number)
+		if package:
+			packages.append(package)
+
+	if packages:
+		return packages
+
+	# Nothing is packed yet, so fall back to the slip's gross weight.
+	single = get_package_from_packing_slip(packing_slip)
+	return [single] if single else []
 
 
 def get_package_from_packing_slip(packing_slip, parcel_number: int | None = None) -> dict | None:
@@ -461,10 +528,9 @@ def get_rates_for_delivery_note(delivery_note: str) -> list[dict]:
 
 	package = get_fallback_package(dn)
 
-	return get_rates(
-		ship_from=ship_from,
-		ship_to=ship_to,
-		packages=[package],
+	return prefer_ups_for_targetplus(
+		get_rates(ship_from=ship_from, ship_to=ship_to, packages=[package]),
+		dn,
 	)
 
 
@@ -595,13 +661,35 @@ def get_fallback_package(dn) -> dict:
 	}
 
 
+def get_allowlist(settings: "ShipstationSettings", fieldname: str) -> set[str]:
+	"""Parse a one-entry-per-line allowlist field; empty means allow all."""
+	raw = settings.get(fieldname) or ""
+	return {line.strip().lower() for line in raw.splitlines() if line.strip()}
+
+
 def get_carrier_ids(settings: "ShipstationSettings") -> list[str]:
-	"""Get list of carrier IDs from settings."""
+	"""Get list of carrier IDs from settings, honoring the carrier allowlist."""
 	carrier_ids = []
 	if settings.shipstation_api_carrier_data:
 		carriers = json.loads(settings.shipstation_api_carrier_data)
+		allowed = get_allowlist(settings, "carrier_allowlist")
+		if allowed:
+			carriers = [
+				c
+				for c in carriers
+				if (c.get("carrier_id") or "").lower() in allowed
+				or (c.get("carrier_code") or "").lower() in allowed
+			]
 		carrier_ids = [c.get("carrier_id") for c in carriers if c.get("carrier_id")]
 	return carrier_ids
+
+
+def filter_allowed_services(rates: list[dict], settings: "ShipstationSettings") -> list[dict]:
+	"""Drop rates whose service code is not on the service allowlist (empty = all)."""
+	allowed = get_allowlist(settings, "service_allowlist")
+	if not allowed:
+		return rates
+	return [r for r in rates if (r.get("service_code") or "").lower() in allowed]
 
 
 def format_address(address: dict) -> dict:

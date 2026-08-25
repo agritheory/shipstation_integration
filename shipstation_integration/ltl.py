@@ -50,6 +50,28 @@ CANONICAL_TO_LB: dict[str, float] = {
 CANONICAL_TO_CUFT: dict[str, float] = {"inch": 1.0 / 1728.0, "centimeter": 1.0 / 28316.85}
 
 
+NMFC_CLASSES = (
+	50, 55, 60, 65, 70, 77.5, 85, 92.5, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500,
+)
+
+
+def normalize_freight_class(value) -> str:
+	"""Render an NMFC class the way the carrier APIs expect it.
+
+	Half classes are real: 77.5 and 92.5 are both valid and both in use. Rounding them
+	down to an integer produces a class no carrier recognises, and the ones that price
+	on it drop out of the quote rather than erroring, so the shipment looks like it
+	simply has fewer options.
+	"""
+	try:
+		number = float(value)
+	except (TypeError, ValueError):
+		number = 50.0
+
+	nearest = min(NMFC_CLASSES, key=lambda option: abs(option - number))
+	return str(int(nearest)) if float(nearest).is_integer() else str(nearest)
+
+
 class ShipstationLTL(BaseLTL):
 	def __init__(self):
 		"""
@@ -223,10 +245,15 @@ class ShipstationLTL(BaseLTL):
 				message=f"Supplier '{supplier_name}' has invalid LTL carrier_id: {carrier_id}",
 			)
 
-		if not settings or not settings.shipstation_api_ltl_carrier_data:
+		# .get() rather than attribute access: shipstation_api_ltl_carrier_data is written
+		# by Shipstation Settings but is not declared in its doctype JSON, so a settings
+		# record that has never synced LTL carriers raises AttributeError here instead of
+		# returning nothing to look up.
+		ltl_carrier_data = settings.get("shipstation_api_ltl_carrier_data") if settings else None
+		if not ltl_carrier_data:
 			return None
 
-		carrier_data = json.loads(settings.shipstation_api_ltl_carrier_data)
+		carrier_data = json.loads(ltl_carrier_data)
 
 		# Look up by name (case-insensitive)
 		supplier_name_lower = supplier_name.lower()
@@ -489,7 +516,6 @@ class ShipstationLTL(BaseLTL):
 		``service_level``, ``total_price``, ``currency``, ``transit_days``,
 		``estimated_delivery_date``, ``expiration_date``, ``is_spot_quote``, ``charges``.
 		"""
-		require_submitted_shipment_for_ltl(doc)
 		self.validate_carrier_and_id(doc, settings_name)
 		carrier_id = doc.carrier_id
 
@@ -1058,8 +1084,9 @@ class ShipstationLTL(BaseLTL):
 
 		# Get carrier IDs from stored LTL carrier data
 		carrier_data = []
-		if settings and settings.shipstation_api_ltl_carrier_data:
-			carrier_data = json.loads(settings.shipstation_api_ltl_carrier_data)
+		ltl_carrier_data = settings.get("shipstation_api_ltl_carrier_data") if settings else None
+		if ltl_carrier_data:
+			carrier_data = json.loads(ltl_carrier_data)
 
 		if not carrier_data:
 			co = get_shipment_company_for_ltl(auth)
@@ -2162,6 +2189,18 @@ class ShipstationLTL(BaseLTL):
 			contact_dt = "Contact"
 			email_field = "email_id"
 
+		if not doc.get(address_name_field):
+			frappe.throw(
+				_("Set the {0} address on the Shipment before requesting LTL quotes.").format(
+					_("pickup") if ship_from else _("delivery")
+				)
+			)
+		if not doc.get(contact_field):
+			frappe.throw(
+				_("Set the {0} contact on the Shipment before requesting LTL quotes.").format(
+					_("pickup") if ship_from else _("delivery")
+				)
+			)
 		address = frappe.get_doc("Address", doc.get(address_name_field))
 		contact = frappe.get_doc(contact_dt, doc.get(contact_field))
 
@@ -2237,3 +2276,6 @@ def get_ltl_provider(doc=None) -> BaseLTL:
 				return frappe.get_attr(dotted_path)()
 
 	return ShipstationLTL()
+
+
+LTL_SUPPORTED_DIMENSION_UOMS = ["Inch", "Centimeter", "Millimeter", "Meter", "Foot"]

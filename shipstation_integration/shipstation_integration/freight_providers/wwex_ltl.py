@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import time
 import uuid
 from typing import TYPE_CHECKING, Any
@@ -64,7 +65,7 @@ from shipstation_integration.base_ltl import (
 	persist_shipment_ltl_fields,
 	require_submitted_shipment_for_ltl,
 )
-from shipstation_integration.ltl import ShipstationLTL
+from shipstation_integration.ltl import ShipstationLTL, normalize_freight_class
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
 )
@@ -350,6 +351,12 @@ class WwexLTL(BaseLTL):
 
 	DIM_UNIT = {"inches": "IN", "centimeters": "CM", "feet": "FT"}
 
+	# WWEX will not auto-rate a handling unit heavier than this; overweight units
+	# come back as zero offers with the misleading ineligibleReason "There are no
+	# carriers available to/from that combination of zip codes" (confirmed with
+	# WWEX support: split the weight across more units via ``quantity``).
+	MAX_HU_WEIGHT_LB = 5000.0
+
 	@staticmethod
 	def shipengine_pkg_weight_value_to_pounds(pkg_weight: dict) -> float:
 		"""Interpret ``ShipstationLTL`` package weight … value/unit as pounds."""
@@ -379,12 +386,21 @@ class WwexLTL(BaseLTL):
 		units = []
 		for pkg in packages:
 			dims = pkg.get("dimensions", {})
-			w_wwex = self.wwex_shipped_item_weight(pkg["weight"])
 			dim_unit = self.DIM_UNIT.get(dims.get("unit", "inches"), "IN")
+			total_lb = self.shipengine_pkg_weight_value_to_pounds(pkg["weight"])
+			if total_lb <= 0:
+				total_lb = 0.01
+			quantity = max(
+				int(pkg.get("quantity", 1)) or 1,
+				math.ceil(total_lb / self.MAX_HU_WEIGHT_LB),
+			)
+			w_wwex = self.wwex_shipped_item_weight(
+				{"value": total_lb / quantity, "unit": "pounds"}
+			)
 			items = []
-			for _i in range(int(pkg.get("quantity", 1))):
+			for _i in range(quantity):
 				item: dict = {
-					"commodityClass": str(pkg.get("freight_class", "50")),
+					"commodityClass": normalize_freight_class(pkg.get("freight_class")),
 					"commodityDescription": pkg.get("description") or "",
 					"isHazMat": bool(doc.get("hazardous_material")),
 					"weight": w_wwex,
@@ -396,7 +412,7 @@ class WwexLTL(BaseLTL):
 
 			unit = {
 				"packagingType": (pkg.get("code") or "PLT").upper(),
-				"quantity": int(pkg.get("quantity", 1)),
+				"quantity": quantity,
 				"weight": w_wwex,
 				"billedDimension": {
 					"length": {"value": str(dims.get("length", 0)), "unit": dim_unit},
@@ -446,18 +462,19 @@ class WwexLTL(BaseLTL):
 		if total_lb <= 0:
 			total_lb = 0.01
 
+		handling_units = self.build_handling_units(doc, packages)
 		payload: dict = {
 			"productType": "LTL",
 			"shipment": {
 				"shipmentDate": self.wwex_shop_flow_shipment_date(doc),
 				"originAddress": origin,
 				"destinationAddress": dest,
-				"handlingUnitList": self.build_handling_units(doc, packages),
+				"handlingUnitList": handling_units,
 				"totalWeight": {
 					"value": str(round(total_lb, 3)),
 					"unit": "LB",
 				},
-				"totalHandlingUnitCount": len(packages),
+				"totalHandlingUnitCount": sum(int(u.get("quantity", 1)) for u in handling_units),
 				"pickupSpecialInstructions": doc.get("description_of_content") or "",
 				"deliverySpecialInstructions": "",
 			},
@@ -569,7 +586,6 @@ class WwexLTL(BaseLTL):
 
 	def fetch_ltl_offers(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
 		"""Return WWEX shopFlow offers as normalized dicts without saving anything."""
-		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
 		offers = self.fetch_wwex_offers(doc, fc)
 		results: list[dict[str, Any]] = []

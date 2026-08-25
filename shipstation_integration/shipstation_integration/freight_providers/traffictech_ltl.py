@@ -37,7 +37,7 @@ import httpx
 from frappe import _
 from frappe.utils import flt, getdate
 from shipstation_integration.base_ltl import BaseLTL, require_submitted_shipment_for_ltl
-from shipstation_integration.ltl import ShipstationLTL
+from shipstation_integration.ltl import ShipstationLTL, normalize_freight_class
 from shipstation_integration.rates import get_state_code
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
@@ -284,8 +284,7 @@ class TrafficTechLTL(BaseLTL):
 			length = int(round(flt(dims.get("length")) * d_fac)) or 1
 			width = int(round(flt(dims.get("width")) * d_fac)) or 1
 			height = int(round(flt(dims.get("height")) * d_fac)) or 1
-			freight_class = pkg.get("freight_class")
-			cls = str(freight_class) if freight_class is not None else "50"
+			cls = normalize_freight_class(pkg.get("freight_class"))
 			desc = (pkg.get("description") or doc.get("description_of_content") or "Freight")[:200]
 			pkg_type, pkg_desc = self.package_type_for_tt(doc, pkg)
 			item: dict[str, Any] = {
@@ -456,7 +455,6 @@ class TrafficTechLTL(BaseLTL):
 		}
 
 	def fetch_ltl_offers(self, doc: Shipment, settings_name: str | None = None) -> list[dict]:
-		require_submitted_shipment_for_ltl(doc)
 		fc = self.get_fcs(doc, settings_name)
 		load_id, quotes = self.fetch_traffictech_quotes(doc, fc)
 		return [self.normalize_tt_quote(q, load_id) for q in quotes]
