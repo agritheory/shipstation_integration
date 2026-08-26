@@ -10,6 +10,7 @@ from shipstation_integration.ltl import (
 	ShipstationLTL,
 	centimeter_values_are_millimeter_magnitudes,
 	effective_sdn_dimension_uom,
+	format_freight_class,
 	get_ltl_provider,
 	sdn_dimensions_to_inches,
 )
@@ -144,6 +145,48 @@ def restore_ltl_shipment(shipment, original):
 )
 def test_density_to_freight_class_boundaries(density, expected_class):
 	assert ShipstationLTL().density_to_freight_class(density) == expected_class
+
+
+@pytest.mark.order(50)
+@pytest.mark.parametrize(
+	("value", "expected"),
+	[
+		(77.5, "77.5"),
+		(92.5, "92.5"),
+		("77.5", "77.5"),
+		(70, "70"),
+		(70.0, "70"),
+		(None, "50"),
+		(0, "50"),
+	],
+)
+def test_format_freight_class(value, expected):
+	assert format_freight_class(value) == expected
+
+
+@pytest.mark.order(50)
+def test_banyan_handling_units_keep_half_freight_class(monkeypatch):
+	"""77.5 has to reach Banyan intact.
+
+	Truncating it to 77 does not fail the request: carriers that only answer whole classes drop
+	off the response instead, so the shipment comes back with a handful of offers at roughly
+	double the price of the correct class.
+	"""
+	packages = [
+		{
+			"code": "Pallets",
+			"freight_class": 77.5,
+			"description": "Test freight",
+			"dimensions": {"length": 48, "width": 40, "height": 60, "unit": "inches"},
+			"weight": {"value": 999, "unit": "pounds"},
+			"quantity": 1,
+		}
+	]
+	monkeypatch.setattr(ShipstationLTL, "build_packages_from_sdn", lambda self, doc: packages)
+
+	units = BanyanLTL().build_handling_units(frappe._dict())
+
+	assert units[0]["Products"][0]["Class"] == "77.5"
 
 
 @pytest.mark.order(51)
@@ -420,3 +463,29 @@ def test_ltl_carriers_expose_millimeter_dimension_uom():
 		assert abs(dims["height"] - 60) < 1
 	finally:
 		restore_ltl_shipment(shipment, original)
+
+
+@pytest.mark.order(52)
+def test_microsecond_pickup_window_is_replaced_with_the_default():
+	"""A window can run forwards and still be far too narrow to send a truck to.
+
+	Shipments created from a Delivery Note stamp pickup_from and pickup_to from the same
+	clock read, so they land microseconds apart rather than equal.
+	"""
+	shipment = get_draft_ltl_shipment_for_tests()
+	shipment.pickup_from = "16:01:45.285051"
+	shipment.pickup_to = "16:01:45.285076"
+	shipment.normalize_pickup_window()
+	meta = frappe.get_meta("Shipment")
+	assert shipment.pickup_from == (meta.get_field("pickup_from").default or "09:00:00")
+	assert shipment.pickup_to == (meta.get_field("pickup_to").default or "17:00:00")
+
+
+@pytest.mark.order(53)
+def test_a_real_pickup_window_is_left_alone():
+	shipment = get_draft_ltl_shipment_for_tests()
+	shipment.pickup_from = "10:00:00"
+	shipment.pickup_to = "15:00:00"
+	shipment.normalize_pickup_window()
+	assert shipment.pickup_from == "10:00:00"
+	assert shipment.pickup_to == "15:00:00"

@@ -14,11 +14,13 @@ the desk.
 """
 
 import json
+from datetime import datetime, timedelta
 from typing import Any
 
 import frappe
 from erpnext.stock.doctype.shipment.shipment import Shipment
 from frappe import _
+from frappe.utils import get_time
 
 from shipstation_integration.base_ltl import require_submitted_shipment_for_ltl
 from shipstation_integration.ltl import get_ltl_provider
@@ -33,15 +35,41 @@ def ltl_settings_name(settings_name: str | None) -> str | None:
 	return settings.name if settings else None
 
 
+# Carriers dispatch against a window, not an instant. Anything narrower than this is not
+# a window they can send a truck to, so treat it as absent rather than as a request.
+MINIMUM_PICKUP_WINDOW = timedelta(minutes=30)
+
+
 class ShipStationShipment(Shipment):
 	def validate(self):
-		if self.get("freight_type") == "LTL" and not self.get("delivery_contact_name"):
-			frappe.throw(
-				_("Delivery Contact is required for LTL shipments."),
-				title=_("Delivery contact required"),
-			)
+		if self.get("freight_type") == "LTL":
+			if not self.get("delivery_contact_name"):
+				frappe.throw(
+					_("Delivery Contact is required for LTL shipments."),
+					title=_("Delivery contact required"),
+				)
+			self.normalize_pickup_window()
 		# TODO: if freight_type == "LTL" -> call ltl_class method to show missing but required fields
 		super().validate()
+
+	def normalize_pickup_window(self) -> None:
+		"""Restore the default pickup window when this one is too narrow to dispatch against.
+
+		A Shipment built from a Delivery Note arrives with pickup_from and pickup_to both
+		stamped with the moment it was created, microseconds apart. Carriers either refuse a
+		window that narrow or quietly substitute one of their own, so the rate that comes back
+		is not for the pickup shown on the form. Direction alone is not the test: the window
+		that prompted this was 25 microseconds wide and still ran forwards.
+		"""
+		start, end = self.get("pickup_from"), self.get("pickup_to")
+		if start and end:
+			opens = datetime.combine(datetime.min, get_time(start))
+			closes = datetime.combine(datetime.min, get_time(end))
+			if closes - opens >= MINIMUM_PICKUP_WINDOW:
+				return
+		meta = frappe.get_meta("Shipment")
+		self.pickup_from = meta.get_field("pickup_from").default or "09:00:00"
+		self.pickup_to = meta.get_field("pickup_to").default or "17:00:00"
 
 	def before_submit(self):
 		"""
@@ -96,7 +124,16 @@ def get_carrier_id_for_supplier(
 	"""
 	if company is None:
 		company = frappe.defaults.get_user_default("Company")
-	ltl_class = get_ltl_provider()
+	# The form calls this with nothing but the carrier, so hand get_ltl_provider enough of a
+	# Shipment to resolve against. Called bare it always falls back to ShipstationLTL, which
+	# then goes looking for a ShipEngine carrier_id that a Banyan or ODFL supplier was never
+	# going to have.
+	context = frappe._dict(
+		preferred_carrier=supplier_name,
+		pickup_from_type="Company",
+		pickup_company=company,
+	)
+	ltl_class = get_ltl_provider(context)
 	return ltl_class.get_carrier_id_for_supplier(
 		supplier_name, ltl_settings_name(settings_name), company
 	)

@@ -220,6 +220,18 @@ def validate_ltl_parcel_dimensions_inches(
 	)
 
 
+def format_freight_class(freight_class, default: float = 50) -> str:
+	"""Render an NMFC freight class the way carrier APIs expect it.
+
+	77.5 and 92.5 are the only half classes in the NMFC scale, so ``int()`` turns them into 77
+	and 92, which are not classes at all. Carriers do not reject the request for that: they
+	quietly drop out of the rate response, and the shipment comes back with a fraction of the
+	usual offers at a much higher price. Whole classes still render without a trailing ``.0``.
+	"""
+	value = flt(freight_class) or flt(default)
+	return str(int(value)) if value == int(value) else str(round(value, 1))
+
+
 class ShipstationLTL(BaseLTL):
 	def __init__(self):
 		"""
@@ -393,10 +405,15 @@ class ShipstationLTL(BaseLTL):
 				message=f"Supplier '{supplier_name}' has invalid LTL carrier_id: {carrier_id}",
 			)
 
-		if not settings or not settings.shipstation_api_ltl_carrier_data:
+		# .get() rather than attribute access: shipstation_api_ltl_carrier_data is written by
+		# Shipstation Settings but is not declared in its doctype JSON, so a settings record
+		# that has never synced LTL carriers raises AttributeError here instead of returning
+		# nothing to look up.
+		ltl_carrier_data = settings.get("shipstation_api_ltl_carrier_data") if settings else None
+		if not ltl_carrier_data:
 			return None
 
-		carrier_data = json.loads(settings.shipstation_api_ltl_carrier_data)
+		carrier_data = json.loads(ltl_carrier_data)
 
 		# Look up by name (case-insensitive)
 		supplier_name_lower = supplier_name.lower()
@@ -1228,8 +1245,9 @@ class ShipstationLTL(BaseLTL):
 
 		# Get carrier IDs from stored LTL carrier data
 		carrier_data = []
-		if settings and settings.shipstation_api_ltl_carrier_data:
-			carrier_data = json.loads(settings.shipstation_api_ltl_carrier_data)
+		ltl_carrier_data = settings.get("shipstation_api_ltl_carrier_data") if settings else None
+		if ltl_carrier_data:
+			carrier_data = json.loads(ltl_carrier_data)
 
 		if not carrier_data:
 			co = get_shipment_company_for_ltl(auth)

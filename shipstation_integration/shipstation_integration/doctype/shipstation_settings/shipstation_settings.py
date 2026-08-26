@@ -247,9 +247,13 @@ class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comi
 
 	def api_ltl_carrier_data(self):
 		"""Return parsed API LTL carrier data."""
-		if not self.shipstation_api_ltl_carrier_data:
+		# .get() to match onload above: shipstation_api_ltl_carrier_data is written by
+		# fetch_ltl_carriers but is declared in no doctype JSON, so reading it as an
+		# attribute raises AttributeError wherever that field was never created by hand.
+		ltl_carrier_data = self.get("shipstation_api_ltl_carrier_data")
+		if not ltl_carrier_data:
 			return []
-		return json.loads(self.shipstation_api_ltl_carrier_data)
+		return json.loads(ltl_carrier_data)
 
 	@frappe.whitelist()
 	def fetch_ltl_carriers(self):
