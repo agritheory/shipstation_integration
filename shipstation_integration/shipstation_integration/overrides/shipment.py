@@ -14,6 +14,7 @@ the desk.
 """
 
 import json
+from datetime import datetime, timedelta
 from typing import Any
 
 import frappe
@@ -34,6 +35,11 @@ def ltl_settings_name(settings_name: str | None) -> str | None:
 	return settings.name if settings else None
 
 
+# Carriers dispatch against a window, not an instant. Anything narrower than this is not
+# a window they can send a truck to, so treat it as absent rather than as a request.
+MINIMUM_PICKUP_WINDOW = timedelta(minutes=30)
+
+
 class ShipStationShipment(Shipment):
 	def validate(self):
 		if self.get("freight_type") == "LTL":
@@ -47,16 +53,20 @@ class ShipStationShipment(Shipment):
 		super().validate()
 
 	def normalize_pickup_window(self) -> None:
-		"""Restore the default pickup window when this one has no room in it.
+		"""Restore the default pickup window when this one is too narrow to dispatch against.
 
-		A Shipment built from a Delivery Note can arrive with pickup_from equal to pickup_to,
-		both stamped with the moment it was created. That is a pickup window of zero minutes:
-		carriers either refuse it or quietly substitute a window of their own, so the rate that
-		comes back is not for the pickup shown on the form.
+		A Shipment built from a Delivery Note arrives with pickup_from and pickup_to both
+		stamped with the moment it was created, microseconds apart. Carriers either refuse a
+		window that narrow or quietly substitute one of their own, so the rate that comes back
+		is not for the pickup shown on the form. Direction alone is not the test: the window
+		that prompted this was 25 microseconds wide and still ran forwards.
 		"""
 		start, end = self.get("pickup_from"), self.get("pickup_to")
-		if start and end and get_time(start) < get_time(end):
-			return
+		if start and end:
+			opens = datetime.combine(datetime.min, get_time(start))
+			closes = datetime.combine(datetime.min, get_time(end))
+			if closes - opens >= MINIMUM_PICKUP_WINDOW:
+				return
 		meta = frappe.get_meta("Shipment")
 		self.pickup_from = meta.get_field("pickup_from").default or "09:00:00"
 		self.pickup_to = meta.get_field("pickup_to").default or "17:00:00"
