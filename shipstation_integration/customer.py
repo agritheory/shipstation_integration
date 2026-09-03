@@ -124,7 +124,7 @@ def get_or_create_address(
 def create_address(address: "ShipStationAddress", customer: str, email: str, address_type: str):
 	addr: "Address" = frappe.new_doc("Address")
 	addr.append("links", {"link_doctype": "Customer", "link_name": customer})
-	_update_address(address, addr, email, address_type)
+	apply_address_fields(address, addr, email, address_type)
 	return addr
 
 
@@ -132,11 +132,13 @@ def update_address(
 	address: "ShipStationAddress", address_name: str, email: str, address_type: str
 ):
 	addr: "Address" = frappe.get_doc("Address", address_name)
-	_update_address(address, addr, email, address_type)
+	apply_address_fields(address, addr, email, address_type)
 	return addr
 
 
-def _update_address(address: "ShipStationAddress", addr: "Address", email: str, address_type: str):
+def apply_address_fields(
+	address: "ShipStationAddress", addr: "Address", email: str, address_type: str
+):
 	addr.address_type = address_type
 	addr.address_line1 = address.street1
 	addr.address_line2 = address.street2

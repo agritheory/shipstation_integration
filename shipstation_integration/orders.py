@@ -315,7 +315,7 @@ def create_erpnext_order(
 		frappe.db.commit()
 
 	after_submit_hook = frappe.get_hooks("update_shipstation_order_after_submit")
-	if before_submit_hook:
+	if after_submit_hook:
 		frappe.get_attr(after_submit_hook[0])(store, so, order)
 		frappe.db.commit()
 

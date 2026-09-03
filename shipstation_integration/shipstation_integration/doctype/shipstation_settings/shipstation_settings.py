@@ -40,9 +40,9 @@ class ShipstationSettings(Document):
 
 	def onload(self):
 		if self.carrier_data:
-			self.set_onload("carriers", self._carrier_data())
+			self.set_onload("carriers", self.carrier_data())
 		if self.shipstation_api_carrier_data:
-			self.set_onload("api_carriers", self._api_carrier_data())
+			self.set_onload("api_carriers", self.api_carrier_data())
 
 	def validate(self):
 		self.validate_label_generation()
@@ -61,6 +61,7 @@ class ShipstationSettings(Document):
 	def on_update(self):
 		if self.enabled:
 			self.add_webhooks()
+		self.create_physical_dimensions_for_parcel_templates()
 
 	@frappe.whitelist()
 	def get_orders(self):
@@ -200,7 +201,7 @@ class ShipstationSettings(Document):
 		except Exception as e:
 			frappe.throw(_("Failed to fetch carriers: {0}").format(str(e)))
 
-	def _api_carrier_data(self):
+	def api_carrier_data(self):
 		"""Return parsed API carrier data."""
 		if not self.shipstation_api_carrier_data:
 			return []
@@ -217,7 +218,7 @@ class ShipstationSettings(Document):
 		"""Get carrier, service, and package codes from API carrier data."""
 		_carrier_id, _service_code, _package_code = None, None, None
 
-		for carrier in self._api_carrier_data():
+		for carrier in self.api_carrier_data():
 			if carrier_name in [carrier.get("name"), carrier.get("carrier_code")]:
 				_carrier_id = carrier.get("carrier_id")
 
@@ -239,6 +240,27 @@ class ShipstationSettings(Document):
 	def validate_label_generation(self):
 		if not self.enabled and self.enable_label_generation:
 			self.enable_label_generation = False
+
+	def create_physical_dimensions_for_parcel_templates(self):
+		if (
+			"inventory_tools" not in frappe.get_installed_apps()
+			or not self.enabled
+			or not self.create_physical_dimension_per_parcel_template
+		):
+			return
+
+		created = 0
+		for shipment_parcel_template_name in frappe.get_all("Shipment Parcel Template", pluck="name"):
+			shipment_parcel_template = frappe.get_doc(
+				"Shipment Parcel Template", shipment_parcel_template_name
+			)
+			if shipment_parcel_template.sync_physical_dimension():
+				created += 1
+
+		if created:
+			frappe.msgprint(
+				_("{0} Physical Dimension record(s) created for Shipment Parcel Templates.").format(created)
+			)
 
 	def validate_enabled_stores(self):
 		for store in self.shipstation_stores:
@@ -399,13 +421,13 @@ class ShipstationSettings(Document):
 
 		return f"{len(products.results)} product(s) imported successfully"
 
-	def _carrier_data(self):
+	def carrier_data(self):
 		if not self.carrier_data:
 			return []
 		return json.loads(self.carrier_data)
 
 	def get_carrier_services(self, carrier):
-		carrier_data = self._carrier_data()
+		carrier_data = self.carrier_data()
 		if not carrier_data:
 			return ""
 		for ss_carrier in carrier_data:
@@ -415,7 +437,7 @@ class ShipstationSettings(Document):
 
 	def get_codes(self, carrier, service, package):
 		_carrier, _service, _package = None, None, "Package"
-		carrier_data = self._carrier_data()
+		carrier_data = self.carrier_data()
 		if not carrier_data:
 			return _carrier, _service, _package
 		for ss_carrier in carrier_data:
