@@ -81,6 +81,46 @@ def update_customer_details(
 	return existing_so_doc
 
 
+def get_or_create_address(
+	address: "ShipStationAddress", customer_name: str, email: str, address_type: str
+) -> str | None:
+	if not address or not getattr(address, "street1", None):
+		return None
+
+	country = (
+		frappe.get_cached_value("Country", {"code": address.country}, "name")
+		if address.country
+		else None
+	)
+
+	addr_doctype = frappe.qb.DocType("Address")
+	link = frappe.qb.DocType("Dynamic Link")
+
+	query = (
+		frappe.qb.from_(link)
+		.join(addr_doctype)
+		.on(addr_doctype.name == link.parent)
+		.select(addr_doctype.name)
+		.where(link.link_doctype == "Customer")
+		.where(link.link_name == customer_name)
+		.where(addr_doctype.address_line1 == address.street1)
+		.where(addr_doctype.city == (address.city or ""))
+		.where(addr_doctype.pincode == (address.postal_code or ""))
+		.limit(1)
+	)
+
+	if country:
+		query = query.where(addr_doctype.country == country)
+
+	existing = query.run(as_dict=True)
+
+	if existing:
+		return existing[0].name
+
+	new_addr = create_address(address, customer_name, email, address_type)
+	return new_addr.name if new_addr else None
+
+
 def create_address(address: "ShipStationAddress", customer: str, email: str, address_type: str):
 	addr: "Address" = frappe.new_doc("Address")
 	addr.append("links", {"link_doctype": "Customer", "link_name": customer})
