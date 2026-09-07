@@ -7,6 +7,7 @@
  "engine": "InnoDB",
  "field_order": [
   "carrier",
+  "carrier_service",
   "shipping_account_number",
   "enabled",
   "default"
@@ -19,6 +20,12 @@
    "label": "Carrier",
    "options": "Supplier",
    "reqd": 1
+  },
+  {
+   "fieldname": "carrier_service",
+   "fieldtype": "Autocomplete",
+   "in_list_view": 1,
+   "label": "Carrier Service"
   },
   {
    "fieldname": "shipping_account_number",

@@ -51,8 +51,8 @@ repos:
         args: [--config-file=pyproject.toml, shipstation_integration]
         pass_filenames: false
 
-  - repo: https://github.com/agritheory/test_utils
-    rev: v1.30.1
+  - repo: ../../../test_utils
+    rev: main
     hooks:
       - id: update_pre_commit_config
       - id: validate_frappe_project

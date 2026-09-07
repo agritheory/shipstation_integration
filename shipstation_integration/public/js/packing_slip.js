@@ -382,6 +382,58 @@ function update_split_button_state(frm) {
 	$btn.prop('disabled', !can_split)
 }
 
+function apply_shipping_account_defaults(frm, accounts) {
+	if (!accounts?.length) return
+	const account = accounts.find(a => a.default) || accounts.find(a => a.enabled) || accounts[0]
+	if (!account) return
+	if (account.carrier && !frm.doc.carrier) {
+		frm.set_value('carrier', account.carrier)
+	}
+	if (account.carrier_service && !frm.doc.carrier_service) {
+		frm.set_value('carrier_service', account.carrier_service)
+	}
+}
+
+function fetch_shipping_account_defaults(frm, args) {
+	if (frm.doc.carrier && frm.doc.carrier_service) return
+	frappe.call({
+		method: 'shipstation_integration.api.carriers.get_shipping_accounts',
+		args,
+		callback(accounts_r) {
+			apply_shipping_account_defaults(frm, accounts_r.message || [])
+		},
+	})
+}
+
+function fetch_shipping_account_defaults_for_packing_slip(frm) {
+	if (frm.doc.carrier && frm.doc.carrier_service) return
+
+	if (frm.doc.delivery_note) {
+		fetch_shipping_account_defaults(frm, { delivery_note: frm.doc.delivery_note })
+		return
+	}
+
+	const so_name = (frm.doc.items || []).map(row => row.against_sales_order).find(Boolean)
+	if (!so_name) return
+
+	const customer = frm.doc.__onload?.customer
+	if (customer) {
+		fetch_shipping_account_defaults(frm, { customer })
+		return
+	}
+
+	frappe.call({
+		method: 'frappe.client.get',
+		args: { doctype: 'Sales Order', name: so_name },
+		callback(r) {
+			if (!r.message?.customer) return
+			frm.doc.__onload = frm.doc.__onload || {}
+			frm.doc.__onload.customer = r.message.customer
+			fetch_shipping_account_defaults(frm, { customer: r.message.customer })
+		},
+	})
+}
+
 function fetch_sales_order_defaults(frm) {
 	const so_name = (frm.doc.items || []).map(row => row.against_sales_order).find(Boolean)
 	if (!so_name) return
@@ -414,19 +466,8 @@ function fetch_sales_order_defaults(frm) {
 				})
 			}
 
-			if (!frm.doc.carrier) {
-				frappe.call({
-					method: 'shipstation_integration.api.carriers.get_shipping_accounts',
-					args: { customer: so.customer },
-					callback: function (accounts_r) {
-						const accounts = accounts_r.message || []
-						if (!accounts.length) return
-						const account = accounts.find(a => a.default) || accounts.find(a => a.enabled) || accounts[0]
-						if (account && account.carrier && !frm.doc.carrier) {
-							frm.set_value('carrier', account.carrier)
-						}
-					},
-				})
+			if (!frm.doc.carrier || !frm.doc.carrier_service) {
+				fetch_shipping_account_defaults(frm, { customer: so.customer })
 			}
 		},
 	})
@@ -459,19 +500,8 @@ function fetch_delivery_note_defaults(frm) {
 
 			fetch_weight_from_delivery_note(frm, dn)
 
-			if (!frm.doc.carrier) {
-				frappe.call({
-					method: 'shipstation_integration.api.carriers.get_shipping_accounts',
-					args: { delivery_note: frm.doc.delivery_note },
-					callback: function (r) {
-						const accounts = r.message || []
-						if (!accounts.length) return
-						const account = accounts.find(a => a.default) || accounts.find(a => a.enabled) || accounts[0]
-						if (account && account.carrier && !frm.doc.carrier) {
-							frm.set_value('carrier', account.carrier)
-						}
-					},
-				})
+			if (!frm.doc.carrier || !frm.doc.carrier_service) {
+				fetch_shipping_account_defaults(frm, { delivery_note: frm.doc.delivery_note })
 			}
 		},
 	})
@@ -713,11 +743,21 @@ frappe.ui.form.on('Packing Slip', {
 				}
 
 				if (frm.doc.delivery_note) {
-					if (!frm.doc.shipping_address_name || !frm.doc.dispatch_address_name) {
+					if (
+						!frm.doc.shipping_address_name ||
+						!frm.doc.dispatch_address_name ||
+						!frm.doc.carrier ||
+						!frm.doc.carrier_service
+					) {
 						fetch_delivery_note_defaults(frm)
 					}
 				} else if ((frm.doc.items || []).some(row => row.against_sales_order)) {
-					if (!frm.doc.shipping_address_name || !frm.doc.dispatch_address_name) {
+					if (
+						!frm.doc.shipping_address_name ||
+						!frm.doc.dispatch_address_name ||
+						!frm.doc.carrier ||
+						!frm.doc.carrier_service
+					) {
 						fetch_sales_order_defaults(frm)
 					}
 				}

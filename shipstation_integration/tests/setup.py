@@ -600,9 +600,36 @@ def create_shipstation_settings(settings):
 	ss.set("shipstation_api_key", "test_shipstation_api_key_for_ci")
 	ss.shipstation_api_carrier_data = json.dumps(
 		[
-			{"carrier_id": "se-123", "carrier_code": "usps"},
-			{"carrier_id": "se-456", "carrier_code": "fedex"},
-			{"carrier_id": "se-789", "carrier_code": "ups"},
+			{
+				"carrier_id": "se-123",
+				"carrier_code": "usps",
+				"name": "USPS",
+				"supplier": "USPS",
+				"services": [
+					{"service_code": "usps_priority_mail", "name": "Priority Mail"},
+					{"service_code": "usps_first_class_mail", "name": "First Class Mail"},
+				],
+			},
+			{
+				"carrier_id": "se-456",
+				"carrier_code": "fedex",
+				"name": "FedEx",
+				"supplier": "FedEx",
+				"services": [
+					{"service_code": "fedex_ground", "name": "FedEx Ground"},
+					{"service_code": "fedex_home_delivery", "name": "FedEx Home Delivery"},
+				],
+			},
+			{
+				"carrier_id": "se-789",
+				"carrier_code": "ups",
+				"name": "UPS",
+				"supplier": "UPS",
+				"services": [
+					{"service_code": "ups_ground", "name": "UPS Ground"},
+					{"service_code": "ups_next_day_air", "name": "UPS Next Day Air"},
+				],
+			},
 		]
 	)
 	ss.save()

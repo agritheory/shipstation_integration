@@ -29,6 +29,47 @@ if TYPE_CHECKING:
 SHIPENGINE_API_URL = "https://api.shipengine.com/v1"
 
 
+def normalize_cached_service(service: dict) -> dict:
+	return format_service(
+		{
+			"carrier_id": service.get("carrier_id"),
+			"carrier_code": service.get("carrier_code"),
+			"service_code": service.get("service_code") or service.get("code"),
+			"name": service.get("name"),
+			"domestic": service.get("domestic", False),
+			"international": service.get("international", False),
+			"is_multi_package_supported": service.get("is_multi_package_supported", False),
+		}
+	)
+
+
+def get_cached_carrier_services(
+	settings, carrier_id: str | None = None, supplier_name: str | None = None
+) -> list[dict]:
+	services: list[dict] = []
+	if carrier_id and settings.shipstation_api_carrier_data:
+		for carrier in json.loads(settings.shipstation_api_carrier_data):
+			if carrier.get("carrier_id") == carrier_id:
+				services = carrier.get("services") or []
+				break
+
+	if not services and supplier_name and settings.carrier_data:
+		supplier_lower = supplier_name.lower()
+		for carrier in json.loads(settings.carrier_data):
+			names = [
+				(carrier.get("name") or "").lower(),
+				(carrier.get("nickname") or "").lower(),
+				(carrier.get("code") or "").lower(),
+			]
+			if supplier_lower in names or any(
+				supplier_lower in name or name in supplier_lower for name in names if name
+			):
+				services = carrier.get("services") or []
+				break
+
+	return [normalize_cached_service(s) for s in services if isinstance(s, dict)]
+
+
 def get_or_create_transporter(
 	carrier_name: str, ltl_carrier_id: str | None = None, ltl_carrier_scac: str | None = None
 ) -> str | None:
@@ -332,6 +373,13 @@ def list_carrier_services(carrier_id: str, settings_name: str | None = None) -> 
 	"""
 	settings = get_shipstation_settings(settings_name)
 	api_key = settings.get_password("shipstation_api_key")
+	cached_services = get_cached_carrier_services(settings, carrier_id=carrier_id)
+
+	if cached_services:
+		return cached_services
+
+	if not api_key:
+		return []
 
 	try:
 		with httpx.Client() as client:
@@ -774,8 +822,17 @@ def get_carrier_id_for_supplier(
 		):
 			return valid_carrier_id(carrier.get("carrier_id"), carrier.get("name", ""))
 
+	# Pass 3 — match on carrier_code (e.g. supplier "USPS" -> carrier_code "usps")
+	for carrier in carrier_data:
+		carrier_code = (carrier.get("carrier_code") or "").lower()
+		if supplier_name_lower == carrier_code:
+			return valid_carrier_id(carrier.get("carrier_id"), carrier.get("carrier_code", ""))
+
 	# Not found — log available carriers to help with debugging
-	available_carriers = [f"{c.get('name')} (supplier: {c.get('supplier')})" for c in carrier_data]
+	available_carriers = [
+		f"{c.get('name')} (supplier: {c.get('supplier')}, code: {c.get('carrier_code')})"
+		for c in carrier_data
+	]
 	frappe.log_error(
 		title="Carrier not found for supplier",
 		message=f"Looking for supplier: {supplier_name}\nAvailable carriers: {', '.join(available_carriers)}",
@@ -834,6 +891,13 @@ def get_services_for_supplier(supplier_name: str, settings_name: str | None = No
 		if not carrier_id:
 			# No matching carrier found - return empty list without error
 			return []
+
+		settings = get_shipstation_settings(settings_name)
+		cached_services = get_cached_carrier_services(
+			settings, carrier_id=carrier_id, supplier_name=supplier_name
+		)
+		if cached_services:
+			return cached_services
 
 		return list_carrier_services(carrier_id, settings_name)
 	except Exception as e:
@@ -929,6 +993,7 @@ def get_shipping_accounts(delivery_note=None, customer=None):
 			{
 				"shipping_account_number": row.shipping_account_number,
 				"carrier": row.carrier,
+				"carrier_service": row.carrier_service,
 				"enabled": row.enabled,
 				"default": row.default,
 			}

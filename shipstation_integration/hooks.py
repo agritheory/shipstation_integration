@@ -52,8 +52,8 @@ doctype_js = {
 		"public/js/shipment_pack.js",
 	],
 	"Sales Order": "public/js/sales_order.js",
-	"Supplier": "public/js/supplier.js",
-	"Customer": "public/js/customer.js",
+	"Supplier": ["public/js/shipping_account.js", "public/js/supplier.js"],
+	"Customer": ["public/js/shipping_account.js", "public/js/customer.js"],
 	"Shipment Parcel Template": "public/js/shipment_parcel_template.js",
 }
 
