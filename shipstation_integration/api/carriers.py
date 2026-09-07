@@ -916,33 +916,21 @@ def format_service(service: dict) -> dict:
 
 
 @frappe.whitelist()
-def get_shipping_accounts(delivery_note):
-	dn = frappe.get_doc("Delivery Note", delivery_note)
+def get_shipping_accounts(delivery_note=None, customer=None):
+	if delivery_note:
+		customer = frappe.db.get_value("Delivery Note", delivery_note, "customer")
+	if not customer:
+		return []
 
+	doc = frappe.get_doc("Customer", customer)
 	accounts = []
-
-	if dn.customer:
-		doc = frappe.get_doc("Customer", dn.customer)
-		for row in doc.shipping_accounts:  # child table fieldname
-			accounts.append(
-				{
-					"shipping_account_number": row.shipping_account_number,
-					"carrier": row.carrier,
-					"enabled": row.enabled,
-					"default": row.default,
-				}
-			)
-
-	elif dn.supplier:
-		doc = frappe.get_doc("Supplier", dn.supplier)
-		for row in doc.shipping_accounts:
-			accounts.append(
-				{
-					"shipping_account_number": row.shipping_account_number,
-					"carrier": row.carrier,
-					"enabled": row.enabled,
-					"default": row.default,
-				}
-			)
-
+	for row in doc.shipping_accounts:
+		accounts.append(
+			{
+				"shipping_account_number": row.shipping_account_number,
+				"carrier": row.carrier,
+				"enabled": row.enabled,
+				"default": row.default,
+			}
+		)
 	return accounts

@@ -502,22 +502,26 @@ def format_label_response(label_response) -> dict:
 def get_third_party_billing_options(ps) -> dict | None:
 	"""
 	Return ShipEngine advanced_options for third-party billing if the customer
-	linked to the Packing Slip's Delivery Note has a matching shipping account.
+	linked to the Packing Slip has a matching shipping account.
 
 	Matches on carrier: looks for an account whose carrier field equals the
 	carrier set on the Packing Slip, preferring default > enabled > first match.
 	Returns None if no qualifying account is found.
 	"""
-	if not ps.delivery_note or not ps.carrier:
+	from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+		get_customer_from_packing_slip,
+	)
+
+	if not ps.carrier:
+		return None
+
+	customer, _customer_display = get_customer_from_packing_slip(ps)
+	if not customer or not ps.carrier:
 		return None
 
 	try:
-		dn = frappe.get_cached_doc("Delivery Note", ps.delivery_note)
-		if not dn.customer:
-			return None
-
-		customer = frappe.get_cached_doc("Customer", dn.customer)
-		accounts = [row for row in (customer.shipping_accounts or []) if row.carrier == ps.carrier]
+		customer_doc = frappe.get_cached_doc("Customer", customer)
+		accounts = [row for row in (customer_doc.shipping_accounts or []) if row.carrier == ps.carrier]
 		if not accounts:
 			return None
 
@@ -530,10 +534,9 @@ def get_third_party_billing_options(ps) -> dict | None:
 		if not account.shipping_account_number:
 			return None
 
-		# Attempt to pull postal code / country from the customer's billing address
 		billing_address = frappe.db.get_value(
 			"Dynamic Link",
-			{"link_doctype": "Customer", "link_name": dn.customer, "parenttype": "Address"},
+			{"link_doctype": "Customer", "link_name": customer, "parenttype": "Address"},
 			"parent",
 		)
 		postal_code = ""
@@ -573,9 +576,16 @@ def build_shipment_from_packing_slip(
 	ship_to_address = frappe.get_doc("Address", ps.shipping_address_name)
 	ship_from_address = frappe.get_doc("Address", ps.dispatch_address_name)
 
-	dn = frappe.get_doc("Delivery Note", ps.delivery_note)
-	company_name = dn.company
-	customer_name = dn.customer_name or dn.customer
+	from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+		get_company_from_packing_slip,
+		get_customer_from_packing_slip,
+	)
+
+	company_name = get_company_from_packing_slip(ps)
+	customer, customer_name = get_customer_from_packing_slip(ps)
+	if not company_name or not customer:
+		frappe.throw(_("Packing Slip must be linked to a Delivery Note or Sales Order"))
+	customer_name = customer_name or customer
 
 	if carrier_id and not str(carrier_id).startswith("se-"):
 		frappe.throw(

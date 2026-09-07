@@ -32,6 +32,10 @@ import frappe
 from frappe import _
 from frappe.utils import flt, today
 
+from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+	get_company_from_packing_slip,
+	get_source_warehouse_for_pack_line,
+)
 from shipstation_integration.utils import get_shipment_company_for_ltl
 
 
@@ -108,7 +112,9 @@ def on_packing_slip_submit(doc) -> None:
 	if not is_beam_installed():
 		return
 
-	company = frappe.db.get_value("Delivery Note", doc.delivery_note, "company")
+	company = get_company_from_packing_slip(doc)
+	if not company:
+		return
 
 	if beam_handling_units_enabled(company):
 		create_packing_slip_repack_entry(doc, company)
@@ -117,6 +123,76 @@ def on_packing_slip_submit(doc) -> None:
 			create_handling_unit_for_sscc(code)
 
 	update_dn_item_handling_units(doc)
+
+
+def get_repack_source_fields_for_pack_line(row, company: str) -> dict | None:
+	has_hu_on_dni = dni_has_handling_unit_field()
+
+	if row.get("dn_detail"):
+		dn_item = frappe.db.get_value(
+			"Delivery Note Item",
+			row.dn_detail,
+			[
+				"item_code",
+				"warehouse",
+				"uom",
+				"conversion_factor",
+				"handling_unit",
+				"incoming_rate",
+				"is_free_item",
+			],
+			as_dict=True,
+		)
+		if not dn_item or not dn_item.warehouse:
+			return None
+		source_hu = dn_item.handling_unit if has_hu_on_dni else None
+		basic_rate = flt(dn_item.incoming_rate)
+		allow_zero = 1 if dn_item.is_free_item else 0
+		item_code = dn_item.item_code
+		warehouse = dn_item.warehouse
+		uom = dn_item.uom or row.stock_uom
+		conversion_factor = flt(dn_item.conversion_factor) or 1.0
+	else:
+		warehouse = get_source_warehouse_for_pack_line(row)
+		if not warehouse:
+			return None
+		item_code = row.item_code
+		source_hu = None
+		basic_rate = 0.0
+		allow_zero = 0
+		uom = row.stock_uom
+		conversion_factor = 1.0
+
+	if not basic_rate and not allow_zero:
+		from erpnext.stock.utils import get_incoming_rate
+
+		basic_rate = flt(
+			get_incoming_rate(
+				{
+					"item_code": item_code,
+					"warehouse": warehouse,
+					"posting_date": today(),
+					"posting_time": frappe.utils.now_datetime().strftime("%H:%M:%S"),
+					"qty": -1 * flt(row.qty),
+					"voucher_type": "Stock Entry",
+					"voucher_no": "",
+					"company": company,
+				},
+				raise_error_if_no_rate=False,
+			)
+		)
+		if not basic_rate:
+			allow_zero = 1
+
+	return {
+		"item_code": item_code,
+		"warehouse": warehouse,
+		"handling_unit": source_hu,
+		"uom": uom,
+		"conversion_factor": conversion_factor,
+		"basic_rate": basic_rate,
+		"allow_zero_valuation_rate": allow_zero,
+	}
 
 
 def create_packing_slip_repack_entry(doc, company: str) -> str | None:
@@ -152,7 +228,6 @@ def create_packing_slip_repack_entry(doc, company: str) -> str | None:
 	if not packed:
 		return None
 
-	has_hu_on_dni = dni_has_handling_unit_field()
 	has_hu_on_psi = psi_has_handling_unit_field()
 
 	# Tracks item_codes whose source rows have zero rate (not free items) so
@@ -161,79 +236,36 @@ def create_packing_slip_repack_entry(doc, company: str) -> str | None:
 
 	source_map: dict[tuple, dict] = {}
 	for ps_item in packed:
-		if not ps_item.dn_detail:
+		source_fields = get_repack_source_fields_for_pack_line(ps_item, company)
+		if not source_fields:
 			continue
 
-		dn_item = frappe.db.get_value(
-			"Delivery Note Item",
-			ps_item.dn_detail,
-			[
-				"item_code",
-				"warehouse",
-				"uom",
-				"conversion_factor",
-				"handling_unit",
-				"incoming_rate",
-				"is_free_item",
-			],
-			as_dict=True,
+		if not source_fields["basic_rate"] and not source_fields["allow_zero_valuation_rate"]:
+			source_fields["allow_zero_valuation_rate"] = 1
+			zero_rate_items.add(ps_item.item_code)
+
+		key = (
+			ps_item.item_code,
+			source_fields["warehouse"],
+			source_fields["handling_unit"] or "",
 		)
-		if not dn_item or not dn_item.warehouse:
-			continue
-
-		source_hu = dn_item.handling_unit if has_hu_on_dni else None
-
-		basic_rate = flt(dn_item.incoming_rate)
-		allow_zero = 1 if dn_item.is_free_item else 0
-
-		if not basic_rate and not dn_item.is_free_item:
-			# incoming_rate on the DN row may be 0 when the item was received
-			# before a valuation method was configured or when the DN was created
-			# manually.  Use the same SLE-based lookup ERPNext uses internally so
-			# FIFO/LIFO queues and Moving Average are handled correctly.
-			from erpnext.stock.utils import get_incoming_rate
-
-			basic_rate = flt(
-				get_incoming_rate(
-					{
-						"item_code": ps_item.item_code,
-						"warehouse": dn_item.warehouse,
-						"posting_date": today(),
-						"posting_time": frappe.utils.now_datetime().strftime("%H:%M:%S"),
-						"qty": -1 * flt(ps_item.qty),
-						"voucher_type": "Stock Entry",
-						"voucher_no": "",
-						"company": company,
-					},
-					raise_error_if_no_rate=False,
-				)
-			)
-			if not basic_rate:
-				# Truly zero-value stock — acknowledge it explicitly so ERPNext
-				# does not raise "Valuation Rate is required".
-				allow_zero = 1
-				zero_rate_items.add(ps_item.item_code)
-
-		key = (ps_item.item_code, dn_item.warehouse, source_hu or "")
 		if key not in source_map:
 			source_map[key] = {
 				"item_code": ps_item.item_code,
-				"s_warehouse": dn_item.warehouse,
-				"handling_unit": source_hu,
-				"uom": dn_item.uom or ps_item.stock_uom,
-				"conversion_factor": flt(dn_item.conversion_factor) or 1.0,
-				"basic_rate": basic_rate,
-				"allow_zero_valuation_rate": allow_zero,
+				"s_warehouse": source_fields["warehouse"],
+				"handling_unit": source_fields["handling_unit"],
+				"uom": source_fields["uom"],
+				"conversion_factor": source_fields["conversion_factor"],
+				"basic_rate": source_fields["basic_rate"],
+				"allow_zero_valuation_rate": source_fields["allow_zero_valuation_rate"],
 				"qty": 0.0,
 			}
 		source_map[key]["qty"] += flt(ps_item.qty)
 
-	# Derive a canonical warehouse for target rows (same as sources).
-	# Fall back to the first DN item's warehouse if source_map is empty.
 	if source_map:
 		target_warehouse = next(iter(source_map.values()))["s_warehouse"]
-	elif packed[0].dn_detail:
-		target_warehouse = frappe.db.get_value("Delivery Note Item", packed[0].dn_detail, "warehouse")
+	elif packed:
+		target_warehouse = get_source_warehouse_for_pack_line(packed[0])
 	else:
 		# Cannot determine warehouse — cannot create SE.
 		frappe.log_error(
@@ -425,77 +457,40 @@ def create_shipment_repack_entry(doc, company: str) -> str | None:
 	if not packed:
 		return None
 
-	has_hu_on_dni = dni_has_handling_unit_field()
-
 	zero_rate_items: set[str] = set()
 	source_map: dict[tuple, dict] = {}
 
 	for sdn_row in packed:
-		if not sdn_row.dn_detail:
+		source_fields = get_repack_source_fields_for_pack_line(sdn_row, company)
+		if not source_fields:
 			continue
 
-		dn_item = frappe.db.get_value(
-			"Delivery Note Item",
-			sdn_row.dn_detail,
-			[
-				"item_code",
-				"warehouse",
-				"uom",
-				"conversion_factor",
-				"handling_unit",
-				"incoming_rate",
-				"is_free_item",
-			],
-			as_dict=True,
+		if not source_fields["basic_rate"] and not source_fields["allow_zero_valuation_rate"]:
+			source_fields["allow_zero_valuation_rate"] = 1
+			zero_rate_items.add(sdn_row.item_code)
+
+		key = (
+			sdn_row.item_code,
+			source_fields["warehouse"],
+			source_fields["handling_unit"] or "",
 		)
-		if not dn_item or not dn_item.warehouse:
-			continue
-
-		source_hu = dn_item.handling_unit if has_hu_on_dni else None
-
-		basic_rate = flt(dn_item.incoming_rate)
-		allow_zero = 1 if dn_item.is_free_item else 0
-
-		if not basic_rate and not dn_item.is_free_item:
-			from erpnext.stock.utils import get_incoming_rate
-
-			basic_rate = flt(
-				get_incoming_rate(
-					{
-						"item_code": sdn_row.item_code,
-						"warehouse": dn_item.warehouse,
-						"posting_date": today(),
-						"posting_time": frappe.utils.now_datetime().strftime("%H:%M:%S"),
-						"qty": -1 * flt(sdn_row.qty),
-						"voucher_type": "Stock Entry",
-						"voucher_no": "",
-						"company": company,
-					},
-					raise_error_if_no_rate=False,
-				)
-			)
-			if not basic_rate:
-				allow_zero = 1
-				zero_rate_items.add(sdn_row.item_code)
-
-		key = (sdn_row.item_code, dn_item.warehouse, source_hu or "")
 		if key not in source_map:
 			source_map[key] = {
 				"item_code": sdn_row.item_code,
-				"s_warehouse": dn_item.warehouse,
-				"handling_unit": source_hu,
-				"uom": dn_item.uom or sdn_row.stock_uom,
-				"conversion_factor": flt(dn_item.conversion_factor) or 1.0,
-				"basic_rate": basic_rate,
-				"allow_zero_valuation_rate": allow_zero,
+				"s_warehouse": source_fields["warehouse"],
+				"handling_unit": source_fields["handling_unit"],
+				"uom": source_fields["uom"] or sdn_row.stock_uom,
+				"conversion_factor": source_fields["conversion_factor"],
+				"basic_rate": source_fields["basic_rate"],
+				"allow_zero_valuation_rate": source_fields["allow_zero_valuation_rate"],
 				"qty": 0.0,
 			}
 		source_map[key]["qty"] += flt(sdn_row.qty)
 
 	if source_map:
 		target_warehouse = next(iter(source_map.values()))["s_warehouse"]
-	elif packed[0].dn_detail:
-		target_warehouse = frappe.db.get_value("Delivery Note Item", packed[0].dn_detail, "warehouse")
+	elif packed:
+		target_warehouse = get_source_warehouse_for_pack_line(packed[0])
 	else:
 		frappe.log_error(
 			title="Shipment Repack SE skipped",

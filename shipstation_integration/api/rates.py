@@ -306,10 +306,17 @@ def get_rates_for_packing_slip(packing_slip: str) -> list[dict]:
 	ship_to_address = frappe.get_doc("Address", ps.shipping_address_name)
 	ship_from_address = frappe.get_doc("Address", ps.dispatch_address_name)
 
-	# Get company name from linked Delivery Note
-	dn = frappe.get_doc("Delivery Note", ps.delivery_note)
-	company_name = dn.company
-	customer_name = dn.customer_name or dn.customer
+	# Get company and customer from linked Delivery Note or Sales Order pack lines
+	from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+		get_company_from_packing_slip,
+		get_customer_from_packing_slip,
+	)
+
+	company_name = get_company_from_packing_slip(ps)
+	customer, customer_name = get_customer_from_packing_slip(ps)
+	if not company_name or not customer:
+		frappe.throw(_("Packing Slip must be linked to a Delivery Note or Sales Order"))
+	customer_name = customer_name or customer
 
 	# Build address dicts - include phone which is required by ShipEngine
 	# State must be 2-character code for US addresses

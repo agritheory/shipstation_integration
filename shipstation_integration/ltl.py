@@ -1829,6 +1829,18 @@ class ShipstationLTL(BaseLTL):
 		uom = (item_row.weight_uom or "").strip() or "Pound"
 		return wp * qty, uom
 
+	def weight_from_physical_dimension(self, item_code: str | None, qty: float) -> tuple[float, str]:
+		"""Exterior Physical Dimension weight for ASW lines without DN/item master weight."""
+		if not item_code or qty <= 0:
+			return 0.0, "Pound"
+		from inventory_tools.cartonization import get_item_dimensions
+
+		pd = get_item_dimensions(item_code)
+		pd_weight = flt(pd.item_weight) if pd else 0.0
+		if pd_weight > 0:
+			return pd_weight * qty, "Kilogram"
+		return 0.0, "Pound"
+
 	def sdn_row_weight_from_items(self, row) -> tuple[float, str]:
 		"""Shipment weight from inventory data for this SDN line (not parcel template overrides).
 
@@ -1860,8 +1872,16 @@ class ShipstationLTL(BaseLTL):
 					return self.weight_from_item_qty(dn.item_code, qty)
 				return 0.0, uom
 
-		if getattr(row, "item_code", None):
-			return self.weight_from_item_qty(row.item_code, qty)
+		item_code = getattr(row, "item_code", None)
+		if not item_code and getattr(row, "so_detail", None):
+			item_code = frappe.db.get_value("Sales Order Item", row.so_detail, "item_code")
+		if item_code:
+			weight, uom = self.weight_from_item_qty(item_code, qty)
+			if weight > 0:
+				return weight, uom
+			if not row.dn_detail:
+				return self.weight_from_physical_dimension(item_code, qty)
+			return 0.0, uom
 
 		return 0.0, uom_fallback
 

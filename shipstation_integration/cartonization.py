@@ -71,26 +71,40 @@ def solver_kwargs_from_shipstation_settings(ss_doc) -> dict:
 
 
 def company_from_packing_slip(ps) -> str | None:
-	"""ERPNext Packing Slip has no Company field; resolve it from the linked Delivery Note."""
-	dn = getattr(ps, "delivery_note", None)
-	if dn:
-		return frappe.db.get_value("Delivery Note", dn, "company")
-	return frappe.defaults.get_user_default("Company")
+	"""Resolve company from linked Delivery Note or Sales Order pack lines."""
+	from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+		get_company_from_packing_slip,
+	)
+
+	return get_company_from_packing_slip(ps)
 
 
 def stable_child_row_key_for_cartonization(row) -> str | None:
-	"""Stable key for mapped/unsaved child rows before ``name`` or ``dn_detail`` exist."""
-	n = getattr(row, "name", None)
-	if n:
-		return n
-	for attr in ("dn_detail", "pi_detail"):
+	"""Stable key for mapped/unsaved child rows before ``name`` or detail links exist."""
+	for attr in ("dn_detail", "so_detail", "pi_detail"):
 		v = getattr(row, attr, None)
 		if v:
 			return v
+	n = getattr(row, "name", None)
+	if n:
+		return n
 	idx = getattr(row, "idx", None)
 	if idx is not None:
 		return f"child_row_idx_{int(idx)}"
 	return None
+
+
+def row_matches_cartonization_restrict(row, restrict_row_names: set[str]) -> bool:
+	"""Match desk row selection by child ``name`` or stable detail keys."""
+	if not restrict_row_names:
+		return True
+	keys = set(restrict_row_names)
+	for attr in ("name", "dn_detail", "so_detail", "pi_detail"):
+		value = getattr(row, attr, None)
+		if value and value in keys:
+			return True
+	stable_key = stable_child_row_key_for_cartonization(row)
+	return bool(stable_key and stable_key in keys)
 
 
 def cartonization_items_from_packing_slip_items(
@@ -98,12 +112,12 @@ def cartonization_items_from_packing_slip_items(
 ) -> list[dict]:
 	out = []
 	for row in ps_items or []:
-		if getattr(row, "parcel_number", None):
+		if flt(getattr(row, "parcel_number", 0)) > 0:
 			continue
 		stable_key = stable_child_row_key_for_cartonization(row)
 		if not stable_key:
 			continue
-		if restrict_row_names and stable_key not in restrict_row_names:
+		if restrict_row_names and not row_matches_cartonization_restrict(row, restrict_row_names):
 			continue
 
 		out.append(
@@ -116,6 +130,7 @@ def cartonization_items_from_packing_slip_items(
 				"name": stable_key,
 				"stock_qty": getattr(row, "stock_qty", None),
 				"dn_detail": getattr(row, "dn_detail", None),
+				"so_detail": getattr(row, "so_detail", None),
 			}
 		)
 	return out
@@ -126,14 +141,14 @@ def cartonization_items_from_shipment_delivery_note_rows(
 ) -> list[dict]:
 	out = []
 	for row in sdn_rows or []:
-		if getattr(row, "parcel_number", None):
+		if flt(getattr(row, "parcel_number", 0)) > 0:
 			continue
 		if not getattr(row, "item_code", None):
 			continue
 		stable_key = stable_child_row_key_for_cartonization(row)
 		if not stable_key:
 			continue
-		if restrict_row_names and stable_key not in restrict_row_names:
+		if restrict_row_names and not row_matches_cartonization_restrict(row, restrict_row_names):
 			continue
 
 		out.append(
@@ -144,6 +159,7 @@ def cartonization_items_from_shipment_delivery_note_rows(
 				"stock_uom": getattr(row, "stock_uom", None),
 				"name": stable_key,
 				"dn_detail": getattr(row, "dn_detail", None),
+				"so_detail": getattr(row, "so_detail", None),
 			}
 		)
 	return out
@@ -196,7 +212,7 @@ def apply_parcel_template_to_row(row_doc, parcel_template_name: str | None):
 		row_doc.dimension_uom = "Centimeter"
 
 
-def cartonize_mapped_packing_slip_from_delivery_note(ps):
+def cartonize_mapped_packing_slip(ps):
 	if not inventory_tools_cartonization_installed():
 		return
 
@@ -223,6 +239,11 @@ def cartonize_mapped_packing_slip_from_delivery_note(ps):
 	assign_bins_to_child_rows(ps, "items", solution.get("bins"))
 
 
+def cartonize_mapped_packing_slip_from_delivery_note(ps):
+	"""Backward-compatible alias for DN-mapped Packing Slips."""
+	cartonize_mapped_packing_slip(ps)
+
+
 def assign_bins_to_child_rows(doc, child_table_field: str, bins: list):
 	rows_list = doc.get(child_table_field) or []
 	row_index = {}
@@ -235,6 +256,9 @@ def assign_bins_to_child_rows(doc, child_table_field: str, bins: list):
 		dn_det = getattr(r, "dn_detail", None)
 		if dn_det:
 			row_index[dn_det] = r
+		so_det = getattr(r, "so_detail", None)
+		if so_det:
+			row_index[so_det] = r
 		pi_det = getattr(r, "pi_detail", None)
 		if pi_det:
 			row_index[pi_det] = r
@@ -244,7 +268,12 @@ def assign_bins_to_child_rows(doc, child_table_field: str, bins: list):
 	parcel_no = 1
 	for bn in bins or []:
 		for packed in bn.get("items") or []:
-			row_key = packed.get("row_name") or packed.get("dn_detail") or packed.get("pi_detail")
+			row_key = (
+				packed.get("row_name")
+				or packed.get("dn_detail")
+				or packed.get("pi_detail")
+				or packed.get("so_detail")
+			)
 			if not row_key or row_key == "__best_fit_probe__":
 				continue
 			if row_key not in row_index:
@@ -289,7 +318,13 @@ def assign_bins_to_child_rows(doc, child_table_field: str, bins: list):
 				"description": getattr(src, "description", None),
 				"qty": entry["qty"],
 				"stock_uom": getattr(src, "stock_uom", None),
+				"uom": getattr(src, "uom", None),
+				"conversion_factor": getattr(src, "conversion_factor", None),
 				"dn_detail": getattr(src, "dn_detail", None),
+				"so_detail": getattr(src, "so_detail", None),
+				"against_sales_order": getattr(src, "against_sales_order", None),
+				"pi_detail": getattr(src, "pi_detail", None),
+				"delivery_note": getattr(src, "delivery_note", None),
 				"parcel_number": entry["parcel_number"],
 			},
 		)

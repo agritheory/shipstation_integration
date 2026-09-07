@@ -68,7 +68,11 @@ def get_sscc_settings() -> "ShipstationSettings":
 def assign_sscc_codes(doc) -> list[str]:
 	settings = get_sscc_settings()
 	prefix = settings.gs1_company_prefix
-	company = frappe.db.get_value("Delivery Note", doc.delivery_note, "company")
+	from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+		get_company_from_packing_slip,
+	)
+
+	company = get_company_from_packing_slip(doc)
 	abbr = frappe.db.get_value("Company", company, "abbr")
 	parcels: dict[int, list] = {}
 	for row in doc.items:
@@ -153,7 +157,11 @@ def generate_packing_slip_sscc(packing_slip: str) -> dict:
 	doc = frappe.get_doc("Packing Slip", packing_slip)
 	settings = get_sscc_settings()
 	prefix = settings.gs1_company_prefix
-	company = frappe.db.get_value("Delivery Note", doc.delivery_note, "company")
+	from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+		get_company_from_packing_slip,
+	)
+
+	company = get_company_from_packing_slip(doc)
 	abbr = frappe.db.get_value("Company", company, "abbr")
 	parcels: dict[int, list] = {}
 	for row in doc.items:

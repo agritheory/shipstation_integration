@@ -85,7 +85,7 @@ function sdn_sync_cartonize_grid_button(frm, $bulk_actions) {
 		if ($existing.length) return
 		const $unpack = $bulk_actions.find('.sdn-unpack-rows')
 		if (!$unpack.length) return
-		$('<button type="button" class="sdn-cartonize-rows btn btn-xs btn-default" style="margin-right:4px;">')
+		$('<button type="button" class="sdn-cartonize-rows btn btn-xs btn-purple" style="margin-right:4px;">')
 			.text(__('Cartonize'))
 			.on('click', () => sdn_cartonize_rows(frm))
 			.insertBefore($unpack)

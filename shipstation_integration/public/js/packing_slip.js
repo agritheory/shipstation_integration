@@ -382,6 +382,56 @@ function update_split_button_state(frm) {
 	$btn.prop('disabled', !can_split)
 }
 
+function fetch_sales_order_defaults(frm) {
+	const so_name = (frm.doc.items || []).map(row => row.against_sales_order).find(Boolean)
+	if (!so_name) return
+	if (frm.__sales_order_loaded) return
+	frm.__sales_order_loaded = true
+
+	frappe.call({
+		method: 'frappe.client.get',
+		args: { doctype: 'Sales Order', name: so_name },
+		callback: function (r) {
+			if (!r.message) return
+			const so = r.message
+
+			frm.doc.__onload = frm.doc.__onload || {}
+			frm.doc.__onload.customer = so.customer
+
+			if (!frm.doc.shipping_address_name && so.shipping_address_name) {
+				frm.set_value('shipping_address_name', so.shipping_address_name)
+			}
+
+			if (!frm.doc.dispatch_address_name) {
+				frappe.call({
+					method: 'frappe.contacts.doctype.address.address.get_default_address',
+					args: { doctype: 'Company', name: so.company },
+					callback: function (addr_r) {
+						if (addr_r.message && !frm.doc.dispatch_address_name) {
+							frm.set_value('dispatch_address_name', addr_r.message)
+						}
+					},
+				})
+			}
+
+			if (!frm.doc.carrier) {
+				frappe.call({
+					method: 'shipstation_integration.api.carriers.get_shipping_accounts',
+					args: { customer: so.customer },
+					callback: function (accounts_r) {
+						const accounts = accounts_r.message || []
+						if (!accounts.length) return
+						const account = accounts.find(a => a.default) || accounts.find(a => a.enabled) || accounts[0]
+						if (account && account.carrier && !frm.doc.carrier) {
+							frm.set_value('carrier', account.carrier)
+						}
+					},
+				})
+			}
+		},
+	})
+}
+
 function fetch_delivery_note_defaults(frm) {
 	if (!frm.doc.delivery_note) return
 	if (frm.__delivery_note_loaded) return
@@ -520,8 +570,8 @@ function cartonize_packing_slip_rows(frm) {
 	// targetRows is always only the unpacked rows in scope.
 	// Already-packed rows are silently excluded whether selected or not.
 	const targetRows = selected.length
-		? selected.filter(r => !r.parcel_number)
-		: (frm.doc.items || []).filter(r => !r.parcel_number)
+		? selected.filter(r => !is_row_cartonized(r))
+		: (frm.doc.items || []).filter(r => !is_row_cartonized(r))
 
 	if (!targetRows.length) {
 		frappe.msgprint(
@@ -666,13 +716,23 @@ frappe.ui.form.on('Packing Slip', {
 					if (!frm.doc.shipping_address_name || !frm.doc.dispatch_address_name) {
 						fetch_delivery_note_defaults(frm)
 					}
+				} else if ((frm.doc.items || []).some(row => row.against_sales_order)) {
+					if (!frm.doc.shipping_address_name || !frm.doc.dispatch_address_name) {
+						fetch_sales_order_defaults(frm)
+					}
 				}
 			},
 		})
 	},
 
 	delivery_note: function (frm) {
-		if (!frm.doc.delivery_note) return
+		if (!frm.doc.delivery_note) {
+			frm.__sales_order_loaded = false
+			if ((frm.doc.items || []).some(row => row.against_sales_order)) {
+				fetch_sales_order_defaults(frm)
+			}
+			return
+		}
 		frm.__delivery_note_loaded = false
 		fetch_delivery_note_defaults(frm)
 	},
@@ -1217,11 +1277,17 @@ function show_carrier_selection_dialog(frm, carriers) {
 }
 
 function load_shipping_accounts(frm, dialog) {
-	if (!frm.doc.delivery_note) return
+	const so_name = (frm.doc.items || []).map(row => row.against_sales_order).find(Boolean)
+	const args = frm.doc.delivery_note
+		? { delivery_note: frm.doc.delivery_note }
+		: so_name
+			? { customer: frm.doc.__onload?.customer }
+			: null
+	if (!args || (!args.delivery_note && !args.customer)) return
 
 	frappe.call({
 		method: 'shipstation_integration.api.carriers.get_shipping_accounts',
-		args: { delivery_note: frm.doc.delivery_note },
+		args,
 		callback(r) {
 			const accounts = r.message || []
 			if (!accounts.length) {

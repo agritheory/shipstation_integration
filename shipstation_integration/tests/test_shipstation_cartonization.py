@@ -126,6 +126,20 @@ def test_cartonize_packing_slip_cafe27_pies_into_triple_stack_boxes():
 		frappe.delete_doc("Packing Slip", ps.name, force=True)
 
 
+def test_cartonization_restrict_matches_child_row_name_for_so_mapped_lines():
+	row = frappe._dict(
+		name="g8v2bgkp4g",
+		so_detail="f6uoiifmtc",
+		item_code="Gooseberry Pie",
+		qty=10,
+		parcel_number=0,
+		stock_uom="Nos",
+	)
+	items = ss_cart.cartonization_items_from_packing_slip_items([row], {"g8v2bgkp4g"})
+	assert len(items) == 1
+	assert items[0]["name"] == "f6uoiifmtc"
+
+
 @pytest.mark.order(117)
 def test_apply_cartonization_to_packing_slip_splits_rows_into_bins():
 	"""

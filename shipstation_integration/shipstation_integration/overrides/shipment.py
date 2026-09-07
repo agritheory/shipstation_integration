@@ -19,6 +19,11 @@ from typing import Any
 import frappe
 from erpnext.stock.doctype.shipment.shipment import Shipment
 from frappe import _
+from inventory_tools.inventory_tools.overrides.pack_stock_reservation import (
+	cancel_stock_reservation_entries_from_pack,
+	maybe_reserve_stock_on_pack_submit,
+)
+from inventory_tools.inventory_tools.overrides.shipment import InventoryToolsShipment
 
 from shipstation_integration.base_ltl import require_submitted_shipment_for_ltl
 from shipstation_integration.ltl import get_ltl_provider
@@ -33,8 +38,17 @@ def ltl_settings_name(settings_name: str | None) -> str | None:
 	return settings.name if settings else None
 
 
-class ShipStationShipment(Shipment):
+class ShipStationShipment(InventoryToolsShipment):
+	def ensure_shipment_parcel_dimension_uoms(self):
+		"""Default parcel UOMs before mandatory validation (ASW defers them until link-back save)."""
+		for parcel in self.get("shipment_parcel") or []:
+			if not parcel.get("length_uom"):
+				parcel.length_uom = "Inch"
+			if not parcel.get("weight_uom"):
+				parcel.weight_uom = "Pound"
+
 	def validate(self):
+		self.ensure_shipment_parcel_dimension_uoms()
 		if self.get("freight_type") == "LTL" and not self.get("delivery_contact_name"):
 			frappe.throw(
 				_("Delivery Contact is required for LTL shipments."),
@@ -52,6 +66,10 @@ class ShipStationShipment(Shipment):
 		(i.e. any row has dn_detail or item_code populated). Pure DN-link rows
 		without item details are allowed through unpacked.
 		"""
+		if self.uses_alternative_sales_workflow_without_delivery_note():
+			if not any(row.parcel_number for row in (self.shipment_delivery_note or [])):
+				return
+
 		item_level_rows = [
 			row
 			for row in (self.shipment_delivery_note or [])
@@ -71,12 +89,19 @@ class ShipStationShipment(Shipment):
 
 	def on_submit(self):
 		# Shipstation packs on shipment_delivery_note; shipment_parcel is hidden and unused.
-		# Must override here — inheriting Shipment.on_submit would still enforce ERPNext's
-		# shipment_parcel check on sites running stock ERPNext.
+		# Do not call super().on_submit() — ERPNext requires shipment_parcel; Inventory Tools
+		# super() would invoke that check. Compose status, reservation, and HU explicitly.
 		if self.value_of_goods == 0:
 			frappe.throw(_("Value of goods cannot be 0"))
 		self.db_set("status", "Submitted")
+		maybe_reserve_stock_on_pack_submit(self, "Shipment")
+		if self.get("reserve_stock_on_submit"):
+			self.db_set("reserve_stock_on_submit", 0)
 		on_shipment_submit(self)
+
+	def on_cancel(self):
+		cancel_stock_reservation_entries_from_pack("Shipment", self.name, notify=False)
+		super().on_cancel()
 
 
 @frappe.whitelist()

@@ -2,10 +2,10 @@
 # For license information, please see license.txt
 
 import frappe
-from erpnext.selling.doctype.sales_order.sales_order import SalesOrder
+from inventory_tools.inventory_tools.overrides.sales_order import InventoryToolsSalesOrder
 
 
-class ShipStationSalesOrder(SalesOrder):
+class ShipStationSalesOrder(InventoryToolsSalesOrder):
 	def calculate_commission(self):
 		commission_formula = frappe.get_cached_value(
 			"Sales Partner", self.sales_partner, "commission_formula"

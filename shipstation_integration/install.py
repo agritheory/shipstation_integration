@@ -8,6 +8,9 @@ import frappe
 from frappe.installer import update_site_config
 
 from shipstation_integration.patches.add_user_uom_fields import execute as add_user_uom_fields
+from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+	ensure_alternative_sales_workflow_for_all_shipstation_settings,
+)
 
 INTEGRATION_ROLE_17TRACK = "17Track Integration"
 
@@ -82,3 +85,8 @@ def after_install():
 	add_custom_queue()
 	add_user_uom_fields()
 	ensure_17track_integration_role()
+	ensure_alternative_sales_workflow_for_installed_companies()
+
+
+def ensure_alternative_sales_workflow_for_installed_companies():
+	ensure_alternative_sales_workflow_for_all_shipstation_settings()

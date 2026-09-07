@@ -18,6 +18,10 @@ from shipstation_integration.api.orders import list_orders
 from shipstation_integration.api.shipments import list_shipments
 from shipstation_integration.api.tags import list_tags
 from shipstation_integration.shipstation_integration.overrides.items import create_item
+from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+	companies_from_shipstation_settings,
+	ensure_alternative_sales_workflow_for_companies,
+)
 from shipstation_integration.utils import get_marketplace
 
 
@@ -52,6 +56,10 @@ class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comi
 		self.validate_label_generation()
 		self.validate_enabled_stores()
 		self.validate_cartonization_defaults()
+		self.ensure_alternative_sales_workflow()
+
+	def ensure_alternative_sales_workflow(self):
+		ensure_alternative_sales_workflow_for_companies(companies_from_shipstation_settings(self))
 
 	def before_insert(self):
 		self.validate_api_connection()

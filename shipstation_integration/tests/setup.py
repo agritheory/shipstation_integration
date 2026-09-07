@@ -355,6 +355,7 @@ def ensure_inventory_tools_dimensional_fixtures():
 		create_item_groups,
 		create_items,
 		create_warehouse_plan,
+		ensure_cfc_default_warehouses,
 	)
 
 	settings = frappe._dict(
@@ -382,6 +383,9 @@ def ensure_inventory_tools_dimensional_fixtures():
 
 	# 2. CFC warehouse plan (internally guarded)
 	create_warehouse_plan(cfc)
+
+	# 2b. ERPNext creates Stores / Finished Goods; IT fixtures expect Receiving / Shipping.
+	ensure_cfc_default_warehouses()
 
 	# 3. CFC warehouse locations (Refrigerator groups + Fruit Storage bins) with guard
 	for details in IT_WAREHOUSE_LOCATIONS:
@@ -465,6 +469,11 @@ def ensure_inventory_tools_dimensional_fixtures():
 
 	# 8. Warehouse Physical Dimensions (Interior) for Fruit Storage bins — same guard
 	for item in IT_WAREHOUSE_DIMENSIONS:
+		ref = item.get("reference_document")
+		if (
+			item.get("reference_doctype") == "Warehouse" and ref and not frappe.db.exists("Warehouse", ref)
+		):
+			continue
 		if frappe.db.exists(
 			"Physical Dimension",
 			{
