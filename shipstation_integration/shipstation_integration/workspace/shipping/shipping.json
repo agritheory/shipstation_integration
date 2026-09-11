@@ -1,0 +1,145 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"NHg60YhYMD\",\"type\":\"header\",\"data\":{\"text\":\"<b>Shipping</b>\",\"col\":12}},{\"id\":\"LnqvEa_WOk\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Packing Slip\",\"col\":3}},{\"id\":\"GbBrk9rBQj\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Shipment\",\"col\":3}},{\"id\":\"7IV9o3eOHK\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Delivery Note\",\"col\":3}},{\"id\":\"c7hBGmcqQv\",\"type\":\"card\",\"data\":{\"card_name\":\"Tracking\",\"col\":4}},{\"id\":\"DKvdCCHA1R\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}},{\"id\":\"bqOwiQhcK6\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}}]",
+ "creation": "2026-07-16 01:38:09.174876",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "shipping",
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Shipping",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Reports",
+   "link_count": 2,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "Packing Slip",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Shipping Cost Register",
+   "link_count": 0,
+   "link_to": "Shipping Cost Register",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Settings",
+   "link_count": 4,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Shipstation Settings",
+   "link_count": 0,
+   "link_to": "Shipstation Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Freight Carrier Settings",
+   "link_count": 0,
+   "link_to": "Freight Carrier Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "17Track Settings",
+   "link_count": 0,
+   "link_to": "Seventeen Track",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Shipment Parcel Template",
+   "link_count": 0,
+   "link_to": "Shipment Parcel Template",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Tracking",
+   "link_count": 2,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Tracking Number",
+   "link_count": 0,
+   "link_to": "Tracking Number",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Tracking Number Map",
+   "link_count": 0,
+   "link_to": "tracking-number-map",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-09-11 13:46:23.264469",
+ "modified_by": "Administrator",
+ "module": "Shipstation Integration",
+ "name": "Shipping",
+ "number_cards": [],
+ "owner": "Administrator",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 0.0,
+ "shortcuts": [
+  {
+   "doc_view": "",
+   "label": "Packing Slip",
+   "link_to": "Packing Slip",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "",
+   "label": "Shipment",
+   "link_to": "Shipment",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "",
+   "label": "Delivery Note",
+   "link_to": "Delivery Note",
+   "type": "DocType"
+  }
+ ],
+ "title": "Shipping"
+}

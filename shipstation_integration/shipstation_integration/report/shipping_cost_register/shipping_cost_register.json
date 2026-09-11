@@ -1,0 +1,25 @@
+{
+	"add_total_row": 1,
+	"add_translate_data": 0,
+	"columns": [],
+	"disabled": 0,
+	"doctype": "Report",
+	"filters": [],
+	"is_standard": "Yes",
+	"module": "Shipstation Integration",
+	"name": "Shipping Cost Register",
+	"ref_doctype": "Packing Slip",
+	"report_name": "Shipping Cost Register",
+	"report_type": "Script Report",
+	"roles": [
+		{
+			"role": "Stock User"
+		},
+		{
+			"role": "Accounts User"
+		},
+		{
+			"role": "System Manager"
+		}
+	]
+}

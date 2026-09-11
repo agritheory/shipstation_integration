@@ -25,6 +25,7 @@ extend_bootinfo = "shipstation_integration.shipstation_integration.boot.boot_ses
 # include js, css files in header of desk.html
 app_include_css = "/assets/shipstation_integration/css/shipstation_integration.css"
 app_include_js = ["shipstation_integration.bundle.js"]
+app_include_icons = ["shipstation_integration/icons/shipping.svg"]
 
 jinja = {
 	"methods": [

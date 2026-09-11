@@ -1,0 +1,29 @@
+{
+ "content": null,
+ "creation": "2026-09-11 13:32:00.000000",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-09-11 13:32:00.000000",
+ "modified_by": "Administrator",
+ "module": "Shipstation Integration",
+ "name": "tracking-number-map",
+ "owner": "Administrator",
+ "page_name": "tracking-number-map",
+ "roles": [
+  {
+   "role": "Stock User"
+  },
+  {
+   "role": "Stock Manager"
+  },
+  {
+   "role": "System Manager"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Tracking Number Map"
+}
