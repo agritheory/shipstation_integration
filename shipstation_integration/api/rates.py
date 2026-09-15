@@ -412,6 +412,8 @@ def get_package_from_packing_slip(packing_slip, parcel_number: int | None = None
 
 def mark_matching_rate(rates: list[dict], carrier_service: str | None) -> list[dict]:
 	"""Stamp selected=True when exactly one rate matches the slip's service."""
+	for rate in rates:
+		rate.pop("selected", None)
 	if not carrier_service:
 		return rates
 

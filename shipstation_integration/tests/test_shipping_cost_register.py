@@ -8,7 +8,10 @@ from frappe.utils import add_days, flt, today
 from shipstation_integration.shipstation_integration.report.shipping_cost_register.shipping_cost_register import (
 	execute as execute_shipping_cost_register,
 )
-from shipstation_integration.tests.setup import get_draft_ltl_shipment_for_tests
+from shipstation_integration.tests.setup import (
+	get_draft_ltl_shipment_for_tests,
+	reset_ltl_shipment_quotation_test_state,
+)
 
 
 COMPANY = "Ambrosia Pie Company"
@@ -81,6 +84,7 @@ def remove_shipping_tax(delivery_note, tax_row):
 
 @pytest.mark.order(86)
 def test_untracked_packing_slip_and_unbooked_shipment_are_excluded():
+	reset_ltl_shipment_quotation_test_state()
 	ps = seed_packing_slip()
 	shipment = get_draft_ltl_shipment_for_tests()
 	assert not any(row.tracking_number for row in ps.items)
