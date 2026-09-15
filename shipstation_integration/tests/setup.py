@@ -335,6 +335,14 @@ def before_test():
 	frappe.db.set_single_value("Website Settings", "home_page", "login")
 
 
+def ensure_cfc_receiving_and_shipping_warehouses():
+	"""Rename ERPNext default Chelsea Fruit Co warehouses to inventory_tools fixture names."""
+	if frappe.db.exists("Warehouse", "Stores - CFC"):
+		frappe.rename_doc("Warehouse", "Stores - CFC", "Receiving - CFC", force=True)
+	if frappe.db.exists("Warehouse", "Finished Goods - CFC"):
+		frappe.rename_doc("Warehouse", "Finished Goods - CFC", "Shipping - CFC", force=True)
+
+
 def ensure_inventory_tools_dimensional_fixtures():
 	"""
 	Create the minimum inventory_tools fixtures required for cartonization tests:
@@ -355,7 +363,6 @@ def ensure_inventory_tools_dimensional_fixtures():
 		create_item_groups,
 		create_items,
 		create_warehouse_plan,
-		ensure_cfc_default_warehouses,
 	)
 
 	settings = frappe._dict(
@@ -385,7 +392,7 @@ def ensure_inventory_tools_dimensional_fixtures():
 	create_warehouse_plan(cfc)
 
 	# 2b. ERPNext creates Stores / Finished Goods; IT fixtures expect Receiving / Shipping.
-	ensure_cfc_default_warehouses()
+	ensure_cfc_receiving_and_shipping_warehouses()
 
 	# 3. CFC warehouse locations (Refrigerator groups + Fruit Storage bins) with guard
 	for details in IT_WAREHOUSE_LOCATIONS:

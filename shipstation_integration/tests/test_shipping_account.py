@@ -6,7 +6,7 @@ import pytest
 from beam.tests.fixtures import customers
 
 from shipstation_integration.api.carriers import get_shipping_accounts
-from shipstation_integration.api.labels import get_third_party_billing_options
+from shipstation_integration.label_options import billing_options_from_freight_terms
 
 
 TEST_CUSTOMER = customers[1]
@@ -55,7 +55,7 @@ def test_get_shipping_accounts_returns_service_without_account_number():
 
 
 @pytest.mark.order(85)
-def test_third_party_billing_skipped_without_account_number():
+def test_collect_billing_skipped_without_account_number():
 	original = save_customer_shipping_accounts(TEST_CUSTOMER)
 	ps = frappe.get_last_doc("Packing Slip", {"docstatus": 0})
 	ps.reload()
@@ -66,7 +66,7 @@ def test_third_party_billing_skipped_without_account_number():
 		ps.carrier = TEST_CARRIER
 		ps.save()
 
-		options = get_third_party_billing_options(ps)
+		options = billing_options_from_freight_terms(ps, "Collect")
 		assert options is None
 	finally:
 		ps.reload()

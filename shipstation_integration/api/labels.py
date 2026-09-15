@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Optional
 
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import cint, flt
 from frappe.utils.file_manager import save_file
 from shipengine.errors import ShipEngineError
 
@@ -62,31 +62,6 @@ def create_label(
 		return format_label_response(label_response)
 	except Exception as e:
 		error_msg = get_error_message(e)
-
-		# If the carrier rejected third-party billing, retry without it and warn.
-		# This allows label creation to proceed; the user can collect the shipping
-		# cost from the customer through other means.
-		if (
-			"advanced_options" in shipment_data
-			and "third party" in error_msg.lower()
-			and "bill to party" in error_msg.lower()
-		):
-			fallback_data = {k: v for k, v in shipment_data.items() if k != "advanced_options"}
-			try:
-				label_response = client.create_label_from_shipment({"shipment": fallback_data})
-				frappe.msgprint(
-					_(
-						"Third-party billing was rejected by the carrier. "
-						"The label was created and billed to your account instead. "
-						"You may need to collect the shipping cost from the customer separately."
-					),
-					title=_("Third-Party Billing Unavailable"),
-					indicator="orange",
-				)
-				return format_label_response(label_response)
-			except Exception as e2:
-				error_msg = get_error_message(e2)
-
 		frappe.log_error(
 			title="Error creating shipping label",
 			message=f"Error: {error_msg}\n\nShipment data: {json.dumps(shipment_data, indent=2, default=str)}",
@@ -126,6 +101,61 @@ def create_label_from_rate(
 		frappe.log_error(title="Error creating label from rate", message=error_msg)
 		frappe.throw(_("Failed to create label from rate: {0}").format(error_msg))
 		return {}
+
+
+@frappe.whitelist()
+def void_label_for_packing_slip(packing_slip: str, parcel_number: int) -> dict:
+	"""Void the purchased label for one parcel and clear item tracking fields."""
+	ps = frappe.get_doc("Packing Slip", packing_slip)
+	parcel_number = cint(parcel_number)
+	label_id = None
+	for item in ps.items or []:
+		if item.parcel_number == parcel_number and item.get("label_id"):
+			label_id = item.label_id
+			break
+
+	if not label_id:
+		frappe.throw(_("Parcel {0} has no label to void").format(parcel_number))
+
+	result = void_label(label_id)
+	if not result.get("approved"):
+		return result
+
+	clear_packing_slip_parcel_tracking(ps, parcel_number)
+	remove_packing_slip_label_attachment(ps, parcel_number)
+	return result
+
+
+def clear_packing_slip_parcel_tracking(ps, parcel_number: int) -> None:
+	cleared = {
+		"tracking_number": None,
+		"tracking_url": None,
+		"label_url": None,
+		"label_id": None,
+	}
+	for item in ps.items or []:
+		if item.parcel_number == parcel_number:
+			frappe.db.set_value("Packing Slip Item", item.name, cleared)
+
+
+def remove_packing_slip_label_attachment(ps, parcel_number: int) -> None:
+	remaining = any(
+		item.parcel_number != parcel_number and item.get("label_id") for item in (ps.items or [])
+	)
+	if remaining:
+		return
+
+	file_names = frappe.get_all(
+		"File",
+		filters={
+			"attached_to_doctype": "Packing Slip",
+			"attached_to_name": ps.name,
+			"file_name": f"{ps.name}_shipstation_api.pdf",
+		},
+		pluck="name",
+	)
+	for file_name in file_names:
+		frappe.delete_doc("File", file_name, ignore_permissions=True, force=True)
 
 
 @frappe.whitelist()
@@ -418,6 +448,7 @@ def update_packing_slip_tracking(ps, label_response: dict, parcel_number: int) -
 		"tracking_number": tracking_number,
 		"tracking_url": tracking_url,
 		"label_url": label_url,
+		"label_id": label_response.get("label_id"),
 	}
 
 	for item in ps.items:
@@ -500,68 +531,10 @@ def format_label_response(label_response) -> dict:
 
 
 def get_third_party_billing_options(ps) -> dict | None:
-	"""
-	Return ShipEngine advanced_options for third-party billing if the customer
-	linked to the Packing Slip has a matching shipping account.
+	"""Return ShipEngine advanced_options from the label-options seam."""
+	from shipstation_integration.label_options import resolve_label_billing_options
 
-	Matches on carrier: looks for an account whose carrier field equals the
-	carrier set on the Packing Slip, preferring default > enabled > first match.
-	Returns None if no qualifying account is found.
-	"""
-	from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
-		get_customer_from_packing_slip,
-	)
-
-	if not ps.carrier:
-		return None
-
-	customer, _customer_display = get_customer_from_packing_slip(ps)
-	if not customer or not ps.carrier:
-		return None
-
-	try:
-		customer_doc = frappe.get_cached_doc("Customer", customer)
-		accounts = [row for row in (customer_doc.shipping_accounts or []) if row.carrier == ps.carrier]
-		if not accounts:
-			return None
-
-		account = (
-			next((a for a in accounts if a.default), None)
-			or next((a for a in accounts if a.enabled), None)
-			or accounts[0]
-		)
-
-		if not account.shipping_account_number:
-			return None
-
-		billing_address = frappe.db.get_value(
-			"Dynamic Link",
-			{"link_doctype": "Customer", "link_name": customer, "parenttype": "Address"},
-			"parent",
-		)
-		postal_code = ""
-		country_code = "US"
-		if billing_address:
-			addr = frappe.get_cached_doc("Address", billing_address)
-			postal_code = addr.pincode or ""
-			country_code = (frappe.db.get_value("Country", addr.country, "code") or "US").upper()
-
-		options: dict = {
-			"bill_to_party": "third_party",
-			"bill_to_account": account.shipping_account_number,
-			"bill_to_country_code": country_code,
-		}
-		if postal_code:
-			options["bill_to_postal_code"] = postal_code
-
-		return options
-
-	except Exception:
-		frappe.log_error(
-			title="Error resolving third-party billing account",
-			message=frappe.get_traceback(),
-		)
-		return None
+	return resolve_label_billing_options(ps)
 
 
 def build_shipment_from_packing_slip(
@@ -638,9 +611,18 @@ def build_shipment_from_packing_slip(
 		"packages": [package],
 	}
 
-	third_party = get_third_party_billing_options(ps)
-	if third_party:
-		shipment["advanced_options"] = third_party
+	from shipstation_integration.label_options import (
+		resolve_label_billing_options,
+		resolve_label_reference,
+	)
+
+	reference = resolve_label_reference(ps)
+	if reference:
+		shipment["external_order_id"] = reference
+
+	billing = resolve_label_billing_options(ps)
+	if billing:
+		shipment["advanced_options"] = billing
 
 	return shipment
 

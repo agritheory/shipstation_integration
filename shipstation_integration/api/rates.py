@@ -350,11 +350,12 @@ def get_rates_for_packing_slip(packing_slip: str) -> list[dict]:
 	if not package:
 		frappe.throw(_("Packing Slip must have items with a Parcel # and parcel dimensions configured"))
 
-	return get_rates(
+	rates = get_rates(
 		ship_from=ship_from,
 		ship_to=ship_to,
 		packages=[package],
 	)
+	return mark_matching_rate(rates, ps.carrier_service)
 
 
 def get_package_from_packing_slip(packing_slip, parcel_number: int | None = None) -> dict | None:
@@ -363,8 +364,8 @@ def get_package_from_packing_slip(packing_slip, parcel_number: int | None = None
 
 	Reads parcel dimensions from the first Packing Slip Item row matching
 	``parcel_number``. If ``parcel_number`` is not provided, uses the first
-	item with any parcel_number assigned. Falls back to the Packing Slip gross
-	weight fields if no item has parcel dimensions.
+	item with any parcel_number assigned. Throws if that row is missing
+	weight or any dimension.
 
 	Args:
 	        packing_slip: Packing Slip document
@@ -372,7 +373,7 @@ def get_package_from_packing_slip(packing_slip, parcel_number: int | None = None
 	                When None, the first packed item is used (rate-request behaviour).
 
 	Returns:
-	        Package dict for rate request, or None if no valid data
+	        Package dict for rate request, or None if no packed row matches
 	"""
 	parcel_item = None
 	for item in getattr(packing_slip, "items", []):
@@ -380,40 +381,49 @@ def get_package_from_packing_slip(packing_slip, parcel_number: int | None = None
 			parcel_item = item
 			break
 
-	if parcel_item:
-		dimension_unit = DIMENSION_UOM_MAP.get(parcel_item.dimension_uom, "inch")
-		weight_unit = WEIGHT_UOM_MAP.get(parcel_item.parcel_weight_uom, "pound")
+	if not parcel_item:
+		return None
 
-		return {
-			"weight": {
-				"value": flt(parcel_item.parcel_weight) or 1.0,
-				"unit": weight_unit,
-			},
-			"dimensions": {
-				"length": flt(parcel_item.parcel_length) or 1,
-				"width": flt(parcel_item.parcel_width) or 1,
-				"height": flt(parcel_item.parcel_height) or 1,
-				"unit": dimension_unit,
-			},
-		}
+	weight = flt(parcel_item.parcel_weight)
+	length = flt(parcel_item.parcel_length)
+	width = flt(parcel_item.parcel_width)
+	height = flt(parcel_item.parcel_height)
+	display_parcel = parcel_item.parcel_number
+	if not weight:
+		frappe.throw(_("Parcel {0} is missing weight").format(display_parcel))
+	if not length or not width or not height:
+		frappe.throw(_("Parcel {0} is missing dimensions").format(display_parcel))
 
-	# Fallback: use Packing Slip gross weight if available
-	if packing_slip.gross_weight_pkg:
-		weight_unit = WEIGHT_UOM_MAP.get(packing_slip.gross_weight_uom, "pound")
-		return {
-			"weight": {
-				"value": flt(packing_slip.gross_weight_pkg),
-				"unit": weight_unit,
-			},
-			"dimensions": {
-				"length": 12,
-				"width": 9,
-				"height": 6,
-				"unit": "inch",
-			},
-		}
+	dimension_unit = DIMENSION_UOM_MAP.get(parcel_item.dimension_uom, "inch")
+	weight_unit = WEIGHT_UOM_MAP.get(parcel_item.parcel_weight_uom, "pound")
+	return {
+		"weight": {
+			"value": weight,
+			"unit": weight_unit,
+		},
+		"dimensions": {
+			"length": length,
+			"width": width,
+			"height": height,
+			"unit": dimension_unit,
+		},
+	}
 
-	return None
+
+def mark_matching_rate(rates: list[dict], carrier_service: str | None) -> list[dict]:
+	"""Stamp selected=True when exactly one rate matches the slip's service."""
+	if not carrier_service:
+		return rates
+
+	service = str(carrier_service).strip()
+	matches = [
+		rate
+		for rate in rates
+		if rate.get("service_code") == service or rate.get("service_type") == service
+	]
+	if len(matches) == 1:
+		matches[0]["selected"] = True
+	return rates
 
 
 @frappe.whitelist()

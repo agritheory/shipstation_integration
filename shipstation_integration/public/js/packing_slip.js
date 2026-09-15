@@ -820,11 +820,23 @@ frappe.ui.form.on('Packing Slip', {
 		const template_name = frm.doc.default_parcel_template
 		if (!template_name) return
 
+		const parcel_number = current_parcel_number(frm)
+		if (!parcel_number) {
+			frappe.msgprint(__('Select a parcel before applying a parcel template.'))
+			return
+		}
+
 		frappe.db.get_doc('Shipment Parcel Template', template_name).then(template => {
 			if (!template || !frm.doc.items?.length) return
 
+			const rows = (frm.doc.items || []).filter(row => row.parcel_number === parcel_number)
+			if (!rows.length) {
+				frappe.msgprint(__('No items are assigned to parcel {0}.', [parcel_number]))
+				return
+			}
+
 			// Template stores length/width/height in cm and weight in kg (fixed by the field labels)
-			const updates = frm.doc.items.map(row =>
+			const updates = rows.map(row =>
 				frappe.model.set_value(row.doctype, row.name, {
 					parcel_template: template_name,
 					carrier: template.carrier || row.carrier || '',
@@ -984,6 +996,25 @@ function has_tracking_number(frm) {
 	return (frm.doc.items || []).some(row => row.tracking_number)
 }
 
+function current_parcel_number(frm) {
+	const selected = frm.fields_dict.items?.grid?.get_selected_children?.() || []
+	const selected_parcels = [...new Set(selected.map(row => row.parcel_number).filter(Boolean))]
+	if (selected_parcels.length) return selected_parcels[0]
+
+	const open_row = frm.open_grid_row?.doc
+	if (open_row?.parcel_number) return open_row.parcel_number
+
+	const first = (frm.doc.items || []).find(row => row.parcel_number)
+	return first?.parcel_number || null
+}
+
+function refresh_shipping_actions(frm) {
+	frm.remove_custom_button(__('Create Label'), __('Shipping'))
+	frm.remove_custom_button(__('Compare Rates'), __('Shipping'))
+	frm.remove_custom_button(__('Void Label'), __('Shipping'))
+	setup_shipping_actions(frm)
+}
+
 function get_carrier_from_items(frm) {
 	const items = frm.doc.items || []
 	for (const row of items) {
@@ -1003,26 +1034,23 @@ function setup_shipping_actions(frm) {
 		callback: function (r) {
 			if (!r.message || !r.message.enable_shipstation_api) return
 
-			if (!has_tracking_number(frm)) {
-				const has_carrier = frm.doc.carrier || get_carrier_from_items(frm)
-				const has_service = frm.doc.carrier_service
-
-				if (has_carrier && has_service) {
-					frm.add_custom_button(__('Create Label'), () => create_label_direct(frm), __('Shipping'))
-				} else if (has_carrier) {
-					frm.add_custom_button(__('Create Label'), () => create_label_pick_service(frm), __('Shipping'))
-				} else {
-					frm.add_custom_button(__('Create Label'), () => create_shipping_label(frm), __('Shipping'))
-				}
-
-				frm.add_custom_button(__('Compare Rates'), () => get_shipping_rates(frm), __('Shipping'))
+			if (has_tracking_number(frm)) {
+				frm.add_custom_button(__('Void Label'), () => void_packing_slip_label(frm), __('Shipping'))
+				return
 			}
 
-			frm.add_custom_button(
-				__('Compare Rates'),
-				() => confirm_then_create_label(frm, () => get_shipping_rates(frm)),
-				__('Shipping')
-			)
+			const has_carrier = frm.doc.carrier || get_carrier_from_items(frm)
+			const has_service = frm.doc.carrier_service
+
+			if (has_carrier && has_service) {
+				frm.add_custom_button(__('Create Label'), () => create_label_direct(frm), __('Shipping'))
+			} else if (has_carrier) {
+				frm.add_custom_button(__('Create Label'), () => create_label_pick_service(frm), __('Shipping'))
+			} else {
+				frm.add_custom_button(__('Create Label'), () => create_shipping_label(frm), __('Shipping'))
+			}
+
+			frm.add_custom_button(__('Compare Rates'), () => get_shipping_rates(frm), __('Shipping'))
 		},
 	})
 }
@@ -1063,10 +1091,7 @@ function get_shipping_rates(frm) {
 }
 
 function show_rates_dialog(frm, rates) {
-	const rate_options = rates.map(r => ({
-		value: JSON.stringify({ carrier_id: r.carrier_id, service_code: r.service_code }),
-		label: `${r.carrier_name} - ${r.service_type}: $${r.shipping_amount?.amount || r.total_amount}`,
-	}))
+	let selected = rates.find(rate => rate.selected) || null
 
 	const dialog = new frappe.ui.Dialog({
 		title: __('Available Shipping Rates'),
@@ -1074,33 +1099,38 @@ function show_rates_dialog(frm, rates) {
 			{
 				fieldtype: 'HTML',
 				fieldname: 'rates_html',
-				options: build_rates_html(rates),
-			},
-			{
-				fieldtype: 'Select',
-				fieldname: 'selected_rate',
-				label: __('Select Rate'),
-				options: rate_options,
-				reqd: 1,
 			},
 		],
 		primary_action_label: __('Create Label'),
 		primary_action: function () {
-			const selected = JSON.parse(dialog.get_value('selected_rate'))
+			if (!selected) {
+				frappe.msgprint(__('Please select a rate.'))
+				return
+			}
 			dialog.hide()
 			create_label_with_rate(frm, selected.carrier_id, selected.service_code)
 		},
 	})
 
 	dialog.show()
+	const $wrap = dialog.fields_dict.rates_html.$wrapper
+	$wrap.html(build_rates_html(rates, selected))
+	$wrap.on('click', '.ss-rate-row', function () {
+		const idx = parseInt(this.dataset.rateIdx, 10)
+		selected = rates[idx]
+		$wrap.find('.ss-rate-row').removeClass('table-active')
+		$(this).addClass('table-active')
+	})
 }
 
-function build_rates_html(rates) {
+function build_rates_html(rates, selected) {
 	let html = '<table class="table table-bordered table-sm">'
 	html += '<thead><tr><th>Carrier</th><th>Service</th><th>Est. Days</th><th>Cost</th></tr></thead>'
 	html += '<tbody>'
-	rates.forEach(rate => {
-		html += `<tr>
+	rates.forEach((rate, idx) => {
+		const is_selected = selected && rates.indexOf(selected) === idx
+		const row_class = is_selected ? 'table-active' : ''
+		html += `<tr class="ss-rate-row ${row_class}" data-rate-idx="${idx}" style="cursor:pointer">
 			<td>${rate.carrier_name || rate.carrier_id}</td>
 			<td>${rate.service_type || rate.service_code}</td>
 			<td>${rate.delivery_days || '-'}</td>
@@ -1109,6 +1139,45 @@ function build_rates_html(rates) {
 	})
 	html += '</tbody></table>'
 	return html
+}
+
+function void_packing_slip_label(frm) {
+	const parcel = current_parcel_number(frm)
+	if (!parcel) {
+		frappe.msgprint(__('Select a parcel to void.'))
+		return
+	}
+
+	frappe.call({
+		method: 'shipstation_integration.api.labels.void_label_for_packing_slip',
+		args: { packing_slip: frm.doc.name, parcel_number: parcel },
+		freeze: true,
+		freeze_message: __('Voiding label...'),
+		callback: function (r) {
+			const result = r.message || {}
+			if (result.approved === false) {
+				frappe.msgprint(result.message || __('Void was not approved'))
+				return
+			}
+
+			;(frm.doc.items || []).forEach(row => {
+				if (row.parcel_number !== parcel) return
+				frappe.model.set_value(row.doctype, row.name, {
+					tracking_number: '',
+					tracking_url: '',
+					label_url: '',
+					label_id: '',
+				})
+			})
+			frm.refresh_field('items')
+			if (frm.attachments?.refresh) frm.attachments.refresh()
+			refresh_shipping_actions(frm)
+			frappe.show_alert({ message: __('Label voided'), indicator: 'orange' }, 7)
+		},
+		error: function (err) {
+			frappe.msgprint(__('Error voiding label: {0}', [err.message || 'Unknown error']))
+		},
+	})
 }
 
 function create_label_with_rate(frm, carrier_id, service_code) {
@@ -1186,11 +1255,19 @@ function show_label_success(frm, results) {
 			frappe.model.set_value(row.doctype, row.name, {
 				tracking_number: result.tracking_number || '',
 				label_url: result.label_download || '',
+				label_id: result.label_id || '',
 			})
 		})
 	})
 
+	if (!frm.doc.carrier) {
+		const from_items = get_carrier_from_items(frm)
+		if (from_items) frm.set_value('carrier', from_items)
+	}
+
 	frm.refresh_field('items')
+	if (frm.attachments?.refresh) frm.attachments.refresh()
+	refresh_shipping_actions(frm)
 }
 
 function create_label_pick_service(frm) {

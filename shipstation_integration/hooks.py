@@ -194,3 +194,11 @@ seventeen_track_status_description_providers = [
 seventeen_track_geocode_address = [
 	"shipstation_integration.geocoding.nominatim_geocode",
 ]
+
+# Last hook wins. Other apps append to override UltraPro / channel-specific rules.
+get_label_billing_options = [
+	"shipstation_integration.label_options.default_label_billing_options",
+]
+get_label_reference = [
+	"shipstation_integration.label_options.default_label_reference",
+]

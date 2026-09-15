@@ -138,9 +138,20 @@
     },
     {
       "dt": "Packing Slip Item",
-      "fieldname": "tracking_url",
+      "fieldname": "label_id",
       "fieldtype": "Data",
       "insert_after": "tracking_number",
+      "label": "Label ID",
+      "module": "Shipstation Integration",
+      "name": "Packing Slip Item-label_id",
+      "no_copy": 1,
+      "read_only": 1
+    },
+    {
+      "dt": "Packing Slip Item",
+      "fieldname": "tracking_url",
+      "fieldtype": "Data",
+      "insert_after": "label_id",
       "label": "Tracking URL",
       "module": "Shipstation Integration",
       "name": "Packing Slip Item-tracking_url",
