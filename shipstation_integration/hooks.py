@@ -152,6 +152,8 @@ scheduler_events = {
 # 	"Task": "shipstation_integration.task.get_dashboard_data"
 # }
 
+before_auto_cartonize_packing_slip = []
+
 override_whitelisted_methods = {
 	"erpnext.stock.doctype.delivery_note.delivery_note.make_packing_slip": "shipstation_integration.cartonization.make_packing_slip_with_optional_cartonization",
 	"erpnext.stock.doctype.delivery_note.delivery_note.make_shipment": "shipstation_integration.cartonization.make_shipment_with_optional_cartonization",

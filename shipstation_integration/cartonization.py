@@ -265,7 +265,12 @@ def assign_bins_to_child_rows(doc, child_table_field: str, bins: list):
 
 	# Build mapping: row_name → [(parcel_no, parcel_template, packed_item), ...]
 	row_bins: dict[str, list] = {}
-	parcel_no = 1
+	existing_parcel_numbers = [
+		cint(getattr(r, "parcel_number", 0))
+		for r in rows_list
+		if flt(getattr(r, "parcel_number", 0)) > 0
+	]
+	parcel_no = max(existing_parcel_numbers, default=0) + 1
 	for bn in bins or []:
 		for packed in bn.get("items") or []:
 			row_key = (

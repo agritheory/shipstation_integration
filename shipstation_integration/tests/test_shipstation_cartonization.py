@@ -244,6 +244,56 @@ def test_auto_cartonize_packing_slip_from_delivery_note_sets_parcels():
 		ss.save()
 
 
+@pytest.mark.order(120)
+def test_assign_bins_starts_after_preassigned_pan_parcel_numbers():
+	"""
+	Whole-PAN rows created before auto-cartonization already occupy parcel numbers
+	1..N. Remainder bins from the solver must continue at N+1, not restart at 1.
+	"""
+	ps = frappe.new_doc("Packing Slip")
+	ps.append(
+		"items",
+		{
+			"item_code": "Gooseberry Pie",
+			"qty": 6,
+			"stock_uom": "Nos",
+			"parcel_number": 1,
+			"so_detail": "so-case-1",
+		},
+	)
+	ps.append(
+		"items",
+		{
+			"item_code": "Gooseberry Pie",
+			"qty": 6,
+			"stock_uom": "Nos",
+			"parcel_number": 2,
+			"so_detail": "so-case-2",
+		},
+	)
+	ps.append(
+		"items",
+		{
+			"item_code": "Gooseberry Pie",
+			"qty": 1,
+			"stock_uom": "Nos",
+			"so_detail": "so-remainder",
+		},
+	)
+
+	bins = [
+		{
+			"parcel_template": "Pie Triple Stack",
+			"items": [{"row_name": "so-remainder", "qty": 1}],
+		}
+	]
+	ss_cart.assign_bins_to_child_rows(ps, "items", bins)
+
+	remainder_row = next(row for row in ps.items if row.so_detail == "so-remainder")
+	assert remainder_row.parcel_number == 3
+	assert remainder_row.parcel_template == "Pie Triple Stack"
+
+
 @pytest.mark.order(119)
 def test_auto_cartonize_shipment_document_sets_parcels_on_sdn_rows():
 	"""

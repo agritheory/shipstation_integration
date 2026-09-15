@@ -20,6 +20,8 @@ from shipstation_integration.shipstation_integration.overrides.sales_order_conte
 class ShipstationPackingSlip(InventoryToolsPackingSlip):
 	def after_mapping(self, source_doc):
 		apply_packing_slip_addresses_from_sales_order(self)
+		for path in frappe.get_hooks("before_auto_cartonize_packing_slip") or []:
+			frappe.get_attr(path)(self, source_doc)
 		cartonize_mapped_packing_slip(self)
 
 	def validate_case_nos(self):

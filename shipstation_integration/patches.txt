@@ -9,6 +9,7 @@ shipstation_integration.patches.migrate_alternative_ltl_to_freight_carrier_setti
 shipstation_integration.patches.remove_duplicate_shipment_delivery_note_custom_fields
 shipstation_integration.patches.enable_alternative_sales_workflow_for_shipstation_settings
 execute:frappe.delete_doc_if_exists('Custom Field', 'Packing Slip-freight_type') # 9/7/26 Tyler Matteson
+execute:frappe.delete_doc_if_exists('Custom Field', 'Packing Slip-column_break_cwd0o') # 9/11/26 extra column break after dispatch address
 shipstation_integration.patches.replace_shipping_cost_register_query_report
 shipstation_integration.patches.reload_shipping_workspace
 shipstation_integration.patches.reload_shipping_workspace_documents_tracking
