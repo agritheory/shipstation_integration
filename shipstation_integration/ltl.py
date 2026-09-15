@@ -12,6 +12,7 @@ the ShipStation API v-beta.
 import base64
 import json
 import re
+from typing import Any
 
 import frappe
 import httpx
@@ -53,6 +54,39 @@ CANONICAL_TO_LB: dict[str, float] = {
 	"gram": 0.00220462,
 }
 CANONICAL_TO_CUFT: dict[str, float] = {"inch": 1.0 / 1728.0, "centimeter": 1.0 / 28316.85}
+
+NMFC_CLASSES = (
+	50,
+	55,
+	60,
+	65,
+	70,
+	77.5,
+	85,
+	92.5,
+	100,
+	110,
+	125,
+	150,
+	175,
+	200,
+	250,
+	300,
+	400,
+	500,
+)
+
+
+def normalize_freight_class(value) -> str:
+	"""Render an NMFC class the way carrier APIs expect it."""
+	try:
+		number = float(value)
+	except (TypeError, ValueError):
+		number = 50.0
+
+	nearest = min(NMFC_CLASSES, key=lambda option: abs(option - number))
+	return str(int(nearest)) if float(nearest).is_integer() else str(nearest)
+
 
 # Typical LTL carrier limits (inches). Used to catch UOM mistakes before rating/booking.
 LTL_MAX_DIMENSION_INCHES = {"length": 636, "width": 102, "height": 110}
@@ -393,10 +427,13 @@ class ShipstationLTL(BaseLTL):
 				message=f"Supplier '{supplier_name}' has invalid LTL carrier_id: {carrier_id}",
 			)
 
-		if not settings or not settings.shipstation_api_ltl_carrier_data:
+		# Field is written by fetch_ltl_carriers but is not in shipstation_settings.json,
+		# so attribute access raises on sites that have never created it by hand.
+		ltl_carrier_data = settings.get("shipstation_api_ltl_carrier_data") if settings else None
+		if not ltl_carrier_data:
 			return None
 
-		carrier_data = json.loads(settings.shipstation_api_ltl_carrier_data)
+		carrier_data = json.loads(ltl_carrier_data)
 
 		# Look up by name (case-insensitive)
 		supplier_name_lower = supplier_name.lower()
@@ -1228,8 +1265,9 @@ class ShipstationLTL(BaseLTL):
 
 		# Get carrier IDs from stored LTL carrier data
 		carrier_data = []
-		if settings and settings.shipstation_api_ltl_carrier_data:
-			carrier_data = json.loads(settings.shipstation_api_ltl_carrier_data)
+		ltl_carrier_data = settings.get("shipstation_api_ltl_carrier_data") if settings else None
+		if ltl_carrier_data:
+			carrier_data = json.loads(ltl_carrier_data)
 
 		if not carrier_data:
 			co = get_shipment_company_for_ltl(auth)
@@ -2185,10 +2223,15 @@ class ShipstationLTL(BaseLTL):
 		"""
 		# Ship From and Ship To
 		ship_from = self.get_address_and_contact_info(doc=doc, ship_from=True)
-		if doc.billing_type == "Shipper" and doc.billing_account:
+		from shipstation_integration.incoterms import resolve_carrier_billing
+
+		carrier_billing = resolve_carrier_billing(doc)
+		billing_type = carrier_billing["billing_type"]
+
+		if billing_type == "Shipper" and doc.billing_account:
 			ship_from.update({"account": doc.billing_account})
 		ship_to = self.get_address_and_contact_info(doc=doc, ship_from=False)
-		if doc.billing_type == "Consignee" and doc.billing_account:
+		if billing_type == "Consignee" and doc.billing_account:
 			ship_to.update({"account": doc.billing_account})
 
 		# Packages / Handling Units — built from Shipment Delivery Note rows
@@ -2206,25 +2249,25 @@ class ShipstationLTL(BaseLTL):
 					svc.update({"attributes": {"name": haz_name, "phone": haz_phone}})
 				options.append(svc)
 
-		# Billing
-		b_type = (doc.billing_type or "Shipper").replace(" ", "_").lower()
-		b_pmt_terms = (doc.payment_terms or "Prepaid").replace(" ", "_").lower()
+		# Billing — derived from incoterm when set, else explicit Shipment fields.
+		b_type = carrier_billing["billing_type"].replace(" ", "_").lower()
+		b_pmt_terms = carrier_billing["payment_terms"].replace(" ", "_").lower()
 		if b_type not in ["consignee", "shipper", "third_party"]:
 			frappe.throw("The Billing Type must be either 'Consignee', 'Shipper', or 'Third Party'.")
 
 		if b_pmt_terms not in ["collect", "prepaid", "third_party"]:
 			frappe.throw("The Billing Payment Term must be either 'Collect', 'Prepaid', or 'Third Party'.")
 
-		bill_to = {
+		bill_to: dict[str, Any] = {
 			"type": b_type,
 			"payment_terms": b_pmt_terms,
 		}
 		if doc.get("billing_account"):
 			bill_to["account"] = doc.billing_account
-		if doc.billing_type == "Shipper" and not doc.billing_address:
+		if billing_type == "Shipper" and not doc.billing_address:
 			bill_to["address"] = ship_from["address"]
 			bill_to["contact"] = ship_from["contact"]
-		elif doc.billing_type == "Consignee" and not doc.billing_address:
+		elif billing_type == "Consignee" and not doc.billing_address:
 			bill_to["address"] = ship_to["address"]
 			bill_to["contact"] = ship_to["contact"]
 		else:
@@ -2366,16 +2409,6 @@ class ShipstationLTL(BaseLTL):
 				title=_("Delivery contact required"),
 			)
 
-		party_name_field_map = {
-			"Company": "pickup_company" if ship_from else "delivery_company",
-			"Customer": "pickup_customer" if ship_from else "delivery_customer",
-			"Supplier": "pickup_supplier" if ship_from else "delivery_supplier",
-			# "Contact" has no party name field — the contact IS the addressee
-		}
-		company_name = (
-			doc.get(party_name_field_map[party_type]) if party_type in party_name_field_map else None
-		)
-
 		if ship_from and party_type == "Company":
 			contact_field = "pickup_contact_person"
 			contact_dt = "User"
@@ -2389,10 +2422,28 @@ class ShipstationLTL(BaseLTL):
 			contact_dt = "Contact"
 			email_field = "email_id"
 
+		side = _("pickup") if ship_from else _("delivery")
+		if not doc.get(address_name_field):
+			frappe.throw(
+				_("Set the {0} address on the Shipment before requesting LTL quotes.").format(side)
+			)
+		if not doc.get(contact_field):
+			frappe.throw(
+				_("Set the {0} contact on the Shipment before requesting LTL quotes.").format(side)
+			)
+
+		party_name_field_map = {
+			"Company": "pickup_company" if ship_from else "delivery_company",
+			"Customer": "pickup_customer" if ship_from else "delivery_customer",
+			"Supplier": "pickup_supplier" if ship_from else "delivery_supplier",
+			# "Contact" has no party name field — the contact IS the addressee
+		}
+		company_name = (
+			doc.get(party_name_field_map[party_type]) if party_type in party_name_field_map else None
+		)
+
 		address = frappe.get_doc("Address", doc.get(address_name_field))
 		contact = frappe.get_doc(contact_dt, doc.get(contact_field))
-
-		side = _("pickup") if ship_from else _("delivery")
 		phone = contact.phone or address.phone
 		if not phone:
 			frappe.throw(

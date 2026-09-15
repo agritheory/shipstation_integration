@@ -3,15 +3,21 @@
 
 import pytest
 import frappe
-from frappe.utils import flt
+from frappe.utils import flt, get_time
 
+from shipstation_integration.incoterms import carrier_billing_from_incoterm
 from shipstation_integration.ltl import (
 	LTL_SUPPORTED_DIMENSION_UOMS,
 	ShipstationLTL,
 	centimeter_values_are_millimeter_magnitudes,
 	effective_sdn_dimension_uom,
 	get_ltl_provider,
+	normalize_freight_class,
 	sdn_dimensions_to_inches,
+)
+from shipstation_integration.shipstation_integration.overrides.shipment import (
+	ShipStationShipment,
+	get_carrier_id_for_supplier,
 )
 from shipstation_integration.shipstation_integration.freight_providers.banyan_ltl import BanyanLTL
 from shipstation_integration.shipstation_integration.freight_providers.odfl_ltl import OdflLTL
@@ -181,6 +187,29 @@ def test_get_ltl_provider_resolves_by_fcs_type(case, expected_cls):
 	else:
 		doc = doc_for_supplier(supplier_name(case))
 		assert isinstance(get_ltl_provider(doc), expected_cls)
+
+
+@pytest.mark.order(52)
+@pytest.mark.parametrize(
+	("carrier", "expected"),
+	[
+		("ODFL LTL", "ODFL"),
+		("Banyan LTL", None),
+		("WWEX LTL", None),
+		("TrafficTech LTL", None),
+	],
+)
+def test_get_carrier_id_for_supplier_uses_preferred_carrier_provider(carrier, expected):
+	"""Form load has no Shipment; provider must still resolve from the transporter."""
+	assert (
+		get_carrier_id_for_supplier(supplier_name(carrier), company="Ambrosia Pie Company") == expected
+	)
+
+
+@pytest.mark.order(52)
+def test_api_ltl_carrier_data_tolerates_undeclared_field():
+	doc = frappe.get_doc("Shipstation Settings", "Ambrosia Pie Company")
+	assert isinstance(doc.api_ltl_carrier_data(), list)
 
 
 @pytest.mark.order(53)
@@ -420,3 +449,97 @@ def test_ltl_carriers_expose_millimeter_dimension_uom():
 		assert abs(dims["height"] - 60) < 1
 	finally:
 		restore_ltl_shipment(shipment, original)
+
+
+@pytest.mark.order(64)
+@pytest.mark.parametrize(
+	("value", "expected"),
+	[
+		(77.5, "77.5"),
+		(50.0, "50"),
+		("garbage", "50"),
+	],
+)
+def test_normalize_freight_class(value, expected):
+	assert normalize_freight_class(value) == expected
+
+
+@pytest.mark.order(65)
+def test_wwex_splits_overweight_handling_units():
+	provider = WwexLTL()
+	packages = [
+		{
+			"weight": {"value": 6000, "unit": "pounds"},
+			"dimensions": {"length": 40, "width": 48, "height": 60, "unit": "inches"},
+			"quantity": 1,
+			"freight_class": 70,
+			"description": "Heavy freight",
+			"code": "PLT",
+		}
+	]
+	units = provider.build_handling_units(frappe._dict({"hazardous_material": 0}), packages)
+	assert units[0]["quantity"] == 2
+	per_item_lb = float(units[0]["shippedItemList"][0]["weight"]["value"])
+	assert 2900 <= per_item_lb <= 3100
+
+
+@pytest.mark.order(66)
+def test_get_address_and_contact_info_requires_pickup_address():
+	shipment = get_draft_ltl_shipment_for_tests()
+	original_pickup = shipment.pickup_address_name
+	try:
+		shipment.pickup_address_name = None
+		with pytest.raises(frappe.ValidationError, match="pickup"):
+			ShipstationLTL().get_address_and_contact_info(shipment, ship_from=True)
+	finally:
+		shipment.pickup_address_name = original_pickup
+
+
+@pytest.mark.order(68)
+def test_carrier_billing_from_incoterm_keeps_fields_separate():
+	exw = carrier_billing_from_incoterm("EXW")
+	assert exw["payment_terms"] == "Collect"
+	assert exw["billing_type"] == "Consignee"
+
+	dap = carrier_billing_from_incoterm("DAP")
+	assert dap["payment_terms"] == "Prepaid"
+	assert dap["billing_type"] == "Shipper"
+
+
+@pytest.mark.order(69)
+def test_populate_shipment_incoterm_from_linked_delivery_note():
+	shipment = get_draft_ltl_shipment_for_tests()
+	delivery_note = next(
+		row.delivery_note for row in shipment.shipment_delivery_note if row.delivery_note
+	)
+	original_dn_incoterm = frappe.db.get_value("Delivery Note", delivery_note, "incoterm")
+	original_shipment_incoterm = shipment.incoterm
+	try:
+		frappe.db.set_value("Delivery Note", delivery_note, "incoterm", "FCA")
+		frappe.db.set_value("Shipment", shipment.name, "incoterm", None)
+		shipment.reload()
+		shipment.incoterm = None
+		doc = ShipStationShipment(shipment.as_dict())
+		doc.validate()
+		assert doc.incoterm == "FCA"
+	finally:
+		frappe.db.set_value("Delivery Note", delivery_note, "incoterm", original_dn_incoterm)
+		frappe.db.set_value("Shipment", shipment.name, "incoterm", original_shipment_incoterm)
+
+
+@pytest.mark.order(67)
+def test_normalize_pickup_window_restores_default_hours():
+	shipment = get_draft_ltl_shipment_for_tests()
+	original_from = shipment.pickup_from
+	original_to = shipment.pickup_to
+	try:
+		shipment.freight_type = "LTL"
+		shipment.pickup_from = shipment.pickup_to = "12:00:00"
+		doc = ShipStationShipment(shipment.as_dict())
+		doc.validate()
+		assert get_time(doc.pickup_from) == get_time("09:00:00")
+		assert get_time(doc.pickup_to) == get_time("17:00:00")
+	finally:
+		shipment.pickup_from = original_from
+		shipment.pickup_to = original_to
+		shipment.save()

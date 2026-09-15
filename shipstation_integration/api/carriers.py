@@ -17,7 +17,11 @@ import httpx
 from frappe import _
 from shipengine.errors import ShipEngineError
 
-from shipstation_integration.utils import get_error_message, get_shipstation_settings
+from shipstation_integration.utils import (
+	get_error_message,
+	get_shipstation_settings,
+	get_shipstation_settings_optional,
+)
 
 if TYPE_CHECKING:
 	from shipstation_integration.shipstation_integration.doctype.shipstation_settings.shipstation_settings import (
@@ -908,6 +912,55 @@ def get_services_for_supplier(supplier_name: str, settings_name: str | None = No
 			message=f"Supplier: {supplier_name}\nError: {str(e)}",
 		)
 		return []
+
+
+def get_supplier_for_carrier_id(carrier_id: str, settings_name: str | None = None) -> str | None:
+	"""Return the Supplier name for a ShipEngine carrier id."""
+	if not carrier_id:
+		return None
+
+	settings = get_shipstation_settings_optional(settings_name)
+	if not settings or not settings.get("shipstation_api_carrier_data"):
+		return None
+
+	try:
+		carriers = json.loads(settings.shipstation_api_carrier_data)
+	except (ValueError, TypeError):
+		return None
+
+	for carrier in carriers or []:
+		if carrier.get("carrier_id") == carrier_id:
+			return carrier.get("supplier") or carrier.get("name")
+
+	return None
+
+
+def get_carrier_capabilities(carrier_id: str, settings_name: str | None = None) -> dict:
+	"""Read carrier capability flags from ShipEngine, cached for one hour."""
+	if not carrier_id:
+		return {}
+
+	cache_key = f"shipstation_carrier_capabilities::{carrier_id}"
+	cached = frappe.cache().get_value(cache_key)
+	if cached is not None:
+		return cached
+
+	try:
+		carrier = get_carrier(carrier_id, settings_name) or {}
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), f"Could not read capabilities for {carrier_id}")
+		return {}
+
+	capabilities = {
+		key: carrier.get(key)
+		for key in (
+			"supports_label_messages",
+			"has_multi_package_supporting_services",
+			"requires_funded_amount",
+		)
+	}
+	frappe.cache().set_value(cache_key, capabilities, expires_in_sec=3600)
+	return capabilities
 
 
 def format_carrier(carrier) -> dict:

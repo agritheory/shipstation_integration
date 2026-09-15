@@ -10,6 +10,7 @@ retrieving shipping labels directly through the API.
 
 import base64
 import json
+import re
 from io import BytesIO
 from typing import TYPE_CHECKING, Optional
 
@@ -19,11 +20,16 @@ from frappe.utils import cint, flt
 from frappe.utils.file_manager import save_file
 from shipengine.errors import ShipEngineError
 
+from shipstation_integration.api.carriers import (
+	get_carrier_capabilities,
+	get_supplier_for_carrier_id,
+)
 from shipstation_integration.api.rates import (
 	DIMENSION_UOM_MAP,
 	WEIGHT_UOM_MAP,
 	get_fallback_package,
 	get_package_from_packing_slip,
+	get_packages_from_packing_slip,
 	get_state_code,
 )
 from shipstation_integration.utils import get_error_message, get_shipstation_settings
@@ -266,17 +272,16 @@ def create_label_for_packing_slip(
 		frappe.throw(_("No items have been assigned to a parcel. Pack items before purchasing labels."))
 		return []
 
-	if rate_id and len(parcel_numbers) > 1:
-		frappe.throw(
-			_(
-				"rate_id can only be used for single-parcel shipments. Use carrier_id and service_code for multi-parcel."
-			)
-		)
-		return []
-
 	settings = get_shipstation_settings()
-	label_responses = []
 
+	if len(parcel_numbers) > 1:
+		multi_responses = buy_multi_parcel_labels(ps, rate_id, carrier_id, service_code, parcel_numbers)
+		if multi_responses:
+			for label_response in multi_responses:
+				update_packing_slip_tracking(ps, label_response, label_response["parcel_number"])
+			return finalize_packing_slip_label_responses(ps, multi_responses, settings)
+
+	label_responses = []
 	for parcel_number in parcel_numbers:
 		if rate_id:
 			label_response = create_label_from_rate(rate_id=rate_id)
@@ -288,6 +293,15 @@ def create_label_for_packing_slip(
 			shipment_data = build_shipment_from_packing_slip(ps, carrier_id, service_code, parcel_number)
 			label_response = create_label(shipment_data=shipment_data)
 
+		label_response["parcel_number"] = parcel_number
+		update_packing_slip_tracking(ps, label_response, parcel_number)
+		label_responses.append(label_response)
+
+	return finalize_packing_slip_label_responses(ps, label_responses, settings)
+
+
+def finalize_packing_slip_label_responses(ps, label_responses: list[dict], settings) -> list[dict]:
+	for label_response in label_responses:
 		if label_response.get("label_download"):
 			file_doc = download_and_attach_label(
 				label_response["label_download"],
@@ -296,12 +310,142 @@ def create_label_for_packing_slip(
 				settings,
 			)
 			label_response["attached_file"] = file_doc.name if file_doc else None
-
-		label_response["parcel_number"] = parcel_number
-		update_packing_slip_tracking(ps, label_response, parcel_number)
-		label_responses.append(label_response)
-
 	return label_responses
+
+
+def carrier_supports_multi_package(carrier_id: str, box_count: int) -> bool:
+	"""Whether this carrier account can take every box as one shipment."""
+	capabilities = get_carrier_capabilities(carrier_id)
+	if not capabilities or capabilities.get("has_multi_package_supporting_services"):
+		return True
+
+	frappe.msgprint(
+		_(
+			"{0} has no multi-package service, so these {1} boxes ship as {1} separate "
+			"labels and will not be numbered 1 of {1}. Choose another carrier if the "
+			"boxes need numbering."
+		).format(get_supplier_for_carrier_id(carrier_id) or _("This carrier"), box_count),
+		indicator="orange",
+		title=_("Boxes Will Not Be Numbered"),
+	)
+	return False
+
+
+def split_package_labels(label_response: dict, parcel_numbers: list) -> list[dict]:
+	"""One response per box out of a single multi-package purchase."""
+	package_labels = label_response.get("packages") or []
+	if len(package_labels) != len(parcel_numbers):
+		return []
+
+	responses = []
+	for index, parcel_number in enumerate(parcel_numbers):
+		package_label = package_labels[index]
+		child = dict(label_response)
+		child.pop("packages", None)
+		child["parcel_number"] = parcel_number
+		child["tracking_number"] = package_label.get("tracking_number") or label_response.get(
+			"tracking_number"
+		)
+		child["label_id"] = package_label.get("label_id") or label_response.get("label_id")
+		download = package_label.get("label_download")
+		if isinstance(download, dict):
+			download = download.get("pdf") or download.get("href")
+		child["label_download"] = download or label_response.get("label_download")
+		if index:
+			child["shipment_cost"] = {}
+			child["insurance_cost"] = {}
+		responses.append(child)
+
+	return responses
+
+
+def labels_from_bought_rate(label_response: dict, parcel_numbers: list) -> list[dict]:
+	"""Split a rate bought as one shipment into one response per box."""
+	responses = split_package_labels(label_response, parcel_numbers)
+	if responses:
+		return responses
+
+	frappe.msgprint(
+		_(
+			"The carrier returned a single label for a {0} box shipment, so the boxes are "
+			"not numbered. Check the label before it goes on a carton."
+		).format(len(parcel_numbers)),
+		indicator="orange",
+		title=_("Boxes Not Numbered"),
+	)
+	label_response["parcel_number"] = parcel_numbers[0]
+	return [label_response]
+
+
+def buy_multi_parcel_labels(
+	ps, rate_id: str | None, carrier_id: str | None, service_code: str | None, parcel_numbers: list
+) -> list[dict]:
+	"""Buy every box on one shipment so the carrier numbers them 1 of N."""
+	if rate_id:
+		return labels_from_bought_rate(create_label_from_rate(rate_id=rate_id), parcel_numbers)
+
+	if not carrier_id or not service_code:
+		return []
+	if not carrier_supports_multi_package(carrier_id, len(parcel_numbers)):
+		return []
+
+	packages = []
+	for parcel_number in parcel_numbers:
+		package = get_package_from_packing_slip(ps, parcel_number)
+		if not package:
+			return []
+		packages.append(package)
+
+	shipment_data = build_shipment_from_packing_slip(ps, carrier_id, service_code, parcel_numbers[0])
+	shipment_data["packages"] = packages
+
+	try:
+		label_response = create_label(shipment_data=shipment_data)
+	except Exception:
+		frappe.log_error(
+			frappe.get_traceback(),
+			f"Multi-package label failed for {ps.name}, falling back to one per box",
+		)
+		return []
+
+	return split_package_labels(label_response, parcel_numbers)
+
+
+def buy_multi_parcel_shipment_labels(
+	doc,
+	rate_id: str | None,
+	carrier_id: str | None,
+	service_code: str | None,
+	parcel_numbers: list,
+) -> list[dict]:
+	"""Buy every box on a Shipment as one carrier shipment."""
+	if rate_id:
+		return labels_from_bought_rate(create_label_from_rate(rate_id=rate_id), parcel_numbers)
+
+	if not carrier_id or not service_code:
+		return []
+	if not carrier_supports_multi_package(carrier_id, len(parcel_numbers)):
+		return []
+
+	shipment_data = build_shipment_from_shipment_doc(doc, carrier_id, service_code, parcel_numbers[0])
+	packages = []
+	for parcel_number in parcel_numbers:
+		per_parcel = build_shipment_from_shipment_doc(doc, carrier_id, service_code, parcel_number)
+		packages.extend(per_parcel.get("packages") or [])
+	if not packages:
+		return []
+	shipment_data["packages"] = packages
+
+	try:
+		label_response = create_label(shipment_data=shipment_data)
+	except Exception:
+		frappe.log_error(
+			frappe.get_traceback(),
+			f"Multi-package label failed for {doc.name}, falling back to one per box",
+		)
+		return []
+
+	return split_package_labels(label_response, parcel_numbers)
 
 
 def get_existing_label_info(ps) -> dict | None:
@@ -372,6 +516,42 @@ def create_label_for_delivery_note(
 	return label_response
 
 
+def label_billing_context(delivery_note: str | None, carrier_id: str, rows=None):
+	"""Minimal packing-slip-shaped context for billing helpers."""
+	from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+		get_first_sales_order_from_pack_lines,
+	)
+
+	supplier = get_supplier_for_carrier_id(carrier_id)
+	ctx = frappe._dict({"carrier": supplier, "items": rows or []})
+	if delivery_note:
+		ctx.delivery_note = delivery_note
+	so_name = get_first_sales_order_from_pack_lines(rows or [])
+	if so_name and not ctx.delivery_note:
+		ctx.items = [{"against_sales_order": so_name}]
+	return ctx, so_name
+
+
+def resolve_label_billing_for_source(
+	delivery_note: str | None, carrier_id: str, rows=None
+) -> dict | None:
+	ctx, _so_name = label_billing_context(delivery_note, carrier_id, rows)
+	if not ctx.carrier:
+		return None
+	return resolve_label_billing_options(ctx)
+
+
+def resolve_label_reference_for_source(rows, delivery_note: str | None = None) -> str:
+	return resolve_label_reference(label_reference_context(rows, delivery_note))
+
+
+def label_reference_context(rows, delivery_note: str | None = None):
+	ctx = frappe._dict(items=rows or [])
+	if delivery_note:
+		ctx.delivery_note = delivery_note
+	return ctx
+
+
 def build_shipment_from_delivery_note(dn, carrier_id: str, service_code: str) -> dict:
 	"""Build shipment payload from Delivery Note."""
 	ship_to_address = frappe.get_doc("Address", dn.shipping_address_name)
@@ -389,7 +569,7 @@ def build_shipment_from_delivery_note(dn, carrier_id: str, service_code: str) ->
 
 	package = get_fallback_package(dn)
 
-	return {
+	shipment = {
 		"carrier_id": carrier_id,
 		"service_code": service_code,
 		"ship_to": {
@@ -414,6 +594,18 @@ def build_shipment_from_delivery_note(dn, carrier_id: str, service_code: str) ->
 		},
 		"packages": [package],
 	}
+
+	validate_po_box_delivery(ship_to_address, service_code, get_supplier_for_carrier_id(carrier_id))
+
+	reference = resolve_label_reference_for_source(dn.items, dn.name)
+	if reference:
+		shipment["external_order_id"] = reference
+
+	billing = resolve_label_billing_for_source(dn.name, carrier_id, dn.items)
+	if billing:
+		shipment["advanced_options"] = billing
+
+	return shipment
 
 
 def update_delivery_note_tracking(dn, label_response: dict) -> None:
@@ -500,16 +692,16 @@ def create_return_label(
 		return {}
 
 
+def format_label_download(label_download):
+	if isinstance(label_download, dict):
+		return label_download.get("pdf") or label_download.get("href")
+	return label_download
+
+
 def format_label_response(label_response) -> dict:
 	"""Format label response for frontend consumption."""
 	if isinstance(label_response, dict):
-		label_download = label_response.get("label_download", {})
-		if isinstance(label_download, dict):
-			pdf_url = label_download.get("pdf") or label_download.get("href")
-		else:
-			pdf_url = label_download
-
-		return {
+		formatted = {
 			"label_id": label_response.get("label_id"),
 			"shipment_id": label_response.get("shipment_id"),
 			"carrier_id": label_response.get("carrier_id"),
@@ -520,20 +712,211 @@ def format_label_response(label_response) -> dict:
 			"created_at": label_response.get("created_at"),
 			"shipment_cost": label_response.get("shipment_cost", {}),
 			"insurance_cost": label_response.get("insurance_cost", {}),
-			"label_download": pdf_url,
+			"label_download": format_label_download(label_response.get("label_download", {})),
 			"trackable": label_response.get("trackable", True),
 			"label_format": label_response.get("label_format"),
 			"display_scheme": label_response.get("display_scheme"),
 			"voided": label_response.get("voided", False),
 			"voided_at": label_response.get("voided_at"),
 		}
+		packages = label_response.get("packages") or []
+		if packages:
+			formatted["packages"] = [
+				{
+					"label_id": package.get("label_id"),
+					"tracking_number": package.get("tracking_number"),
+					"label_download": format_label_download(package.get("label_download", {})),
+				}
+				for package in packages
+			]
+		return formatted
 	return label_response
 
 
-def get_third_party_billing_options(ps) -> dict | None:
-	"""Return ShipEngine advanced_options from the label-options seam."""
-	from shipstation_integration.label_options import resolve_label_billing_options
+PO_BOX_CARRIERS = ("usps", "stamps_com", "stamps.com", "globalpost", "dhl_ecommerce")
+PO_BOX_PATTERN = re.compile(
+	r"\b(?:p[\s.]*o[\s.]*box|post\s+office\s+box|postal\s+box)\b", re.IGNORECASE
+)
 
+
+def is_po_box(address) -> bool:
+	"""True when either address line names a PO box rather than a street."""
+	return any(
+		PO_BOX_PATTERN.search(address.get(fieldname) or "")
+		for fieldname in ("address_line1", "address_line2")
+	)
+
+
+def validate_po_box_delivery(ship_to_address, service_code, carrier=None):
+	"""Block label purchase when a non-postal carrier cannot deliver to a PO box."""
+	if not is_po_box(ship_to_address):
+		return
+
+	selected = f"{service_code or ''} {carrier or ''}".lower()
+	if any(postal in selected for postal in PO_BOX_CARRIERS):
+		return
+
+	frappe.throw(
+		_(
+			"{0} is a PO box and {1} does not deliver to PO boxes. Use a street address "
+			"or ship this parcel by USPS."
+		).format(ship_to_address.address_line1, carrier or service_code or _("this carrier")),
+		title=_("PO Box Not Deliverable"),
+	)
+
+
+def decline_customer_billing(source, incoterm, reason: str) -> None:
+	"""Explain when customer freight billing was expected but cannot be applied."""
+	from shipstation_integration.incoterms import normalize_incoterm_code
+	from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+		get_customer_from_packing_slip,
+	)
+
+	source_name = getattr(source, "name", None) or source.get("name") or _("this shipment")
+	incoterm_label = normalize_incoterm_code(incoterm) or incoterm or _("customer-carriage")
+	problem = _("{0} is sold under Incoterm {1}, but {2}.").format(
+		source_name, incoterm_label, reason
+	)
+
+	bill_to_party = (source.get("bill_to_party") or "").strip()
+	if bill_to_party and bill_to_party != "Shipper":
+		frappe.throw(problem, title=_("Billing Account Not Found"))
+
+	customer, _customer_display = get_customer_from_packing_slip(source)
+	shipper = source.get("company")
+	if not shipper and source.get("delivery_note"):
+		shipper = frappe.db.get_value("Delivery Note", source.delivery_note, "company")
+	if not shipper and customer:
+		shipper = frappe.db.get_value(
+			"Customer", customer, "default_company"
+		) or frappe.defaults.get_global_default("company")
+
+	frappe.msgprint(
+		problem + " " + _("This label bills {0} instead.").format(shipper or _("the shipper account")),
+		indicator="orange",
+		title=_("Freight Billed to Shipper"),
+	)
+
+
+def resolve_label_billing_options(packing_slip) -> dict | None:
+	"""Return ShipEngine advanced_options, or None for shipper (Prepaid) billing."""
+	hooks = frappe.get_hooks("get_label_billing_options") or []
+	if not hooks:
+		return default_label_billing_options(packing_slip)
+	return frappe.get_attr(hooks[-1])(packing_slip)
+
+
+def resolve_label_reference(packing_slip) -> str:
+	"""Return the shipment reference string for the label payload."""
+	hooks = frappe.get_hooks("get_label_reference") or []
+	if not hooks:
+		return default_label_reference(packing_slip)
+	return frappe.get_attr(hooks[-1])(packing_slip) or ""
+
+
+def default_label_billing_options(packing_slip) -> dict | None:
+	"""Bill the customer's carrier account when the order incoterm requires it."""
+	from shipstation_integration.incoterms import (
+		incoterm_requires_customer_shipping_account,
+		resolve_incoterm_for_source,
+	)
+
+	incoterm = resolve_incoterm_for_source(packing_slip)
+	if not incoterm_requires_customer_shipping_account(incoterm):
+		return None
+	return billing_options_for_incoterm(packing_slip, incoterm)
+
+
+def default_label_reference(packing_slip) -> str:
+	"""Use the linked Sales Order name, or empty when none is linked."""
+	from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+		get_first_sales_order_from_packing_slip,
+	)
+
+	return get_first_sales_order_from_packing_slip(packing_slip) or ""
+
+
+def billing_options_for_incoterm(packing_slip, incoterm) -> dict | None:
+	"""Map customer-carriage incoterms to ShipEngine advanced_options."""
+	from shipstation_integration.incoterms import incoterm_requires_customer_shipping_account
+	from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+		get_customer_from_packing_slip,
+	)
+
+	if not incoterm_requires_customer_shipping_account(incoterm):
+		return None
+
+	if not packing_slip.get("carrier"):
+		decline_customer_billing(packing_slip, incoterm, _("no carrier is set on the shipment"))
+		return None
+
+	customer, _customer_display = get_customer_from_packing_slip(packing_slip)
+	if not customer:
+		decline_customer_billing(packing_slip, incoterm, _("no customer is linked"))
+		return None
+
+	options = shipping_account_billing_options(packing_slip)
+	if options is None:
+		decline_customer_billing(
+			packing_slip,
+			incoterm,
+			_("customer {0} has no {1} account on file").format(customer, packing_slip.carrier),
+		)
+	return options
+
+
+def shipping_account_billing_options(packing_slip) -> dict | None:
+	"""Build third-party advanced_options from the customer's mapped account."""
+	from shipstation_integration.shipstation_integration.overrides.sales_order_context import (
+		get_customer_from_packing_slip,
+	)
+
+	if not packing_slip.carrier:
+		return None
+
+	customer, _customer_display = get_customer_from_packing_slip(packing_slip)
+	if not customer:
+		return None
+
+	customer_doc = frappe.get_cached_doc("Customer", customer)
+	accounts = [
+		row for row in (customer_doc.shipping_accounts or []) if row.carrier == packing_slip.carrier
+	]
+	if not accounts:
+		return None
+
+	account = (
+		next((a for a in accounts if a.default), None)
+		or next((a for a in accounts if a.enabled), None)
+		or accounts[0]
+	)
+	if not account.shipping_account_number:
+		return None
+
+	billing_address = frappe.db.get_value(
+		"Dynamic Link",
+		{"link_doctype": "Customer", "link_name": customer, "parenttype": "Address"},
+		"parent",
+	)
+	postal_code = ""
+	country_code = "US"
+	if billing_address:
+		addr = frappe.get_cached_doc("Address", billing_address)
+		postal_code = addr.pincode or ""
+		country_code = (frappe.db.get_value("Country", addr.country, "code") or "US").upper()
+
+	options: dict = {
+		"bill_to_party": "third_party",
+		"bill_to_account": account.shipping_account_number,
+		"bill_to_country_code": country_code,
+	}
+	if postal_code:
+		options["bill_to_postal_code"] = postal_code
+	return options
+
+
+def get_third_party_billing_options(ps) -> dict | None:
+	"""Return ShipEngine advanced_options from the label billing seam."""
 	return resolve_label_billing_options(ps)
 
 
@@ -585,6 +968,8 @@ def build_shipment_from_packing_slip(
 	ship_to_phone = ship_to_address.phone or "0000000000"
 	ship_from_phone = ship_from_address.phone or "0000000000"
 
+	validate_po_box_delivery(ship_to_address, service_code, ps.get("carrier"))
+
 	shipment: dict = {
 		"carrier_id": carrier_id,
 		"service_code": service_code,
@@ -610,11 +995,6 @@ def build_shipment_from_packing_slip(
 		},
 		"packages": [package],
 	}
-
-	from shipstation_integration.label_options import (
-		resolve_label_billing_options,
-		resolve_label_reference,
-	)
 
 	reference = resolve_label_reference(ps)
 	if reference:
@@ -686,18 +1066,26 @@ def create_label_for_shipment(
 		)
 		return []
 
-	if rate_id and len(parcel_numbers) > 1:
-		frappe.throw(
-			_(
-				"rate_id can only be used for single-parcel shipments. "
-				"Use carrier_id and service_code for multi-parcel."
-			)
-		)
-		return []
-
 	settings = get_shipstation_settings()
-	label_responses = []
 
+	if len(parcel_numbers) > 1:
+		multi_responses = buy_multi_parcel_shipment_labels(
+			doc, rate_id, carrier_id, service_code, parcel_numbers
+		)
+		if multi_responses:
+			for label_response in multi_responses:
+				if label_response.get("label_download"):
+					file_doc = download_and_attach_label(
+						label_response["label_download"],
+						doc.doctype,
+						doc.name,
+						settings,
+					)
+					label_response["attached_file"] = file_doc.name if file_doc else None
+				update_shipment_delivery_note_tracking(doc, label_response, label_response["parcel_number"])
+			return multi_responses
+
+	label_responses = []
 	for parcel_number in parcel_numbers:
 		if rate_id:
 			label_response = create_label_from_rate(rate_id=rate_id)
@@ -754,27 +1142,35 @@ def build_shipment_from_shipment_doc(
 		row for row in (doc.shipment_delivery_note or []) if row.parcel_number == parcel_number
 	]
 
-	if parcel_rows:
-		ref = parcel_rows[0]
-		dimension_unit = DIMENSION_UOM_MAP.get(ref.dimension_uom, "inch")
-		weight_unit = WEIGHT_UOM_MAP.get(ref.parcel_weight_uom, "pound")
-		package = {
-			"weight": {
-				"value": flt(ref.parcel_weight) or 1.0,
-				"unit": weight_unit,
-			},
-			"dimensions": {
-				"length": flt(ref.parcel_length) or 1,
-				"width": flt(ref.parcel_width) or 1,
-				"height": flt(ref.parcel_height) or 1,
-				"unit": dimension_unit,
-			},
-		}
-	else:
-		package = {
-			"weight": {"value": 1.0, "unit": "pound"},
-			"dimensions": {"length": 12, "width": 9, "height": 6, "unit": "inch"},
-		}
+	if not parcel_rows:
+		frappe.throw(
+			_("Parcel {0} has no items with parcel dimensions configured").format(parcel_number)
+		)
+
+	ref = parcel_rows[0]
+	weight = flt(ref.parcel_weight)
+	length = flt(ref.parcel_length)
+	width = flt(ref.parcel_width)
+	height = flt(ref.parcel_height)
+	if not weight:
+		frappe.throw(_("Parcel {0} is missing weight").format(parcel_number))
+	if not length or not width or not height:
+		frappe.throw(_("Parcel {0} is missing dimensions").format(parcel_number))
+
+	dimension_unit = DIMENSION_UOM_MAP.get(ref.dimension_uom, "inch")
+	weight_unit = WEIGHT_UOM_MAP.get(ref.parcel_weight_uom, "pound")
+	package = {
+		"weight": {
+			"value": weight,
+			"unit": weight_unit,
+		},
+		"dimensions": {
+			"length": length,
+			"width": width,
+			"height": height,
+			"unit": dimension_unit,
+		},
+	}
 
 	if carrier_id and not str(carrier_id).startswith("se-"):
 		frappe.throw(
@@ -785,7 +1181,11 @@ def build_shipment_from_shipment_doc(
 		)
 		return {}
 
-	return {
+	delivery_note = next(
+		(row.delivery_note for row in (doc.shipment_delivery_note or []) if row.get("delivery_note")),
+		None,
+	)
+	shipment = {
 		"carrier_id": carrier_id,
 		"service_code": service_code,
 		"ship_to": {
@@ -810,6 +1210,22 @@ def build_shipment_from_shipment_doc(
 		},
 		"packages": [package],
 	}
+
+	validate_po_box_delivery(
+		ship_to_address,
+		service_code,
+		get_supplier_for_carrier_id(carrier_id),
+	)
+
+	reference = resolve_label_reference_for_source(doc.shipment_delivery_note, delivery_note)
+	if reference:
+		shipment["external_order_id"] = reference
+
+	billing = resolve_label_billing_for_source(delivery_note, carrier_id, doc.shipment_delivery_note)
+	if billing:
+		shipment["advanced_options"] = billing
+
+	return shipment
 
 
 def update_shipment_delivery_note_tracking(doc, label_response: dict, parcel_number: int) -> None:

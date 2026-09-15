@@ -14,11 +14,13 @@ the desk.
 """
 
 import json
+from datetime import datetime, timedelta
 from typing import Any
 
 import frappe
 from erpnext.stock.doctype.shipment.shipment import Shipment
 from frappe import _
+from frappe.utils import get_time
 from inventory_tools.inventory_tools.overrides.pack_stock_reservation import (
 	cancel_stock_reservation_entries_from_pack,
 	maybe_reserve_stock_on_pack_submit,
@@ -26,6 +28,7 @@ from inventory_tools.inventory_tools.overrides.pack_stock_reservation import (
 from inventory_tools.inventory_tools.overrides.shipment import InventoryToolsShipment
 
 from shipstation_integration.base_ltl import require_submitted_shipment_for_ltl
+from shipstation_integration.incoterms import populate_shipment_incoterm
 from shipstation_integration.ltl import get_ltl_provider
 from shipstation_integration.shipstation_integration.overrides.handling_unit import (
 	on_shipment_submit,
@@ -36,6 +39,9 @@ from shipstation_integration.utils import get_shipstation_settings_optional
 def ltl_settings_name(settings_name: str | None) -> str | None:
 	settings = get_shipstation_settings_optional(settings_name)
 	return settings.name if settings else None
+
+
+MINIMUM_PICKUP_WINDOW = timedelta(minutes=15)
 
 
 class ShipStationShipment(InventoryToolsShipment):
@@ -49,13 +55,28 @@ class ShipStationShipment(InventoryToolsShipment):
 
 	def validate(self):
 		self.ensure_shipment_parcel_dimension_uoms()
-		if self.get("freight_type") == "LTL" and not self.get("delivery_contact_name"):
-			frappe.throw(
-				_("Delivery Contact is required for LTL shipments."),
-				title=_("Delivery contact required"),
-			)
+		if self.get("freight_type") == "LTL":
+			populate_shipment_incoterm(self)
+			if not self.get("delivery_contact_name"):
+				frappe.throw(
+					_("Delivery Contact is required for LTL shipments."),
+					title=_("Delivery contact required"),
+				)
+			self.normalize_pickup_window()
 		# TODO: if freight_type == "LTL" -> call ltl_class method to show missing but required fields
 		super().validate()
+
+	def normalize_pickup_window(self) -> None:
+		"""Restore the default pickup window when it is too narrow to dispatch against."""
+		start, end = self.get("pickup_from"), self.get("pickup_to")
+		if start and end:
+			opens = datetime.combine(datetime.min, get_time(start))
+			closes = datetime.combine(datetime.min, get_time(end))
+			if closes - opens >= MINIMUM_PICKUP_WINDOW:
+				return
+		meta = frappe.get_meta("Shipment")
+		self.pickup_from = meta.get_field("pickup_from").default or "09:00:00"
+		self.pickup_to = meta.get_field("pickup_to").default or "17:00:00"
 
 	def before_submit(self):
 		"""
@@ -105,6 +126,90 @@ class ShipStationShipment(InventoryToolsShipment):
 
 
 @frappe.whitelist()
+def get_ltl_carrier_suppliers() -> list[str]:
+	"""Suppliers with an enabled Freight Carrier Settings row."""
+	rows = frappe.db.get_all("Freight Carrier Settings", filters={"disabled": 0}, fields=["supplier"])
+	return sorted({row.supplier for row in rows if row.supplier})
+
+
+@frappe.whitelist()
+def make_shipment_from_dn(source_name: str, target_doc=None):
+	"""Create a Shipment from a Delivery Note in any open state."""
+	from frappe.contacts.doctype.contact.contact import get_default_contact
+	from frappe.model.mapper import get_mapped_doc
+
+	def postprocess(source, target):
+		user = frappe.db.get_value(
+			"User", frappe.session.user, ["email", "full_name", "phone", "mobile_no"], as_dict=1
+		)
+		target.pickup_contact_email = user.email
+		pickup_contact_display = f"{user.full_name}"
+		if user:
+			if user.email:
+				pickup_contact_display += "<br>" + user.email
+			if user.phone:
+				pickup_contact_display += "<br>" + user.phone
+			if user.mobile_no and not user.phone:
+				pickup_contact_display += "<br>" + user.mobile_no
+		target.pickup_contact = pickup_contact_display
+		target.pickup_contact_person = frappe.session.user
+		contact_person = source.contact_person or get_default_contact("Customer", source.customer)
+		if contact_person:
+			contact = frappe.db.get_value(
+				"Contact", contact_person, ["email_id", "phone", "mobile_no"], as_dict=1
+			)
+			delivery_contact_display = source.contact_display or contact_person or ""
+			if contact and not source.contact_display:
+				if contact.email_id:
+					delivery_contact_display += "<br>" + contact.email_id
+				if contact.phone:
+					delivery_contact_display += "<br>" + contact.phone
+				if contact.mobile_no and not contact.phone:
+					delivery_contact_display += "<br>" + contact.mobile_no
+			target.delivery_contact_name = contact_person
+			if contact and contact.email_id and not target.delivery_contact_email:
+				target.delivery_contact_email = contact.email_id
+			target.delivery_contact = delivery_contact_display
+		if source.shipping_address_name:
+			target.delivery_address_name = source.shipping_address_name
+			target.delivery_address = source.shipping_address
+		elif source.customer_address:
+			target.delivery_address_name = source.customer_address
+			target.delivery_address = source.address_display
+
+	return get_mapped_doc(
+		"Delivery Note",
+		source_name,
+		{
+			"Delivery Note": {
+				"doctype": "Shipment",
+				"field_map": {
+					"grand_total": "value_of_goods",
+					"company": "pickup_company",
+					"company_address": "pickup_address_name",
+					"company_address_display": "pickup_address",
+					"customer": "delivery_customer",
+					"contact_person": "delivery_contact_name",
+					"contact_email": "delivery_contact_email",
+				},
+				"validation": {"docstatus": ["<", 2]},
+			},
+			"Delivery Note Item": {
+				"doctype": "Shipment Delivery Note",
+				"field_map": {
+					"name": "prevdoc_detail_docname",
+					"parent": "prevdoc_docname",
+					"parenttype": "prevdoc_doctype",
+					"base_amount": "grand_total",
+				},
+			},
+		},
+		target_doc,
+		postprocess,
+	)
+
+
+@frappe.whitelist()
 def get_carrier_id_for_supplier(
 	supplier_name: str, settings_name: str | None = None, company: str | None = None
 ) -> str | None:
@@ -121,7 +226,14 @@ def get_carrier_id_for_supplier(
 	"""
 	if company is None:
 		company = frappe.defaults.get_user_default("Company")
-	ltl_class = get_ltl_provider()
+	# The form calls this with no Shipment, so get_ltl_provider() would always
+	# fall back to ShipstationLTL. Hand it enough of a doc to resolve FCS.
+	context = frappe._dict(
+		preferred_carrier=supplier_name,
+		pickup_from_type="Company",
+		pickup_company=company,
+	)
+	ltl_class = get_ltl_provider(context)
 	return ltl_class.get_carrier_id_for_supplier(
 		supplier_name, ltl_settings_name(settings_name), company
 	)

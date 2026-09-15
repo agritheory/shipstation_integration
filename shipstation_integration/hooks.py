@@ -197,8 +197,8 @@ seventeen_track_geocode_address = [
 
 # Last hook wins. Other apps append to override UltraPro / channel-specific rules.
 get_label_billing_options = [
-	"shipstation_integration.label_options.default_label_billing_options",
+	"shipstation_integration.api.labels.default_label_billing_options",
 ]
 get_label_reference = [
-	"shipstation_integration.label_options.default_label_reference",
+	"shipstation_integration.api.labels.default_label_reference",
 ]

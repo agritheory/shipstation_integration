@@ -87,7 +87,9 @@ class ShipmentQuotation(Document):
 		"""
 		shipment = frappe.get_doc("Shipment", self.shipment)
 
-		if shipment.billing_type != "Shipper":
+		from shipstation_integration.incoterms import resolve_carrier_billing
+
+		if resolve_carrier_billing(shipment)["billing_type"] != "Shipper":
 			return
 
 		company = get_shipment_company_for_ltl(shipment)
@@ -107,9 +109,10 @@ class ShipmentQuotation(Document):
 			)
 			return
 
-		if shipment.payment_terms == "Prepaid" and shipment.get("delivery_customer"):
+		carrier_billing = resolve_carrier_billing(shipment)
+		if carrier_billing["payment_terms"] == "Prepaid" and shipment.get("delivery_customer"):
 			self.create_freight_journal_entry(shipment, fc, company)
-		elif shipment.payment_terms == "Collect":
+		elif carrier_billing["payment_terms"] == "Collect":
 			self.create_freight_purchase_invoice(
 				shipment,
 				fc,

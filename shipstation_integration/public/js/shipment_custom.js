@@ -21,7 +21,15 @@ frappe.ui.form.on('Shipment', {
 	},
 
 	setup: frm => {
+		frappe
+			.xcall('shipstation_integration.shipstation_integration.overrides.shipment.get_ltl_carrier_suppliers')
+			.then(names => {
+				frm._ltl_carrier_suppliers = names
+			})
 		frm.set_query('preferred_carrier', function () {
+			if (frm._ltl_carrier_suppliers && frm._ltl_carrier_suppliers.length) {
+				return { filters: { name: ['in', frm._ltl_carrier_suppliers] } }
+			}
 			return {
 				filters: {
 					is_transporter: 1,

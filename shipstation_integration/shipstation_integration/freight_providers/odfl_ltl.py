@@ -58,7 +58,11 @@ from shipstation_integration.base_ltl import (
 	persist_shipment_ltl_fields,
 	require_submitted_shipment_for_ltl,
 )
-from shipstation_integration.ltl import LTL_SUPPORTED_DIMENSION_UOMS, ShipstationLTL
+from shipstation_integration.ltl import (
+	LTL_SUPPORTED_DIMENSION_UOMS,
+	ShipstationLTL,
+	normalize_freight_class,
+)
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
 )
@@ -341,14 +345,15 @@ class OdflLTL(BaseLTL):
 
 	@staticmethod
 	def odfl_payment_terms(doc) -> str:
-		billing = (doc.get("billing_type") or "Shipper").strip()
-		if billing == "Consignee":
-			return "Collect"
-		return "Prepaid"
+		from shipstation_integration.incoterms import resolve_carrier_billing
+
+		return resolve_carrier_billing(doc)["payment_terms"]
 
 	@staticmethod
 	def odfl_requestor_role(doc) -> str:
-		billing = (doc.get("billing_type") or "Shipper").strip()
+		from shipstation_integration.incoterms import resolve_carrier_billing
+
+		billing = resolve_carrier_billing(doc)["billing_type"]
 		return {
 			"Shipper": "Shipper",
 			"Consignee": "Consignee",
@@ -470,7 +475,7 @@ class OdflLTL(BaseLTL):
 		packages = ltl.build_packages_from_sdn(doc)
 		freight_items_xml = "\n".join(
 			FREIGHT_ITEM_TEMPLATE.format(
-				freight_class=int(float(p.get("freight_class", 50))),
+				freight_class=normalize_freight_class(p.get("freight_class")),
 				weight=self.package_weight_to_pounds(p["weight"]),
 				pieces=int(p.get("quantity", 1)),
 			)
@@ -699,7 +704,7 @@ class OdflLTL(BaseLTL):
 			weight_lb = ShipstationLTL.package_weight_pounds(pkg)
 			line_item: dict[str, Any] = {
 				"weight": weight_lb,
-				"classification": str(pkg.get("freight_class", "50")),
+				"classification": normalize_freight_class(pkg.get("freight_class")),
 				"description": (pkg.get("description") or doc.get("description_of_content") or "Freight")[:50],
 				"hazardous": bool(doc.get("hazardous_material")),
 				"pieces": max(int(pkg.get("quantity", 1)), 1),

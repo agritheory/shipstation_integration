@@ -56,7 +56,11 @@ from shipstation_integration.base_ltl import (
 	persist_shipment_ltl_fields,
 	require_submitted_shipment_for_ltl,
 )
-from shipstation_integration.ltl import LTL_SUPPORTED_DIMENSION_UOMS, ShipstationLTL
+from shipstation_integration.ltl import (
+	LTL_SUPPORTED_DIMENSION_UOMS,
+	ShipstationLTL,
+	normalize_freight_class,
+)
 from shipstation_integration.shipstation_integration.doctype.freight_carrier_settings.freight_carrier_settings import (
 	get_freight_carrier_settings,
 )
@@ -270,7 +274,9 @@ class BanyanLTL(BaseLTL):
 
 	def build_banyan_bill_to(self, doc: Shipment, fc, origin_info: dict, dest_info: dict) -> dict:
 		"""BillTo from shipper (prepaid / third party) or consignee (collect), matching Banyan DTO."""
-		billing_type = doc.get("billing_type") or "Shipper"
+		from shipstation_integration.incoterms import resolve_carrier_billing
+
+		billing_type = resolve_carrier_billing(doc)["billing_type"]
 		bill_info = origin_info if billing_type != "Consignee" else dest_info
 		bill_addr = bill_info["address"]
 		bill_contact = bill_info["contact"]
@@ -333,7 +339,7 @@ class BanyanLTL(BaseLTL):
 			product = {
 				"PackageType": pkg.get("code") or "Pallets",
 				"Description": pkg.get("description") or "",
-				"Class": str(int(pkg.get("freight_class") or 50)),
+				"Class": normalize_freight_class(pkg.get("freight_class")),
 				"Weight": float(pkg["weight"]["value"]),
 				"WeightUnitOfMeasurement": wt_uom,
 				"Dimensions": {
@@ -366,8 +372,11 @@ class BanyanLTL(BaseLTL):
 		ltl = ShipstationLTL()
 		origin_info = ltl.get_address_and_contact_info(doc, ship_from=True)
 		dest_info = ltl.get_address_and_contact_info(doc, ship_from=False)
-		billing_type = doc.get("billing_type") or "Shipper"
-		payment_terms = doc.get("payment_terms") or "Prepaid"
+		from shipstation_integration.incoterms import resolve_carrier_billing
+
+		carrier_billing = resolve_carrier_billing(doc)
+		billing_type = carrier_billing["billing_type"]
+		payment_terms = carrier_billing["payment_terms"]
 
 		return {
 			# Quoted + waitForRates: Banyan only waits for carrier rates when status is Quoted;
@@ -408,8 +417,11 @@ class BanyanLTL(BaseLTL):
 		origin_info = ltl.get_address_and_contact_info(doc, ship_from=True)
 		dest_info = ltl.get_address_and_contact_info(doc, ship_from=False)
 
-		billing_type = doc.get("billing_type") or "Shipper"
-		payment_terms = doc.get("payment_terms") or "Prepaid"
+		from shipstation_integration.incoterms import resolve_carrier_billing
+
+		carrier_billing = resolve_carrier_billing(doc)
+		billing_type = carrier_billing["billing_type"]
+		payment_terms = carrier_billing["payment_terms"]
 
 		shipment_data = {
 			"ShipType": self.SHIP_TYPE_MAP.get(billing_type, "Shipper"),

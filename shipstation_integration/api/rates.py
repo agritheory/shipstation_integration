@@ -345,15 +345,16 @@ def get_rates_for_packing_slip(packing_slip: str) -> list[dict]:
 		"phone": ship_to_address.phone or "0000000000",
 	}
 
-	# Build package from this Packing Slip's item parcel dimensions
-	package = get_package_from_packing_slip(ps)
-	if not package:
+	packages = get_packages_from_packing_slip(ps)
+	if not packages:
 		frappe.throw(_("Packing Slip must have items with a Parcel # and parcel dimensions configured"))
 
-	rates = get_rates(
-		ship_from=ship_from,
-		ship_to=ship_to,
-		packages=[package],
+	rates = dedupe_rates(
+		get_rates(
+			ship_from=ship_from,
+			ship_to=ship_to,
+			packages=packages,
+		)
 	)
 	return mark_matching_rate(rates, ps.carrier_service)
 
@@ -408,6 +409,39 @@ def get_package_from_packing_slip(packing_slip, parcel_number: int | None = None
 			"unit": dimension_unit,
 		},
 	}
+
+
+def get_packages_from_packing_slip(packing_slip) -> list[dict]:
+	"""Build one package dict per distinct parcel number on a Packing Slip."""
+	numbers = []
+	for item in getattr(packing_slip, "items", []):
+		if item.parcel_number and item.parcel_number not in numbers:
+			numbers.append(item.parcel_number)
+
+	packages = []
+	for number in sorted(numbers):
+		package = get_package_from_packing_slip(packing_slip, number)
+		if package:
+			packages.append(package)
+	return packages
+
+
+def carrier_family(rate: dict) -> str:
+	"""The carrier behind a rate, ignoring which account quoted it."""
+	code = (rate.get("carrier_code") or rate.get("carrier_name") or "").lower()
+	return code.removesuffix("_walleted")
+
+
+def dedupe_rates(rates: list[dict]) -> list[dict]:
+	"""Keep the cheapest rate per carrier family and service name."""
+	best = {}
+	for rate in rates:
+		key = (carrier_family(rate), rate.get("service_type") or rate.get("service_code"))
+		amount = flt((rate.get("shipping_amount") or {}).get("amount"))
+		current = best.get(key)
+		if current is None or amount < flt((current.get("shipping_amount") or {}).get("amount")):
+			best[key] = rate
+	return sorted(best.values(), key=lambda r: flt((r.get("shipping_amount") or {}).get("amount")))
 
 
 def mark_matching_rate(rates: list[dict], carrier_service: str | None) -> list[dict]:
@@ -543,7 +577,7 @@ def get_rates_for_shipment(shipment: str) -> list[dict]:
 	if not packages:
 		frappe.throw(_("Shipment must have SDN items with a Parcel # and parcel dimensions configured"))
 
-	return get_rates(ship_from=ship_from, ship_to=ship_to, packages=packages)
+	return dedupe_rates(get_rates(ship_from=ship_from, ship_to=ship_to, packages=packages))
 
 
 def get_packages_from_shipment(doc) -> list[dict]:

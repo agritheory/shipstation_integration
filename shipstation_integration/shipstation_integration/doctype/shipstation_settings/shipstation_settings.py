@@ -255,9 +255,11 @@ class ShipstationSettings(Document):  # nosemgrep: frappe-modifying-but-not-comi
 
 	def api_ltl_carrier_data(self):
 		"""Return parsed API LTL carrier data."""
-		if not self.shipstation_api_ltl_carrier_data:
+		# Matches onload: the field is not declared in the doctype JSON.
+		ltl_carrier_data = self.get("shipstation_api_ltl_carrier_data")
+		if not ltl_carrier_data:
 			return []
-		return json.loads(self.shipstation_api_ltl_carrier_data)
+		return json.loads(ltl_carrier_data)
 
 	@frappe.whitelist()
 	def fetch_ltl_carriers(self):

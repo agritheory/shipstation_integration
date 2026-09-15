@@ -1188,7 +1188,6 @@ def create_packing_slips(settings):
 	ps.shipping_address_name = customer_address
 	ps.dispatch_address_name = company_address
 	ps.carrier = "USPS"
-	ps.freight_type = "Small Parcel"
 	ps.carrier_service = "usps_priority_mail"
 
 	for idx, item in enumerate(ps.items):
@@ -1477,10 +1476,19 @@ def get_draft_ltl_shipment_for_tests():
 
 
 def get_small_parcel_packing_slip_for_tests():
-	"""Draft small-parcel Packing Slip (customers[1], USPS) created by setup."""
-	ps = frappe.get_last_doc("Packing Slip", filters={"freight_type": "Small Parcel", "docstatus": 0})
-	ps.reload()
-	return ps
+	"""Draft multi-parcel Packing Slip (customers[1], USPS) created by setup."""
+	for name in frappe.get_all(
+		"Packing Slip",
+		filters={"carrier": "USPS", "docstatus": 0},
+		pluck="name",
+		order_by="creation desc",
+	):
+		ps = frappe.get_doc("Packing Slip", name)
+		parcel_numbers = {row.parcel_number for row in ps.items if row.parcel_number}
+		if len(parcel_numbers) >= 2:
+			ps.reload()
+			return ps
+	frappe.throw("No multi-parcel USPS Packing Slip found in test fixtures")
 
 
 def get_freight_terminal_shipment_for_tests():
