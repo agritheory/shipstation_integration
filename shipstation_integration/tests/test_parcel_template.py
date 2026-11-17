@@ -56,8 +56,7 @@ def test_uom_conversion_length():
 
 def test_sync_validation_missing_dimensions(test_parcel_template):
 	"""Test that sync_parcel_template validates required dimensions."""
-	test_parcel_template.length = 0
-	test_parcel_template.save()
+	frappe.db.set_value("Shipment Parcel Template", test_parcel_template.name, "length", 0)
 	with pytest.raises(Exception) as exc_info:
 		sync_parcel_template(test_parcel_template.name)
 	assert "Package dimensions are required" in str(exc_info.value)
